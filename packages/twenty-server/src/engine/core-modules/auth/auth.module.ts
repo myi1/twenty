@@ -6,6 +6,7 @@ import { ApiKeyModule } from 'src/engine/core-modules/api-key/api-key.module';
 import { ApplicationRegistrationModule } from 'src/engine/core-modules/application/application-registration/application-registration.module';
 import { AppTokenEntity } from 'src/engine/core-modules/app-token/app-token.entity';
 import { AppTokenService } from 'src/engine/core-modules/app-token/services/app-token.service';
+import { ApplicationAgentRunnerModule } from 'src/engine/core-modules/application/agent-runner/application-agent-runner.module';
 import { ApplicationModule } from 'src/engine/core-modules/application/application.module';
 import { ConnectionProviderModule } from 'src/engine/core-modules/application/connection-provider/connection-provider.module';
 import { ConnectionProviderOAuthController } from 'src/engine/core-modules/application/connection-provider/connection-provider-oauth.controller';
@@ -120,6 +121,7 @@ import { JwtAuthStrategy } from './strategies/jwt.auth.strategy';
     ApplicationModule,
     ConnectionProviderModule,
     ApplicationConnectionsModule,
+    ApplicationAgentRunnerModule,
     WorkspaceCacheModule,
     CoreEntityCacheModule,
     SecureHttpClientModule,
