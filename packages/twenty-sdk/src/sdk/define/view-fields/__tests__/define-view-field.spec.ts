@@ -25,7 +25,9 @@ describe('defineViewField', () => {
     const result = defineViewField(withoutUniversalIdentifier as any);
 
     expect(result.success).toBe(false);
-    expect(result.errors).toContain('View field must have a universalIdentifier');
+    expect(result.errors).toContain(
+      'View field must have a universalIdentifier',
+    );
   });
 
   it('should return error when viewUniversalIdentifier is missing', () => {
@@ -41,7 +43,8 @@ describe('defineViewField', () => {
   });
 
   it('should return error when fieldMetadataUniversalIdentifier is missing', () => {
-    const { fieldMetadataUniversalIdentifier: _, ...withoutField } = validConfig;
+    const { fieldMetadataUniversalIdentifier: _, ...withoutField } =
+      validConfig;
 
     const result = defineViewField(withoutField as any);
 
