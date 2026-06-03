@@ -47,6 +47,14 @@ import { InstitutionalOpportunityStageGatePreQueryHook } from 'src/modules/prope
 import { RcbiOpportunityStageGatePreQueryHook } from 'src/modules/propel-rls/rcbi-opportunity-stage-gate.pre-query.hook';
 import { ListingStageGatePreQueryHook } from 'src/modules/propel-rls/listing-stage-gate.pre-query.hook';
 import { DealStageGatePreQueryHook } from 'src/modules/propel-rls/deal-stage-gate.pre-query.hook';
+import { WhatsAppConversationRlsPreQueryHook } from 'src/modules/propel-rls/whatsapp-conversation-rls.pre-query.hook';
+import { WhatsAppConversationFindOneRlsPreQueryHook } from 'src/modules/propel-rls/whatsapp-conversation-find-one-rls.pre-query.hook';
+import { WhatsAppConversationGroupByRlsPreQueryHook } from 'src/modules/propel-rls/whatsapp-conversation-group-by-rls.pre-query.hook';
+import { WhatsAppMessageRlsPreQueryHook } from 'src/modules/propel-rls/whatsapp-message-rls.pre-query.hook';
+import { WhatsAppMessageFindOneRlsPreQueryHook } from 'src/modules/propel-rls/whatsapp-message-find-one-rls.pre-query.hook';
+import { WhatsAppMessageGroupByRlsPreQueryHook } from 'src/modules/propel-rls/whatsapp-message-group-by-rls.pre-query.hook';
+import { PersonRlsPreQueryHook } from 'src/modules/propel-rls/person-rls.pre-query.hook';
+import { PersonGroupByRlsPreQueryHook } from 'src/modules/propel-rls/person-group-by-rls.pre-query.hook';
 
 // Propel clean-room module:
 //  - RLS read-path hooks (findMany/findOne/groupBy) inject per-tier row filters.
@@ -102,6 +110,14 @@ import { DealStageGatePreQueryHook } from 'src/modules/propel-rls/deal-stage-gat
     RcbiOpportunityStageGatePreQueryHook,
     ListingStageGatePreQueryHook,
     DealStageGatePreQueryHook,
+    WhatsAppConversationRlsPreQueryHook,
+    WhatsAppConversationFindOneRlsPreQueryHook,
+    WhatsAppConversationGroupByRlsPreQueryHook,
+    WhatsAppMessageRlsPreQueryHook,
+    WhatsAppMessageFindOneRlsPreQueryHook,
+    WhatsAppMessageGroupByRlsPreQueryHook,
+    PersonRlsPreQueryHook,
+    PersonGroupByRlsPreQueryHook,
     StageGateService,
   ],
 })

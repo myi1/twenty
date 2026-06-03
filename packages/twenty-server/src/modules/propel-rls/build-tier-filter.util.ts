@@ -15,6 +15,10 @@ import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/wo
 export type TierFilterOptions = {
   hasOwner?: boolean; // object carries ownerId (default true)
   hasBusinessUnit?: boolean; // object carries businessUnit (default true)
+  // Column the AGENT tier filters on (default 'ownerId'). The standard `person`
+  // object names its owning-agent column `assignedAgentId` (the `isolationFields`
+  // objects use `ownerId`), so person hooks pass `ownerField: 'assignedAgentId'`.
+  ownerField?: string;
 };
 
 export const buildTierFilter = (
@@ -23,6 +27,7 @@ export const buildTierFilter = (
 ): Record<string, unknown> | null => {
   const hasOwner = options.hasOwner ?? true;
   const hasBusinessUnit = options.hasBusinessUnit ?? true;
+  const ownerField = options.ownerField ?? 'ownerId';
 
   if (authContext.type !== 'user') return null;
 
@@ -41,7 +46,7 @@ export const buildTierFilter = (
   if (!hasOwner) return null;
   const memberId = authContext.workspaceMemberId;
   if (!memberId) return null;
-  return { ownerId: { eq: memberId } };
+  return { [ownerField]: { eq: memberId } };
 };
 
 // Compose the tier filter with any user-supplied filter via AND so scoping can't
