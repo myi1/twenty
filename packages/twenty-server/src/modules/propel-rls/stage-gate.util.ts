@@ -1,5 +1,3 @@
-import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
-
 // ── Propel §8.3 stage gating ─────────────────────────────────────────────────
 // "Move a deal only when the work is actually done." A forward stage move is
 // blocked unless the current stage's task (created by the §8.3 stage-entry emitter)
@@ -47,12 +45,5 @@ export const isGatedForwardMove = (
   return ni > ci;
 };
 
-// Whether RLS-style bypass applies (non-user or manager → no gate).
-export const gateBypasses = (authContext: WorkspaceAuthContext): boolean => {
-  if (authContext.type !== 'user') return true;
-  const member = authContext.workspaceMember as
-    | (Record<string, unknown> & { id?: string })
-    | undefined;
-  const tier = (member?.propelTier as string | undefined) ?? 'AGENT';
-  return tier === 'MANAGER';
-};
+// Gate bypass (non-user or MANAGER → no gate) now lives in
+// PropelTierService.gateBypasses (role-derived, async). See stage-gate.service.ts.

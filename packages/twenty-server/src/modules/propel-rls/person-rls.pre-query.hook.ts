@@ -3,10 +3,8 @@ import { type FindManyResolverArgs } from 'src/engine/api/graphql/workspace-reso
 
 import { WorkspaceQueryHook } from 'src/engine/api/graphql/workspace-query-runner/workspace-query-hook/decorators/workspace-query-hook.decorator';
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
-import {
-  buildTierFilter,
-  composeFilter,
-} from 'src/modules/propel-rls/build-tier-filter.util';
+import { composeFilter } from 'src/modules/propel-rls/build-tier-filter.util';
+import { PropelTierService } from 'src/modules/propel-rls/propel-tier.service';
 
 // Propel clean-room RLS — person.findMany. Scopes the book of business: lists,
 // search, kanban, and relation PICKERS show an agent only their assigned contacts.
@@ -21,12 +19,14 @@ import {
 // (whole-book lists/search/pickers); revisit findOne after validating relation reads.
 @WorkspaceQueryHook(`person.findMany`)
 export class PersonRlsPreQueryHook implements WorkspacePreQueryHookInstance {
+  constructor(private readonly propelTierService: PropelTierService) {}
+
   async execute(
     authContext: WorkspaceAuthContext,
     _objectName: string,
     payload: FindManyResolverArgs,
   ): Promise<FindManyResolverArgs> {
-    const tierFilter = buildTierFilter(authContext, {
+    const tierFilter = await this.propelTierService.buildTierFilter(authContext, {
       ownerField: 'assignedAgentId',
       hasBusinessUnit: false,
     });

@@ -1,52 +1,25 @@
-import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
-
-// ── Propel clean-room RLS — shared tier filter ───────────────────────────────
-// Single source of truth for the per-tier row filter, used by every per-object
-// pre-query hook. NOT derived from Twenty's @license Enterprise RLS.
+// ── Propel clean-room RLS — shared filter helpers ────────────────────────────
+// The per-tier ROW FILTER now lives in PropelTierService.buildTierFilter (it must
+// resolve the user's Twenty role at request time, which needs DI). This file keeps
+// the DI-free pieces every per-object pre-query hook still shares: the options type
+// and composeFilter.
 //
 //   MANAGER → null (no filter, sees all)
-//   AGENT   → ownerId == requesting member  (sees own)
-//   CITERRA → businessUnit == 'CITERRA'      (separate-company wall)
+//   AGENT   → ownerField == requesting member  (sees own; ownerField default 'ownerId')
 //   non-user contexts (apiKey/application/system) → null (integrations unfiltered)
 //
-// `options` lets objects opt out of an axis they don't carry (e.g. an object with
-// no businessUnit, though all our isolated objects have both).
+// CITERRA / businessUnit isolation has been removed (RCBI merged into the normal
+// pipelines). `hasBusinessUnit` is retained on the options type only so existing
+// hook call sites keep compiling; it is ignored.
 
 export type TierFilterOptions = {
-  hasOwner?: boolean; // object carries ownerId (default true)
-  hasBusinessUnit?: boolean; // object carries businessUnit (default true)
+  hasOwner?: boolean; // object carries an owner column (default true)
+  // Deprecated/ignored: businessUnit (CITERRA) isolation was removed.
+  hasBusinessUnit?: boolean;
   // Column the AGENT tier filters on (default 'ownerId'). The standard `person`
   // object names its owning-agent column `assignedAgentId` (the `isolationFields`
   // objects use `ownerId`), so person hooks pass `ownerField: 'assignedAgentId'`.
   ownerField?: string;
-};
-
-export const buildTierFilter = (
-  authContext: WorkspaceAuthContext,
-  options: TierFilterOptions = {},
-): Record<string, unknown> | null => {
-  const hasOwner = options.hasOwner ?? true;
-  const hasBusinessUnit = options.hasBusinessUnit ?? true;
-  const ownerField = options.ownerField ?? 'ownerId';
-
-  if (authContext.type !== 'user') return null;
-
-  const member = authContext.workspaceMember as
-    | (Record<string, unknown> & { id?: string })
-    | undefined;
-  const tier = (member?.propelTier as string | undefined) ?? 'AGENT';
-
-  if (tier === 'MANAGER') return null;
-
-  if (tier === 'CITERRA') {
-    return hasBusinessUnit ? { businessUnit: { eq: 'CITERRA' } } : null;
-  }
-
-  // AGENT (default)
-  if (!hasOwner) return null;
-  const memberId = authContext.workspaceMemberId;
-  if (!memberId) return null;
-  return { [ownerField]: { eq: memberId } };
 };
 
 // Compose the tier filter with any user-supplied filter via AND so scoping can't
@@ -56,16 +29,15 @@ export const composeFilter = (
   tierFilter: Record<string, unknown> | null,
 ): unknown => {
   if (!tierFilter) return existing;
+
   return existing ? { and: [existing, tierFilter] } : tierFilter;
 };
 
 // NOTE on findDuplicates: it is NOT RLS-hooked. It cannot be scoped via a
 // @WorkspaceQueryHook (its args are {ids, data} with no filter, and the post-query
-// hook returns void). A core patch of common-find-duplicates-query-runner.service.ts
-// was explored, but findDuplicates is INERT for our custom objects: it only queries
+// hook returns void). findDuplicates is INERT for our custom objects: it only queries
 // when `flatObjectMetadata.duplicateCriteria` is non-empty, and (a) our objects
 // define none and (b) the app SDK's ObjectManifest has no way to set duplicateCriteria.
 // So there is no reachable leak to scope. If Twenty ever lets the SDK set
-// duplicateCriteria on custom objects, revisit: patch the core runner to fold
-// buildTierFilter(authContext) into duplicateConditions via { and: [...] } for the
-// RLS-scoped objects only.
+// duplicateCriteria on custom objects, revisit: fold the tier filter into
+// duplicateConditions via { and: [...] } for the RLS-scoped objects only.

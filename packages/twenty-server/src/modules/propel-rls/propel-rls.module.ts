@@ -55,6 +55,9 @@ import { WhatsAppMessageFindOneRlsPreQueryHook } from 'src/modules/propel-rls/wh
 import { WhatsAppMessageGroupByRlsPreQueryHook } from 'src/modules/propel-rls/whatsapp-message-group-by-rls.pre-query.hook';
 import { PersonRlsPreQueryHook } from 'src/modules/propel-rls/person-rls.pre-query.hook';
 import { PersonGroupByRlsPreQueryHook } from 'src/modules/propel-rls/person-group-by-rls.pre-query.hook';
+import { PropelTierService } from 'src/modules/propel-rls/propel-tier.service';
+import { RoleModule } from 'src/engine/metadata-modules/role/role.module';
+import { UserRoleModule } from 'src/engine/metadata-modules/user-role/user-role.module';
 
 // Propel clean-room module:
 //  - RLS read-path hooks (findMany/findOne/groupBy) inject per-tier row filters.
@@ -63,7 +66,9 @@ import { PersonGroupByRlsPreQueryHook } from 'src/modules/propel-rls/person-grou
 //    is @Global-exported, so no module import needed).
 // None derived from @license Enterprise code.
 @Module({
+  imports: [RoleModule, UserRoleModule],
   providers: [
+    PropelTierService,
     SecondaryOpportunityRlsPreQueryHook,
     SecondaryOpportunityFindOneRlsPreQueryHook,
     SecondaryOpportunityGroupByRlsPreQueryHook,
