@@ -1,6 +1,7 @@
 import { Stack, Text } from '@mantine/core';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { AgentHome } from '@/propel/components/runner/AgentHome';
+import { AgentPickerModal } from '@/propel/components/runner/AgentPickerModal';
 import { BookingModal } from '@/propel/components/runner/BookingModal';
 import { ManagerCenter } from '@/propel/components/runner/ManagerCenter';
 import { RunnerDrawer } from '@/propel/components/runner/RunnerDrawer';
@@ -27,6 +28,7 @@ export const HubView = ({
 }) => {
   const [bookTarget, setBookTarget] = useState<BookTarget>(null);
   const [runTarget, setRunTarget] = useState<RunTarget>(null);
+  const [agentPickerOpen, setAgentPickerOpen] = useState(false);
 
   const showManager =
     (payload.tier === 'MANAGER' || payload.tier === 'PLAYER_COACH') &&
@@ -59,11 +61,20 @@ export const HubView = ({
     [payload],
   );
 
+  // "Add agent" opens an in-hero picker (Mantine Modal) instead of bouncing the
+  // user out to /settings/profile. The picker lists workspace members and, on
+  // pick, assigns that member's 1:1 manager to the acting manager — after which we
+  // refetch the hub so the new report appears in the roster.
   const onManageTeam = useCallback(() => {
-    // Team management lives in the one-on-one settings; the hero links there
-    // rather than reimplementing the member multi-select sheet.
-    window.location.assign('/settings/profile');
+    setAgentPickerOpen(true);
   }, []);
+
+  // workspaceMember ids already on the manager's team — hidden from the picker so
+  // you can't re-add an existing report.
+  const existingTeamIds = useMemo(
+    () => (payload.manager?.team ?? []).map((t) => t.agentId),
+    [payload.manager],
+  );
 
   return (
     <>
@@ -112,6 +123,18 @@ export const HubView = ({
           if (changed) onMutated();
         }}
       />
+
+      {showManager && payload.manager != null ? (
+        <AgentPickerModal
+          opened={agentPickerOpen}
+          manager={{ id: payload.me.id, label: payload.me.label }}
+          existingTeamIds={existingTeamIds}
+          onClose={(added) => {
+            setAgentPickerOpen(false);
+            if (added) onMutated();
+          }}
+        />
+      ) : null}
     </>
   );
 };
