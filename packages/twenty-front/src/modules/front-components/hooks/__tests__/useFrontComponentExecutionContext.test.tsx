@@ -189,6 +189,40 @@ describe('useFrontComponentExecutionContext', () => {
         { replace: true },
       );
     });
+
+    // Regression guard for the "Prepare A2A" no-op (#40): a command-menu-mounted
+    // front-component (commandMenuItemId set) MUST still get a working `navigate`
+    // in its host communication API — it reaches the main-app router exactly like
+    // a record-widget mount. If navigate were ever scoped out of the command-mount
+    // path, the worker SDK would throw "navigateFunction is not set" and the
+    // panel's `void navigate(...)` would silently hang. Keep navigate wired here.
+    it('should provide a working navigate when mounted from the command menu', async () => {
+      const { result } = renderUseFrontComponentExecutionContext({
+        frontComponentId: FRONT_COMPONENT_ID,
+        commandMenuItemId: COMMAND_MENU_ITEM_ID,
+        selectedRecordIds: ['record-456'],
+      });
+
+      expect(
+        result.current.frontComponentHostCommunicationApi.navigate,
+      ).toBeDefined();
+
+      await act(async () => {
+        await result.current.frontComponentHostCommunicationApi.navigate(
+          '/a2a-studio' as never,
+          undefined as never,
+          { opportunityId: 'opp-1', variant: 'B' } as never,
+          undefined as never,
+        );
+      });
+
+      expect(mockNavigateApp).toHaveBeenCalledWith(
+        '/a2a-studio',
+        undefined,
+        { opportunityId: 'opp-1', variant: 'B' },
+        undefined,
+      );
+    });
   });
 
   describe('openSidePanelPage', () => {
