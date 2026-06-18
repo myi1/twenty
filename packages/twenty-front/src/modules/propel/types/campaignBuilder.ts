@@ -13,6 +13,54 @@
 export type RealChannel = 'EMAIL' | 'WHATSAPP';
 export type TemplateLanguage = 'EN' | 'AR';
 
+// ── A/B test config (S2) ─────────────────────────────────────────────────────
+// The marketingCampaign object already carries the full A/B schema and the
+// detail view already READS the result; S2 is purely the missing FRONT DOOR.
+// This is the wizard-local slice — composed into the wizard state orthogonally
+// so later slices merge cleanly. The field names below map 1:1 onto the
+// /marketing/save-campaign body keys (see marketing-save-campaign-route.ts):
+//   abEnabled · abSubjectB · abBodyB · abSlicePct · abWinnerMetric ·
+//   abDecideAfterHours · abMinEvents  (abTemplateBId reserved for WA A/B, S-later).
+export type AbWinnerMetric = 'OPENS' | 'REPLIES';
+
+export interface AbConfig {
+  enabled: boolean;
+  subjectB: string;
+  bodyB: string;
+  slicePct: number; // 5–50; the % of the audience the A/B test samples
+  winnerMetric: AbWinnerMetric;
+  decideAfterHours: number; // > 0
+  minEvents: number; // >= 0
+}
+
+export const DEFAULT_AB_CONFIG: AbConfig = {
+  enabled: false,
+  subjectB: '',
+  bodyB: '',
+  slicePct: 20,
+  winnerMetric: 'OPENS',
+  decideAfterHours: 24,
+  minEvents: 50,
+};
+
+// ── marketingSendRule singleton (S3 — Review guardrails) ─────────────────────
+// The send governance the drain enforces on EVERY send: weekly caps (all-channel
+// + a stricter WhatsApp cap), a nightly quiet window, and a Friday pause. The
+// /marketing/hub route already returns this (sendRules) — S3 surfaces it in
+// Review so the user understands BEFORE launch why a blast might be throttled,
+// not after. Times are Asia/Dubai "HH:MM". Mirrors src/shared/marketing-hub-types
+// SendRulesPayload + DEFAULT_SEND_RULES_PAYLOAD in the CRM repo.
+export interface SendRulesPayload {
+  id?: string | null;
+  capPerWeek: number;
+  capPerWeekWhatsapp: number;
+  quietEnabled: boolean;
+  quietStart: string;
+  quietEnd: string;
+  fridayPauseEnabled: boolean;
+  fridayPauseUntil: string;
+}
+
 // ── /marketing/hub (the subset the builder needs for its pickers) ────────────
 export interface SegmentOption {
   id: string;
@@ -63,6 +111,9 @@ export interface CampaignBuilderHubPayload {
   waTemplates?: WaTemplateOption[];
   emailTemplates?: EmailTemplateOption[];
   customFields?: CustomFieldOption[];
+  // The send-rules singleton (S3 Review guardrails). The /marketing/hub route
+  // already includes this; it is optional/presence-guarded like every payload.
+  sendRules?: SendRulesPayload;
 }
 
 // ── Typed error envelope (marketing-io.envelope) ─────────────────────────────
