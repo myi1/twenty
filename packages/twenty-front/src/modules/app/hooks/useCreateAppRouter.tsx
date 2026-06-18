@@ -28,9 +28,12 @@ const RecordShowPage = lazy(() =>
   })),
 );
 
-const MarketingHomePage = lazy(() =>
-  import('~/pages/propel/MarketingHomePage').then((module) => ({
-    default: module.MarketingHomePage,
+// The unified Marketing hero (task #41) — one page, internal Mantine tabs (Home /
+// Campaigns / Inbox / Templates / Social / Numbers). Replaces MarketingHomePage at
+// AppPath.MarketingHub; Home is its default tab.
+const MarketingHero = lazy(() =>
+  import('~/pages/propel/MarketingHero').then((module) => ({
+    default: module.MarketingHero,
   })),
 );
 
@@ -272,7 +275,7 @@ export const useCreateAppRouter = (
             path={AppPath.MarketingHub}
             element={
               <LazyRoute>
-                <MarketingHomePage />
+                <MarketingHero />
               </LazyRoute>
             }
           />
