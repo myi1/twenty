@@ -68,6 +68,15 @@ export const MarketingCampaignBuilderPage = () => {
     navigate(AppPath.MarketingSequenceEditor);
   }, [navigate]);
 
+  // S3 — the Review guardrails "Edit rules" affordance. The send-rules editor
+  // currently lives on the Marketing hub (the in-sandbox Send Rules sheet, not
+  // yet graduated to a fork hero); route there so the user can adjust caps /
+  // quiet hours. When a dedicated rules hero lands, repoint this.
+  // TODO(S8 graduation): repoint to a graduated Send-Rules surface if one ships.
+  const goEditRules = useCallback(() => {
+    navigate(AppPath.MarketingHub);
+  }, [navigate]);
+
   const startManual = useCallback(() => {
     setHandoffPlan(null);
     setStage('manual');
@@ -128,7 +137,12 @@ export const MarketingCampaignBuilderPage = () => {
               onSequence={goSequences}
             />
           ) : stage === 'manual' ? (
-            <ManualWizard hub={hub} initialPlan={handoffPlan} onDone={goHome} />
+            <ManualWizard
+              hub={hub}
+              initialPlan={handoffPlan}
+              onDone={goHome}
+              onEditRules={goEditRules}
+            />
           ) : (
             <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
               <Group justify="space-between">

@@ -48,6 +48,10 @@ export const useCampaignBuilderData = () => {
       waTemplates: hub?.waTemplates ?? EMPTY.waTemplates,
       emailTemplates: hub?.emailTemplates ?? EMPTY.emailTemplates,
       customFields: hub?.customFields ?? EMPTY.customFields,
+      // S3 — the send-rules singleton for the Review guardrails card. Left
+      // undefined (NOT zero-filled) when the route omits it, so the card shows
+      // an honest "couldn't load your send rules" note rather than fake caps.
+      sendRules: hub?.sendRules,
     }),
     [hub],
   );

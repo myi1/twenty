@@ -44,6 +44,7 @@ import {
 } from '@/propel/lib/campaignRenderer';
 import { AbTestPanel } from '@/propel/components/campaign/AbTestPanel';
 import { ComposeToolbar } from '@/propel/components/campaign/ComposeToolbar';
+import { GuardrailsCard } from '@/propel/components/campaign/GuardrailsCard';
 import { EmailPreview } from '@/propel/components/campaign/EmailPreview';
 import { SegmentCreateModal } from '@/propel/components/campaign/SegmentCreateModal';
 import {
@@ -56,6 +57,7 @@ import {
   type SegmentOption,
   type SaveSegmentResponse,
   type SendRequestResponse,
+  type SendRulesPayload,
   type TestSendResponse,
 } from '@/propel/types/campaignBuilder';
 
@@ -71,10 +73,15 @@ export const ManualWizard = ({
   hub,
   initialPlan,
   onDone,
+  onEditRules,
 }: {
   hub: CampaignBuilderHubPayload;
   initialPlan?: AiPlan | null;
   onDone: () => void;
+  // S3 — opens the send-rules editor from the Review guardrails card. Optional
+  // so existing callers (and tests) don't break; the card hides "Edit rules"
+  // when absent.
+  onEditRules?: () => void;
 }) => {
   const notify = usePropelToast();
 
@@ -128,6 +135,7 @@ export const ManualWizard = ({
   const listings = hub.listings ?? [];
   const waTemplates = hub.waTemplates ?? [];
   const customFields = hub.customFields ?? [];
+  const sendRules = hub.sendRules; // S3 — undefined when the route omitted it
 
   const approvedTemplates = useMemo(
     () => waTemplates.filter((t) => t.approved),
@@ -669,6 +677,8 @@ export const ManualWizard = ({
             onScheduleAt={setScheduleAt}
             permitWarning={permitWarning}
             ab={abActive ? ab : null}
+            sendRules={sendRules}
+            onEditRules={onEditRules}
           />
         )}
       </Box>
@@ -1250,6 +1260,8 @@ const ReviewStep = ({
   onScheduleAt,
   permitWarning,
   ab,
+  sendRules,
+  onEditRules,
 }: {
   name: string;
   channel: 'EMAIL' | 'WHATSAPP';
@@ -1264,6 +1276,8 @@ const ReviewStep = ({
   onScheduleAt: (v: string) => void;
   permitWarning: string | null;
   ab: AbConfig | null;
+  sendRules: SendRulesPayload | undefined;
+  onEditRules?: () => void;
 }) => (
   <Stack gap="md" maw={560}>
     <Card
@@ -1313,6 +1327,14 @@ const ReviewStep = ({
         {permitWarning}
       </Alert>
     )}
+
+    <GuardrailsCard
+      rules={sendRules}
+      channel={channel}
+      estimate={estimate}
+      scheduledLocal={sendMode === 'schedule' ? scheduleAt : ''}
+      onEditRules={onEditRules}
+    />
 
     {channel === 'EMAIL' && (
       <Group justify="space-between" align="center">

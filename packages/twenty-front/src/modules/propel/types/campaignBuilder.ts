@@ -43,6 +43,24 @@ export const DEFAULT_AB_CONFIG: AbConfig = {
   minEvents: 50,
 };
 
+// ── marketingSendRule singleton (S3 — Review guardrails) ─────────────────────
+// The send governance the drain enforces on EVERY send: weekly caps (all-channel
+// + a stricter WhatsApp cap), a nightly quiet window, and a Friday pause. The
+// /marketing/hub route already returns this (sendRules) — S3 surfaces it in
+// Review so the user understands BEFORE launch why a blast might be throttled,
+// not after. Times are Asia/Dubai "HH:MM". Mirrors src/shared/marketing-hub-types
+// SendRulesPayload + DEFAULT_SEND_RULES_PAYLOAD in the CRM repo.
+export interface SendRulesPayload {
+  id?: string | null;
+  capPerWeek: number;
+  capPerWeekWhatsapp: number;
+  quietEnabled: boolean;
+  quietStart: string;
+  quietEnd: string;
+  fridayPauseEnabled: boolean;
+  fridayPauseUntil: string;
+}
+
 // ── /marketing/hub (the subset the builder needs for its pickers) ────────────
 export interface SegmentOption {
   id: string;
@@ -93,6 +111,9 @@ export interface CampaignBuilderHubPayload {
   waTemplates?: WaTemplateOption[];
   emailTemplates?: EmailTemplateOption[];
   customFields?: CustomFieldOption[];
+  // The send-rules singleton (S3 Review guardrails). The /marketing/hub route
+  // already includes this; it is optional/presence-guarded like every payload.
+  sendRules?: SendRulesPayload;
 }
 
 // ── Typed error envelope (marketing-io.envelope) ─────────────────────────────
