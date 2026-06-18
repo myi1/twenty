@@ -3,7 +3,6 @@ import { AppPath, SettingsPath } from 'twenty-shared/types';
 import {
   IconBroadcast,
   IconBuildingSkyscraper,
-  IconCalendarEvent,
   IconFileText,
   IconHelpCircle,
   IconSettings,
@@ -77,13 +76,10 @@ export const NavigationDrawerOtherSection = () => {
             Icon={IconBroadcast}
           />
         )}
-        {PROPEL_MARKETING_HUB_ENABLED && (
-          <NavigationDrawerItem
-            label="Social Calendar"
-            to={AppPath.MarketingSocialCalendar}
-            Icon={IconCalendarEvent}
-          />
-        )}
+        {/* Social Calendar is now the "Social" tab inside the unified Marketing
+            hero (task #41) — its standalone nav item was removed so Marketing is a
+            single entry. The /marketing/social route still resolves for any saved
+            deep-links. */}
         {PROPEL_MARKETING_HUB_ENABLED && (
           <NavigationDrawerItem
             label="Weekly 1:1"

@@ -118,6 +118,102 @@ export interface AttentionRow {
   campaignId?: string;
 }
 
+// ── Campaigns + Templates tab rows (fuller hub subset) ───────────────────────
+// These mirror the additional MarketingHubPayload fields the Campaigns and
+// Templates tabs of the unified hero read (canonical shapes:
+// propel-crm-integration src/shared/marketing-hub-types.ts). The route owns ALL
+// label formatting (Asia/Dubai); the UI renders strings.
+
+export interface ScheduledRow {
+  id: string;
+  name: string;
+  whenLabel: string;
+  audienceLabel: string;
+  channel: RealChannel;
+}
+
+export interface DraftRow {
+  id: string;
+  name: string;
+  updatedLabel: string;
+  channel: RealChannel | 'SOCIAL';
+  hasSegment: boolean;
+  hasListing: boolean;
+}
+
+export interface ResultRow {
+  id: string;
+  name: string;
+  channel: RealChannel;
+  completedLabel: string;
+  openRate: number | null;
+  clickRate: number | null;
+  replies: number;
+  callTasks: number;
+  statsSettling: boolean;
+}
+
+export interface SequenceStepDraft {
+  name: string;
+  stepType:
+    | 'SEND_EMAIL'
+    | 'SEND_WHATSAPP'
+    | 'WAIT'
+    | 'CONDITION'
+    | 'CREATE_TASK'
+    | 'EXIT';
+  channel: 'EMAIL' | 'WHATSAPP' | null;
+  waitDays: number | null;
+  templateSubject: string | null;
+  templateBody: string | null;
+  conditionKind: 'REPLIED' | 'OPENED' | 'CLICKED' | null;
+  whatsappTemplateId: string | null;
+  whatsappLanguageCode: 'EN' | 'AR' | null;
+  yesStepIndex: number | null;
+  noStepIndex: number | null;
+}
+
+export interface SequenceRow {
+  id: string;
+  name: string;
+  status: 'DRAFT' | 'RUNNING' | 'PAUSED' | 'ARCHIVED';
+  entryType: 'SEGMENT_POLL' | 'MANUAL' | 'EVENT';
+  entrySegmentId: string | null;
+  activeVersion: number;
+  enrolledCount: number;
+  activeCount: number;
+  steps: SequenceStepDraft[];
+}
+
+export interface WaTemplateOption {
+  id: string;
+  name: string;
+  languageCode: 'EN' | 'AR';
+  category: string;
+  bodyText: string;
+  paramMap: string[];
+  bodyExample: string[];
+  status: string;
+  approved: boolean;
+  metaTemplateId: string;
+  rejectionReason: string;
+}
+
+export interface EmailTemplateOption {
+  id: string;
+  name: string;
+  subject: string;
+  bodyText: string;
+  languageCode: string;
+}
+
+export interface CustomFieldOption {
+  id: string;
+  key: string;
+  value: string;
+  label: string;
+}
+
 export interface MarketingHubPayload {
   tier?: string;
   greeting?: string;
@@ -126,6 +222,15 @@ export interface MarketingHubPayload {
   sendingNowTotal?: number;
   needsAttention?: AttentionRow[];
   firstRun?: boolean;
+  // Campaigns tab
+  scheduled?: ScheduledRow[];
+  drafts?: DraftRow[];
+  recentResults?: ResultRow[];
+  sequences?: SequenceRow[];
+  // Templates tab
+  waTemplates?: WaTemplateOption[];
+  emailTemplates?: EmailTemplateOption[];
+  customFields?: CustomFieldOption[];
 }
 
 // ── POST /s/marketing/dashboard-layout ───────────────────────────────────────
