@@ -1,5 +1,6 @@
 import {
   Alert,
+  Badge,
   Box,
   Button,
   Card,
@@ -41,12 +42,15 @@ import {
   type MergeValues,
   parseTemplate,
 } from '@/propel/lib/campaignRenderer';
+import { AbTestPanel } from '@/propel/components/campaign/AbTestPanel';
 import { ComposeToolbar } from '@/propel/components/campaign/ComposeToolbar';
 import { EmailPreview } from '@/propel/components/campaign/EmailPreview';
 import { SegmentCreateModal } from '@/propel/components/campaign/SegmentCreateModal';
 import {
+  type AbConfig,
   type AiPlan,
   type CampaignBuilderHubPayload,
+  DEFAULT_AB_CONFIG,
   type DraftCopyResponse,
   type SaveCampaignResponse,
   type SegmentOption,
@@ -106,6 +110,18 @@ export const ManualWizard = ({
 
   const subjectRef = useRef<HTMLInputElement | null>(null);
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // ── A/B test slice (S2) ────────────────────────────────────────────────────
+  // Kept as ONE orthogonal slice (an AbConfig object) rather than scattered
+  // fields, so it composes cleanly into save-campaign and so future slices
+  // (S4–S9) don't have to thread half a dozen booleans through props.
+  const [ab, setAb] = useState<AbConfig>(DEFAULT_AB_CONFIG);
+  const subjectBRef = useRef<HTMLInputElement | null>(null);
+  const bodyBRef = useRef<HTMLTextAreaElement | null>(null);
+  const patchAb = useCallback(
+    (patch: Partial<AbConfig>) => setAb((prev) => ({ ...prev, ...patch })),
+    [],
+  );
 
   // ── derived picker data ────────────────────────────────────────────────────
   const segments = hub.segments ?? [];
@@ -188,47 +204,77 @@ export const ManualWizard = ({
     );
   }, [initialPlan]);
 
-  // ── caret-true merge-field insert (real focus/setSelectionRange) ───────────
-  const insertToken = useCallback(
-    (field: string) => {
+  // ── caret-true merge-field insert / format (real focus/setSelectionRange) ──
+  // Generalized over a target (the body textarea, its current value, and the
+  // setter) so variant A (main body) and variant B (A/B test body) share ONE
+  // implementation — same caret behaviour, no copy-paste drift.
+  const insertTokenInto = useCallback(
+    (
+      ref: React.RefObject<HTMLTextAreaElement | null>,
+      value: string,
+      setValue: (v: string) => void,
+      field: string,
+    ) => {
       const token = `{{${field}}}`;
-      const el = bodyRef.current;
-      const value = bodyText;
+      const el = ref.current;
       const start = el?.selectionStart ?? value.length;
       const end = el?.selectionEnd ?? start;
       const next = value.slice(0, start) + token + value.slice(end);
-      setBodyText(next);
+      setValue(next);
       const caret = start + token.length;
       requestAnimationFrame(() => {
-        const node = bodyRef.current;
+        const node = ref.current;
         if (!node) return;
         node.focus();
         node.setSelectionRange(caret, caret);
       });
     },
-    [bodyText],
+    [],
   );
 
-  const applyFormat = useCallback(
-    (action: FormatAction) => {
-      const el = bodyRef.current;
-      const value = bodyText;
+  const applyFormatTo = useCallback(
+    (
+      ref: React.RefObject<HTMLTextAreaElement | null>,
+      value: string,
+      setValue: (v: string) => void,
+      action: FormatAction,
+    ) => {
+      const el = ref.current;
       const start = el?.selectionStart ?? value.length;
       const end = el?.selectionEnd ?? start;
       const sel = value.slice(start, end) || action.placeholder;
       const next =
         value.slice(0, start) + action.before + sel + action.after + value.slice(end);
-      setBodyText(next);
+      setValue(next);
       const selStart = start + action.before.length;
       const selEnd = selStart + sel.length;
       requestAnimationFrame(() => {
-        const node = bodyRef.current;
+        const node = ref.current;
         if (!node) return;
         node.focus();
         node.setSelectionRange(selStart, selEnd);
       });
     },
-    [bodyText],
+    [],
+  );
+
+  const insertToken = useCallback(
+    (field: string) => insertTokenInto(bodyRef, bodyText, setBodyText, field),
+    [insertTokenInto, bodyText],
+  );
+  const applyFormat = useCallback(
+    (action: FormatAction) => applyFormatTo(bodyRef, bodyText, setBodyText, action),
+    [applyFormatTo, bodyText],
+  );
+  const insertTokenB = useCallback(
+    (field: string) =>
+      insertTokenInto(bodyBRef, ab.bodyB, (v) => patchAb({ bodyB: v }), field),
+    [insertTokenInto, ab.bodyB, patchAb],
+  );
+  const applyFormatB = useCallback(
+    (action: FormatAction) =>
+      applyFormatTo(bodyBRef, ab.bodyB, (v) => patchAb({ bodyB: v }), action),
+    [applyFormatTo, ab.bodyB, patchAb],
   );
 
   // ── validation gates ───────────────────────────────────────────────────────
@@ -239,12 +285,52 @@ export const ManualWizard = ({
       ),
     [subject, bodyText, composeAllowedKeys],
   );
+  // A/B variant B is only validated when the test is ON (EMAIL only). It must be
+  // non-empty and use only fillable merge fields — same contract as variant A.
+  const copyTokensFillableB = useMemo(
+    () =>
+      [
+        ...parseTemplate(ab.subjectB).fields,
+        ...parseTemplate(ab.bodyB).fields,
+      ].every((f) => composeAllowedKeys.has(f)),
+    [ab.subjectB, ab.bodyB, composeAllowedKeys],
+  );
+  // A/B only applies to EMAIL in S2; if the user flips to WhatsApp it is inert.
+  const abActive = channel === 'EMAIL' && ab.enabled;
+  const abReady =
+    !abActive ||
+    Boolean(ab.subjectB.trim() && ab.bodyB.trim() && copyTokensFillableB);
   const setupReady =
     Boolean(name.trim()) && (objective === 'SEGMENT' || Boolean(listingId));
   const draftReady =
     channel === 'WHATSAPP'
       ? Boolean(name.trim() && waTemplateId)
-      : Boolean(name.trim() && subject.trim() && bodyText.trim() && copyTokensFillable);
+      : Boolean(
+          name.trim() &&
+            subject.trim() &&
+            bodyText.trim() &&
+            copyTokensFillable &&
+            abReady,
+        );
+
+  // The A/B patch sent to save-campaign. When the test is OFF (or channel is
+  // WhatsApp) we still send `abEnabled: false` so toggling it off on an existing
+  // draft clears the flag; the variant copy / settings only ride when enabled.
+  const abSavePatch = useMemo<Record<string, unknown>>(
+    () =>
+      abActive
+        ? {
+            abEnabled: true,
+            abSubjectB: ab.subjectB,
+            abBodyB: ab.bodyB,
+            abSlicePct: ab.slicePct,
+            abWinnerMetric: ab.winnerMetric,
+            abDecideAfterHours: ab.decideAfterHours,
+            abMinEvents: ab.minEvents,
+          }
+        : { abEnabled: false },
+    [abActive, ab],
+  );
 
   // ── route actions ──────────────────────────────────────────────────────────
   const generate = useCallback(async () => {
@@ -330,6 +416,7 @@ export const ManualWizard = ({
           listingId: listingFieldsActive ? listingId ?? '' : '',
           segmentId,
           whatsappTemplateId: channel === 'WHATSAPP' ? waTemplateId ?? '' : '',
+          ...abSavePatch,
         },
       );
       if (!res || res.error || !res.campaignId) {
@@ -356,6 +443,7 @@ export const ManualWizard = ({
     listingFieldsActive,
     listingId,
     waTemplateId,
+    abSavePatch,
     notify,
   ]);
 
@@ -375,6 +463,7 @@ export const ManualWizard = ({
           listingId: listingFieldsActive ? listingId ?? '' : '',
           segmentId,
           whatsappTemplateId: channel === 'WHATSAPP' ? waTemplateId ?? '' : '',
+          ...abSavePatch,
         },
       );
       if (!res || res.error || !res.campaignId) {
@@ -400,6 +489,7 @@ export const ManualWizard = ({
     listingFieldsActive,
     listingId,
     waTemplateId,
+    abSavePatch,
     notify,
     onDone,
   ]);
@@ -538,6 +628,13 @@ export const ManualWizard = ({
             onWaTemplate={setWaTemplateId}
             approvedTemplates={approvedTemplates}
             permitWarning={permitWarning}
+            ab={ab}
+            onAbChange={patchAb}
+            subjectBRef={subjectBRef}
+            bodyBRef={bodyBRef}
+            onInsertTokenB={insertTokenB}
+            onFormatB={applyFormatB}
+            copyTokensFillableB={copyTokensFillableB}
           />
         )}
 
@@ -571,6 +668,7 @@ export const ManualWizard = ({
             scheduleAt={scheduleAt}
             onScheduleAt={setScheduleAt}
             permitWarning={permitWarning}
+            ab={abActive ? ab : null}
           />
         )}
       </Box>
@@ -842,6 +940,13 @@ const ComposeStep = ({
   onWaTemplate,
   approvedTemplates,
   permitWarning,
+  ab,
+  onAbChange,
+  subjectBRef,
+  bodyBRef,
+  onInsertTokenB,
+  onFormatB,
+  copyTokensFillableB,
 }: {
   channel: 'EMAIL' | 'WHATSAPP';
   subject: string;
@@ -866,6 +971,13 @@ const ComposeStep = ({
   onWaTemplate: (v: string | null) => void;
   approvedTemplates: { id: string; name: string; languageCode: string }[];
   permitWarning: string | null;
+  ab: AbConfig;
+  onAbChange: (patch: Partial<AbConfig>) => void;
+  subjectBRef: React.Ref<HTMLInputElement>;
+  bodyBRef: React.Ref<HTMLTextAreaElement>;
+  onInsertTokenB: (field: string) => void;
+  onFormatB: (action: FormatAction) => void;
+  copyTokensFillableB: boolean;
 }) => {
   if (channel === 'WHATSAPP') {
     return (
@@ -992,6 +1104,18 @@ const ComposeStep = ({
               {permitWarning}
             </Alert>
           )}
+
+          <AbTestPanel
+            ab={ab}
+            onChange={onAbChange}
+            subjectBRef={subjectBRef}
+            bodyBRef={bodyBRef}
+            mergeFields={mergeFields}
+            customFields={customFields}
+            onInsertTokenB={onInsertTokenB}
+            onFormatB={onFormatB}
+            copyTokensFillableB={copyTokensFillableB}
+          />
         </Stack>
       </Grid.Col>
       <Grid.Col span={{ base: 12, md: 6 }}>
@@ -1125,6 +1249,7 @@ const ReviewStep = ({
   scheduleAt,
   onScheduleAt,
   permitWarning,
+  ab,
 }: {
   name: string;
   channel: 'EMAIL' | 'WHATSAPP';
@@ -1138,6 +1263,7 @@ const ReviewStep = ({
   scheduleAt: string;
   onScheduleAt: (v: string) => void;
   permitWarning: string | null;
+  ab: AbConfig | null;
 }) => (
   <Stack gap="md" maw={560}>
     <Card
@@ -1147,13 +1273,38 @@ const ReviewStep = ({
       style={{ background: 'var(--mantine-color-body)' }}
     >
       <Stack gap={8}>
-        <ReviewRow label="Campaign" value={name} />
+        <Group justify="space-between" align="center" wrap="nowrap">
+          <ReviewRow label="Campaign" value={name} />
+        </Group>
         <ReviewRow label="Channel" value={channel === 'WHATSAPP' ? 'WhatsApp' : 'Email'} />
         <ReviewRow label="Audience" value={segmentName || '—'} />
         <ReviewRow
           label="Estimated reach"
           value={estimate.toLocaleString('en-US')}
         />
+        {ab && (
+          <Group justify="space-between" gap="md" wrap="nowrap">
+            <Text
+              size="xs"
+              c="dimmed"
+              fw={600}
+              tt="uppercase"
+              style={{ flex: 'none' }}
+            >
+              A/B test
+            </Text>
+            <Group gap={6} wrap="nowrap" justify="flex-end">
+              <Badge size="sm" variant="light" color="red">
+                A/B on
+              </Badge>
+              <Text size="sm" c="var(--mantine-color-text)" ta="right">
+                {ab.slicePct}% slice · winner by{' '}
+                {ab.winnerMetric === 'OPENS' ? 'opens' : 'replies'} after{' '}
+                {ab.decideAfterHours}h
+              </Text>
+            </Group>
+          </Group>
+        )}
       </Stack>
     </Card>
 
