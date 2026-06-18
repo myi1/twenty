@@ -1,14 +1,12 @@
 name: Build Propel Engine Image
 
-# The "painless build": rebuilds the Propel Twenty fork engine image (the marketing
-# heroes etc.) on a free public-repo runner (4-vCPU / 16 GB — enough for the front
-# build's 8 GB heap) and pushes it to GHCR. No droplet, no DigitalOcean tier.
-# Manual-dispatch only. Builds whatever branch you pass as source_branch.
+# Repeatable engine build (no droplet, no DO tier). Free public-repo runners.
+# amd64 (default) → prod's Coolify; arm64 → the m4-mini staging stack.
 on:
   workflow_dispatch:
     inputs:
       source_branch:
-        description: 'Fork branch to build (e.g. build/lean-v3-staging-allheroes)'
+        description: 'Fork branch to build (e.g. integ/staging-allheroes-v2)'
         required: true
         default: 'build/lean-v3-staging-allheroes'
       output_tag:
@@ -18,7 +16,11 @@ on:
       app_version:
         description: 'APP_VERSION build arg'
         required: false
-        default: '0.5.22'
+        default: '0.5.25'
+      platform:
+        description: 'Target arch: amd64 (prod Coolify) or arm64 (m4 staging)'
+        required: false
+        default: 'amd64'
 
 permissions:
   contents: read
@@ -30,15 +32,13 @@ env:
 
 jobs:
   build-and-push:
-    # Free public-repo standard runner: 4 vCPU / 16 GB (since 2023-12). The front
-    # build runs with --max-old-space-size=8192 and fits comfortably in 16 GB.
-    runs-on: ubuntu-latest
+    # Native runner per arch — both free for public repos (amd64 4c/16GB; arm64 GA).
+    runs-on: ${{ github.event.inputs.platform == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     steps:
       - name: Free disk space
-        # The Dockerfile context + multi-stage build needs headroom; reclaim ~25 GB.
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          sudo apt-get clean
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          sudo apt-get clean || true
           df -h /
 
       - name: Checkout source branch
@@ -52,10 +52,6 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
-          # Built-in token. Needs the ghcr.io/myi1/twenty-propel package to grant
-          # THIS repo write access (Package settings -> Manage Actions access ->
-          # add myi1/twenty -> Write). If denied, swap to a PAT secret with
-          # write:packages. The source label below keeps the package linked.
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
@@ -66,20 +62,18 @@ jobs:
         with:
           context: .
           file: packages/twenty-docker/twenty/Dockerfile
-          # CRITICAL: --target twenty (the lean server+front image). The DEFAULT
-          # stage is an s6 all-in-one with bundled postgres that breaks Coolify.
+          # CRITICAL: --target twenty (lean server+front; NOT the s6 all-in-one default).
           target: twenty
-          platforms: linux/amd64
+          platforms: linux/${{ github.event.inputs.platform }}
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.output_tag }}
           labels: org.opencontainers.image.source=https://github.com/myi1/twenty
           build-args: |
             APP_VERSION=${{ github.event.inputs.app_version }}
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-${{ github.event.inputs.platform }}
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-${{ github.event.inputs.platform }},mode=max
 
       - name: Verify pushed image
         run: |
-          echo "Pushed ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.output_tag }}"
-          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.output_tag }} \
-            --format '{{json .Manifest}}' | jq -r '.mediaType, .digest'
+          echo "Pushed ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.output_tag }} (linux/${{ github.event.inputs.platform }})"
+          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.output_tag }} --format '{{json .Manifest}}' | jq -r '.mediaType'
