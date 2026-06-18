@@ -34,7 +34,8 @@ import { useMarketingHub } from '@/propel/hooks/useMarketingHub';
 // Tab status:
 //   • Home      — full (the graduated dashboard, formerly MarketingHomePage)
 //   • Campaigns — list only (detail drill-in deferred; see CampaignsTab)
-//   • Inbox     — STUB (the 700+ LOC real-time inbox is a follow-up; see InboxTab)
+//   • Inbox     — full (the real-time unified inbox: list + conversation + composer
+//                 + AI insights + media; Mantine port of the legacy InboxView)
 //   • Templates — full catalog + editor modals (merge-tags sub-tab deferred)
 //   • Social    — full (the social calendar, formerly SocialCalendarPage)
 //   • Numbers   — full (the telephony number hub)
