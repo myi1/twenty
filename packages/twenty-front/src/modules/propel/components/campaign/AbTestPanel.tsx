@@ -51,6 +51,7 @@ export const AbTestPanel = ({
   waTemplates,
   waTemplateAId,
   hideEmailBodyEditor = false,
+  showMechanics = true,
 }: {
   ab: AbConfig;
   onChange: (patch: Partial<AbConfig>) => void;
@@ -70,15 +71,13 @@ export const AbTestPanel = ({
   // GrapesJS builder (via the A|B switcher above), so this panel shows only the
   // test mechanics — no markdown editor for B. (WhatsApp ignores this.)
   hideEmailBodyEditor?: boolean;
+  // When false, the test MECHANICS (slice / winner / decide-after / min-events) are
+  // NOT rendered here — they live on the Review step instead (founder: the Compose
+  // step shouldn't be a scroll-fest). The toggle + variant-B door stay. Default
+  // true for back-compat (e.g. WhatsApp / any inline use that wants them together).
+  showMechanics?: boolean;
 }) => {
   const isWa = channel === 'WHATSAPP';
-  const slice = ab.slicePct;
-  // Live split bar: `slice` is sampled (half to A, half to B); the remaining
-  // (100 − slice) gets the winning variant after the decision window. The bar
-  // makes "you're only testing on a SLICE, then the winner ships to the rest"
-  // legible at a glance — the single most-misunderstood part of A/B.
-  const halfSlice = Math.round(slice / 2);
-  const remainder = Math.max(0, 100 - halfSlice * 2);
 
   return (
     <Box
@@ -179,86 +178,110 @@ export const AbTestPanel = ({
             )}
           </Box>
 
-          {/* Test slice + live split bar */}
-          <Box>
-            <Group justify="space-between" align="baseline">
-              <Text size="sm" fw={600} c="var(--mantine-color-text)">
-                Test slice
-              </Text>
-              <Text size="sm" fw={700} c="var(--mantine-color-text)">
-                {slice}%
-              </Text>
-            </Group>
-            <Slider
-              mt={6}
-              color="red"
-              min={5}
-              max={50}
-              step={5}
-              value={slice}
-              onChange={(v) => onChange({ slicePct: v })}
-              marks={[
-                { value: 10, label: '10%' },
-                { value: 30, label: '30%' },
-                { value: 50, label: '50%' },
-              ]}
-            />
-            <SplitBar aPct={halfSlice} bPct={halfSlice} winnerPct={remainder} />
-            <Text size="xs" c="dimmed" mt={6}>
-              {halfSlice}% gets A, {halfSlice}% gets B, the remaining{' '}
-              {remainder}% gets the winner.
-            </Text>
-          </Box>
-
-          {/* Winner metric + decision window */}
-          <Group grow align="flex-start" wrap="wrap">
-            <Box>
-              <Text size="sm" fw={600} mb={6} c="var(--mantine-color-text)">
-                Winning signal
-              </Text>
-              <SegmentedControl
-                fullWidth
-                value={ab.winnerMetric}
-                onChange={(v) =>
-                  onChange({ winnerMetric: v as AbWinnerMetric })
-                }
-                data={[
-                  { label: 'Opens', value: 'OPENS' },
-                  { label: 'Replies', value: 'REPLIES' },
-                ]}
-              />
-            </Box>
-            <NumberInput
-              label="Decide after"
-              description="Hours before the winner is chosen"
-              min={1}
-              max={168}
-              value={ab.decideAfterHours}
-              onChange={(v) =>
-                onChange({
-                  decideAfterHours:
-                    typeof v === 'number' && v > 0 ? Math.round(v) : 1,
-                })
-              }
-              suffix=" h"
-            />
-            <NumberInput
-              label="Min. events"
-              description="Wait for at least this many before deciding"
-              min={0}
-              max={100000}
-              value={ab.minEvents}
-              onChange={(v) =>
-                onChange({
-                  minEvents:
-                    typeof v === 'number' && v >= 0 ? Math.round(v) : 0,
-                })
-              }
-            />
-          </Group>
+          {/* Test mechanics (slice / winner / decide-after / min-events). Shown
+              here only when showMechanics; on the EMAIL builder flow they live on
+              the Review step instead, so Compose isn't a scroll-fest. */}
+          {showMechanics && <AbTestMechanics ab={ab} onChange={onChange} />}
         </Stack>
       )}
     </Box>
+  );
+};
+
+// The A/B test MECHANICS — test-slice %, the live split bar, the winning signal,
+// the decision window (decide-after hours), and min-events. Extracted so it can be
+// rendered either inline in the panel (showMechanics) OR on the Review step (the
+// EMAIL builder flow, where Compose keeps only the toggle + variant designs).
+// Pure/presentational: all state is the wizard's `ab` slice.
+export const AbTestMechanics = ({
+  ab,
+  onChange,
+}: {
+  ab: AbConfig;
+  onChange: (patch: Partial<AbConfig>) => void;
+}) => {
+  const slice = ab.slicePct;
+  // Live split bar: `slice` is sampled (half to A, half to B); the remaining
+  // (100 − slice) gets the winning variant after the decision window.
+  const halfSlice = Math.round(slice / 2);
+  const remainder = Math.max(0, 100 - halfSlice * 2);
+  return (
+    <Stack gap="md">
+      {/* Test slice + live split bar */}
+      <Box>
+        <Group justify="space-between" align="baseline">
+          <Text size="sm" fw={600} c="var(--mantine-color-text)">
+            Test slice
+          </Text>
+          <Text size="sm" fw={700} c="var(--mantine-color-text)">
+            {slice}%
+          </Text>
+        </Group>
+        <Slider
+          mt={6}
+          color="red"
+          min={5}
+          max={50}
+          step={5}
+          value={slice}
+          onChange={(v) => onChange({ slicePct: v })}
+          marks={[
+            { value: 10, label: '10%' },
+            { value: 30, label: '30%' },
+            { value: 50, label: '50%' },
+          ]}
+        />
+        <SplitBar aPct={halfSlice} bPct={halfSlice} winnerPct={remainder} />
+        <Text size="xs" c="dimmed" mt={6}>
+          {halfSlice}% gets A, {halfSlice}% gets B, the remaining {remainder}%
+          gets the winner.
+        </Text>
+      </Box>
+
+      {/* Winner metric + decision window */}
+      <Group grow align="flex-start" wrap="wrap">
+        <Box>
+          <Text size="sm" fw={600} mb={6} c="var(--mantine-color-text)">
+            Winning signal
+          </Text>
+          <SegmentedControl
+            fullWidth
+            value={ab.winnerMetric}
+            onChange={(v) => onChange({ winnerMetric: v as AbWinnerMetric })}
+            data={[
+              { label: 'Opens', value: 'OPENS' },
+              { label: 'Replies', value: 'REPLIES' },
+            ]}
+          />
+        </Box>
+        <NumberInput
+          label="Decide after"
+          description="Hours before the winner is chosen"
+          min={1}
+          max={168}
+          value={ab.decideAfterHours}
+          onChange={(v) =>
+            onChange({
+              decideAfterHours:
+                typeof v === 'number' && v > 0 ? Math.round(v) : 1,
+            })
+          }
+          suffix=" h"
+        />
+        <NumberInput
+          label="Min. events"
+          description="Wait for at least this many before deciding"
+          min={0}
+          max={100000}
+          value={ab.minEvents}
+          onChange={(v) =>
+            onChange({
+              minEvents: typeof v === 'number' && v >= 0 ? Math.round(v) : 0,
+            })
+          }
+        />
+      </Group>
+    </Stack>
   );
 };
 

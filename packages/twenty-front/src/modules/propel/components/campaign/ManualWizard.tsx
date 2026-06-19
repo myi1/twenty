@@ -39,7 +39,10 @@ import {
   renderParams,
   WA_PREVIEW_SAMPLES,
 } from '@/propel/lib/waTemplateRenderer';
-import { AbTestPanel } from '@/propel/components/campaign/AbTestPanel';
+import {
+  AbTestMechanics,
+  AbTestPanel,
+} from '@/propel/components/campaign/AbTestPanel';
 import { GrapesEmailBuilder } from '@/propel/components/campaign/GrapesEmailBuilder';
 import { type GrapesEmailAiContext } from '@/propel/components/campaign/grapesEmailTypes';
 import { GuardrailsCard } from '@/propel/components/campaign/GuardrailsCard';
@@ -883,6 +886,7 @@ export const ManualWizard = ({
             permitWarning={permitWarning}
             permitBlocked={permitBlocked}
             ab={abActive ? ab : null}
+            onAbChange={patchAb}
             sendRules={sendRules}
             capPreview={capPreview}
             onEditRules={onEditRules}
@@ -1413,10 +1417,11 @@ const ComposeStep = ({
         />
       </Box>
 
-      {/* A/B config — the test toggle + slice/winner settings. Variant B's email
-          BODY is now designed in the builder above (via the A|B switcher), so the
-          panel no longer renders a markdown editor for it; it shows only the test
-          mechanics (and, for WhatsApp, the variant-B template picker). */}
+      {/* A/B on Compose = ONLY the on/off toggle + Variant-B door (the variant
+          designs are in the builder above via the A|B switcher). The test
+          MECHANICS (slice / winner / decide-after / min-events) moved to the Review
+          step (founder Option A) so Compose isn't a scroll-fest — showMechanics
+          false here. */}
       <AbTestPanel
         ab={ab}
         onChange={onAbChange}
@@ -1431,6 +1436,7 @@ const ComposeStep = ({
         waTemplates={waTemplates}
         waTemplateAId={null}
         hideEmailBodyEditor
+        showMechanics={false}
       />
     </Stack>
   );
@@ -1642,6 +1648,7 @@ const ReviewStep = ({
   permitWarning,
   permitBlocked,
   ab,
+  onAbChange,
   sendRules,
   capPreview,
   onEditRules,
@@ -1663,6 +1670,9 @@ const ReviewStep = ({
   // user understands the block BEFORE launching, as a calm inline gate.
   permitBlocked: boolean;
   ab: AbConfig | null;
+  // Edit the A/B test MECHANICS here (founder Option A — moved off Compose). null
+  // when A/B is off → the mechanics card is omitted entirely.
+  onAbChange: (patch: Partial<AbConfig>) => void;
   sendRules: SendRulesPayload | undefined;
   capPreview: CapPreview;
   onEditRules?: () => void;
@@ -1712,6 +1722,30 @@ const ReviewStep = ({
         )}
       </Stack>
     </Card>
+
+    {/* A/B test settings — moved here from Compose (founder Option A): Review is
+        where send-time test settings belong. Only when A/B is on. */}
+    {ab && (
+      <Card
+        withBorder
+        radius="md"
+        padding="md"
+        style={{ background: 'var(--mantine-color-body)' }}
+      >
+        <Stack gap="sm">
+          <Box>
+            <Text size="sm" fw={700} c="var(--mantine-color-text)">
+              A/B test settings
+            </Text>
+            <Text size="xs" c="dimmed">
+              Send both variants to a slice; the winner ships to everyone else
+              automatically.
+            </Text>
+          </Box>
+          <AbTestMechanics ab={ab} onChange={onAbChange} />
+        </Stack>
+      </Card>
+    )}
 
     {permitBlocked && (
       <Alert
