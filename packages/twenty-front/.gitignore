@@ -22,6 +22,9 @@ build-storybook.log
 /build
 dist
 dist-ssr
+# Propel runtime-loaded hero bundles — built artifacts, served from the runtime
+# /heroes volume (NOT baked into the engine image). Built via `npm run build:hero`.
+/dist-heroes
 
 # env
 .env.local

@@ -33,6 +33,15 @@ export function generateFrontConfig(): void {
       process.env.REACT_APP_PROPEL_MARKETING_HUB;
   }
 
+  // Propel runtime-loaded heroes — base URL of the hero-bundles volume. The FE
+  // (HeroRoute) reads window._env_.REACT_APP_HEROES_BASE_URL and dynamic-imports
+  // `${base}/<name>/index.js`. Defaults to `/heroes` in the FE when unset; set this
+  // to point at the mounted heroes volume (e.g. when it's served from another path).
+  if (process.env.REACT_APP_HEROES_BASE_URL) {
+    envForFront.REACT_APP_HEROES_BASE_URL =
+      process.env.REACT_APP_HEROES_BASE_URL;
+  }
+
   const configString = `<!-- BEGIN: Twenty Config -->
     <script id="twenty-env-config">
       window._env_ = ${JSON.stringify(envForFront, null, 2)};

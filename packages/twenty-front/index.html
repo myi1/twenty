@@ -67,6 +67,40 @@
     </script>
     <!-- END: Twenty Config -->
 
+    <!-- BEGIN: Propel Hero Runtime -->
+    <!-- Import map: a runtime-loaded hero's bare imports (built EXTERNAL) resolve to
+         the host's re-export shims, which read the host's singletons off
+         window.__propelShared (populated by /src/index.tsx → heroShared before the
+         tree mounts). Must precede /src/index.tsx so the map is registered before any
+         module graph (incl. a hero's dynamic import) is resolved. Keep in sync with
+         scripts/gen-hero-shims.mjs (it prints this exact block). -->
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "/propel-shims/react.js",
+          "react/jsx-runtime": "/propel-shims/react-jsx-runtime.js",
+          "react-dom": "/propel-shims/react-dom.js",
+          "react-dom/client": "/propel-shims/react-dom-client.js",
+          "@mantine/core": "/propel-shims/mantine-core.js",
+          "@mantine/hooks": "/propel-shims/mantine-hooks.js",
+          "@emotion/react": "/propel-shims/emotion-react.js",
+          "@emotion/styled": "/propel-shims/emotion-styled.js",
+          "react-router-dom": "/propel-shims/react-router-dom.js",
+          "framer-motion": "/propel-shims/framer-motion.js",
+          "twenty-ui/display": "/propel-shims/twenty-ui-display.js",
+          "twenty-ui/theme-constants": "/propel-shims/twenty-ui-theme-constants.js",
+          "@/apollo/utils/getTokenPair": "/propel-shims/at-apollo-utils-getTokenPair.js",
+          "@/propel/lib/callPropelRoute": "/propel-shims/at-propel-lib-callPropelRoute.js",
+          "@/ui/layout/page/components/PageContainer": "/propel-shims/at-ui-layout-page-components-PageContainer.js",
+          "@/ui/layout/page/components/PageHeader": "/propel-shims/at-ui-layout-page-components-PageHeader.js",
+          "@/ui/feedback/snack-bar-manager/hooks/useSnackBar": "/propel-shims/at-ui-feedback-snack-bar-manager-hooks-useSnackBar.js",
+          "@/dialer-dock/utils/dialerCrmBridge": "/propel-shims/at-dialer-dock-utils-dialerCrmBridge.js",
+          "~/config": "/propel-shims/tilde-config.js"
+        }
+      }
+    </script>
+    <!-- END: Propel Hero Runtime -->
+
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script type="module">
       const disableInputAutoZoom = () => {

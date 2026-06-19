@@ -1,6 +1,7 @@
 import { AppRouterProviders } from '@/app/components/AppRouterProviders';
 import { LazyRoute } from '@/app/components/LazyRoute';
 import { SettingsRoutes } from '@/app/components/SettingsRoutes';
+import { HeroRoute } from '@/propel/runtime/HeroRoute';
 import { VerifyLoginTokenEffect } from '@/auth/components/VerifyLoginTokenEffect';
 
 import { VerifyEmailEffect } from '@/auth/components/VerifyEmailEffect';
@@ -67,11 +68,9 @@ const A2AStudioPage = lazy(() =>
   })),
 );
 
-const ListingStudioPage = lazy(() =>
-  import('~/pages/propel/ListingStudioPage').then((module) => ({
-    default: module.ListingStudioPage,
-  })),
-);
+// ListingStudio is the FIRST hero ported to runtime loading — it no longer ships
+// in the app bundle; HeroRoute fetches it from the /heroes volume at navigation
+// time. The other 6 heroes above still use in-bundle lazy() (ported incrementally).
 
 const SignInUp = lazy(() =>
   import('~/pages/auth/SignInUp').then((module) => ({
@@ -321,11 +320,7 @@ export const useCreateAppRouter = (
           />
           <Route
             path={AppPath.ListingStudio}
-            element={
-              <LazyRoute>
-                <ListingStudioPage />
-              </LazyRoute>
-            }
+            element={<HeroRoute name="listing-studio" />}
           />
           <Route
             path={AppPath.PageLayoutPage}
