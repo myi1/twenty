@@ -51,6 +51,7 @@ import {
   type AbConfig,
   type AiPlan,
   type CampaignBuilderHubPayload,
+  type CampaignEditResponse,
   type CapPreview,
   DEFAULT_AB_CONFIG,
   type DraftCopyResponse,
@@ -74,11 +75,17 @@ export const WIZARD_STEPS = ['Setup', 'Compose', 'Audience', 'Review'] as const;
 export const ManualWizard = ({
   hub,
   initialPlan,
+  initialDraft,
   onDone,
   onEditRules,
 }: {
   hub: CampaignBuilderHubPayload;
   initialPlan?: AiPlan | null;
+  // S6 — a DRAFT loaded via /marketing/campaign-edit to re-edit in place
+  // (listing-aware: a listing-backed draft re-hydrates the listing + re-runs the
+  // permit gate, rather than routing read-only). Mutually exclusive with
+  // initialPlan in practice (a fresh AI plan vs an existing draft).
+  initialDraft?: CampaignEditResponse | null;
   onDone: () => void;
   // S3 — opens the send-rules editor from the Review guardrails card. Optional
   // so existing callers (and tests) don't break; the card hides "Edit rules"
@@ -217,6 +224,59 @@ export const ManualWizard = ({
         : `AI campaign — ${(initialPlan.segmentDescription ?? '').slice(0, 50)}`,
     );
   }, [initialPlan]);
+
+  // ── S6 — hydrate from an existing DRAFT (campaign-edit handoff, once) ───────
+  // Listing-aware: a draft carrying a listingId re-hydrates the listing and sets
+  // objective=LISTING, which makes listingFieldsActive true and re-runs the
+  // permit gate (the derived `listing.permitOk` + the Compose/Review permit
+  // warning) — instead of the old read-only escape hatch. A/B config is restored
+  // too, so reopening a draft never silently drops its test. Every field is
+  // presence-guarded: a draft from the not-yet-widened route (no listingId / no
+  // A/B fields) hydrates as a plain segment draft with A/B off.
+  const draftHydratedRef = useRef(false);
+  useEffect(() => {
+    if (!initialDraft || draftHydratedRef.current) return;
+    draftHydratedRef.current = true;
+    setCampaignId(initialDraft.campaignId ?? null);
+    if (typeof initialDraft.name === 'string') setName(initialDraft.name);
+    setChannel(initialDraft.channel === 'WHATSAPP' ? 'WHATSAPP' : 'EMAIL');
+    setLanguage(initialDraft.language === 'AR' ? 'AR' : 'EN');
+    if (typeof initialDraft.subject === 'string') setSubject(initialDraft.subject);
+    if (typeof initialDraft.body === 'string') setBodyText(initialDraft.body);
+    if (initialDraft.segmentId) setSegmentId(initialDraft.segmentId);
+    if (initialDraft.waTemplateId) setWaTemplateId(initialDraft.waTemplateId);
+    // Listing-aware re-hydration (S6, design D-8). A listing-backed draft is EMAIL
+    // promo: restore objective + listing so the permit gate re-runs.
+    if (initialDraft.listingId) {
+      setObjective('LISTING');
+      setListingId(initialDraft.listingId);
+    }
+    // Restore A/B config when the draft had a test on (EMAIL only); the variant
+    // copy + settings come back exactly as saved.
+    if (initialDraft.abEnabled) {
+      setAb({
+        enabled: true,
+        subjectB: initialDraft.abSubjectB ?? '',
+        bodyB: initialDraft.abBodyB ?? '',
+        slicePct:
+          typeof initialDraft.abSlicePct === 'number'
+            ? initialDraft.abSlicePct
+            : DEFAULT_AB_CONFIG.slicePct,
+        winnerMetric:
+          initialDraft.abWinnerMetric === 'REPLIES' ? 'REPLIES' : 'OPENS',
+        decideAfterHours:
+          typeof initialDraft.abDecideAfterHours === 'number' &&
+          initialDraft.abDecideAfterHours > 0
+            ? initialDraft.abDecideAfterHours
+            : DEFAULT_AB_CONFIG.decideAfterHours,
+        minEvents:
+          typeof initialDraft.abMinEvents === 'number' &&
+          initialDraft.abMinEvents >= 0
+            ? initialDraft.abMinEvents
+            : DEFAULT_AB_CONFIG.minEvents,
+      });
+    }
+  }, [initialDraft]);
 
   // ── caret-true merge-field insert / format (real focus/setSelectionRange) ──
   // Generalized over a target (the body textarea, its current value, and the

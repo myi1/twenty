@@ -1,4 +1,5 @@
 import {
+  Alert,
   Badge,
   Button,
   Card,
@@ -8,11 +9,12 @@ import {
   Stack,
   Text,
 } from '@mantine/core';
-import { useCallback, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AppPath } from 'twenty-shared/types';
 import {
   IconAdjustments,
+  IconAlertCircle,
   IconArrowLeft,
   IconArrowsSplit2,
   IconBroadcast,
@@ -22,11 +24,15 @@ import {
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { PropelMantineProvider } from '@/propel/components/PropelMantineProvider';
+import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import { AiBuilderPanel } from '@/propel/components/campaign/AiBuilderPanel';
 import { ManualWizard } from '@/propel/components/campaign/ManualWizard';
 import { SendRulesModal } from '@/propel/components/campaign/SendRulesModal';
 import { useCampaignBuilderData } from '@/propel/hooks/useCampaignBuilderData';
-import { type AiPlan } from '@/propel/types/campaignBuilder';
+import {
+  type AiPlan,
+  type CampaignEditResponse,
+} from '@/propel/types/campaignBuilder';
 
 // S1 — Unified "Create" entry (design decision D-1, founder-locked 2026-06-18).
 //
@@ -57,9 +63,21 @@ type Stage = 'entry' | 'manual' | 'ai';
 
 export const MarketingCampaignBuilderPage = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const editId = searchParams.get('edit');
   const { isLoading, refetch, ...hub } = useCampaignBuilderData();
   const [stage, setStage] = useState<Stage>('entry');
   const [handoffPlan, setHandoffPlan] = useState<AiPlan | null>(null);
+  // S6 — listing-aware draft re-edit. When the page is opened with ?edit=<id>
+  // (a draft row on the Campaigns board), load the draft via campaign-edit and
+  // drop straight into the manual wizard with its fields (incl. listing + A/B)
+  // re-hydrated. 'denied' = the route says it isn't editable for a real reason
+  // (sent / sending / scheduled / system / SOCIAL) → show a calm notice, not the
+  // entry matrix.
+  const [draft, setDraft] = useState<CampaignEditResponse | null>(null);
+  const [draftState, setDraftState] = useState<
+    'idle' | 'loading' | 'denied' | 'failed'
+  >(editId ? 'loading' : 'idle');
   // S3 / Gap B — the graduated Send-Rules editor, opened from the Review
   // guardrails "Edit rules" link as a modal (no more round-trip to the hub).
   const [rulesOpen, setRulesOpen] = useState(false);
@@ -90,20 +108,66 @@ export const MarketingCampaignBuilderPage = () => {
     [refetch],
   );
 
+  // S6 — load the draft addressed by ?edit=. Listing-aware: a listing-backed
+  // draft now comes back editable:true (once the route is widened) and routes
+  // here, not to a read-only detail. editable:false is a genuine non-editable
+  // campaign (sent/sending/scheduled/system) → 'denied'. A null route response
+  // (incl. a non-coordinator NOT_FOUND, or the not-yet-widened route returning
+  // editable:false for a listing draft) is surfaced honestly, never crashed.
+  useEffect(() => {
+    if (!editId) return;
+    let active = true;
+    setDraftState('loading');
+    void callPropelRoute<CampaignEditResponse>('/marketing/campaign-edit', {
+      campaignId: editId,
+    }).then((res) => {
+      if (!active) return;
+      if (!res || res.error || res.ok !== true) {
+        setDraftState('failed');
+        return;
+      }
+      if (res.editable === false) {
+        setDraftState('denied');
+        return;
+      }
+      setDraft(res);
+      setDraftState('idle');
+      setHandoffPlan(null);
+      setStage('manual');
+    });
+    return () => {
+      active = false;
+    };
+  }, [editId]);
+
   const startManual = useCallback(() => {
     setHandoffPlan(null);
+    setDraft(null);
     setStage('manual');
   }, []);
 
   const startAi = useCallback(() => {
     setHandoffPlan(null);
+    setDraft(null);
     setStage('ai');
   }, []);
 
   const handoffToManual = useCallback((plan: AiPlan) => {
     setHandoffPlan(plan);
+    setDraft(null);
     setStage('manual');
   }, []);
+
+  // "Start over" returns to the entry matrix and, when re-editing a draft, drops
+  // the ?edit param + loaded draft so the entry is genuinely fresh (otherwise the
+  // load effect would re-fire and yank the user back into the draft).
+  const startOver = useCallback(() => {
+    setDraft(null);
+    setDraftState('idle');
+    setHandoffPlan(null);
+    if (editId) navigate(AppPath.MarketingCampaignBuilder, { replace: true });
+    setStage('entry');
+  }, [editId, navigate]);
 
   return (
     <PropelMantineProvider>
@@ -123,7 +187,7 @@ export const MarketingCampaignBuilderPage = () => {
               size="xs"
               variant="default"
               leftSection={<IconArrowLeft size={14} />}
-              onClick={() => setStage('entry')}
+              onClick={startOver}
             >
               Start over
             </Button>
@@ -139,10 +203,29 @@ export const MarketingCampaignBuilderPage = () => {
             flexDirection: 'column',
           }}
         >
-          {isLoading ? (
+          {isLoading || draftState === 'loading' ? (
             <Center h={320}>
-              <Loader color="red" />
+              <Stack gap="sm" align="center">
+                <Loader color="red" />
+                {draftState === 'loading' && (
+                  <Text size="xs" c="dimmed">
+                    Loading your draft…
+                  </Text>
+                )}
+              </Stack>
             </Center>
+          ) : draftState === 'denied' ? (
+            <DraftNotice
+              tone="denied"
+              onStartFresh={startOver}
+              onBack={goHome}
+            />
+          ) : draftState === 'failed' ? (
+            <DraftNotice
+              tone="failed"
+              onStartFresh={startOver}
+              onBack={goHome}
+            />
           ) : stage === 'entry' ? (
             <CreateEntry
               onManual={startManual}
@@ -153,6 +236,7 @@ export const MarketingCampaignBuilderPage = () => {
             <ManualWizard
               hub={hub}
               initialPlan={handoffPlan}
+              initialDraft={draft}
               onDone={goHome}
               onEditRules={goEditRules}
             />
@@ -184,6 +268,50 @@ export const MarketingCampaignBuilderPage = () => {
     </PropelMantineProvider>
   );
 };
+
+// ── S6 — draft re-edit notices (denied / failed) ─────────────────────────────
+// A calm inline gate (never a red modal scream): a draft that genuinely can't be
+// edited (sent/sending/scheduled/system) or that couldn't load. The user gets a
+// plain explanation + a way forward (start a fresh campaign / back to Marketing).
+const DraftNotice = ({
+  tone,
+  onStartFresh,
+  onBack,
+}: {
+  tone: 'denied' | 'failed';
+  onStartFresh: () => void;
+  onBack: () => void;
+}) => (
+  <Center style={{ flex: 1, minHeight: 320 }}>
+    <Stack gap="md" maw={460} align="center">
+      <Alert
+        color={tone === 'denied' ? 'gray' : 'yellow'}
+        variant="light"
+        icon={<IconAlertCircle size={16} />}
+        title={
+          tone === 'denied'
+            ? 'This campaign can no longer be edited'
+            : 'Couldn’t open that draft'
+        }
+        style={{ width: '100%' }}
+      >
+        <Text size="sm" c="dimmed">
+          {tone === 'denied'
+            ? 'It has already been sent, scheduled, or is running — open it from the Campaigns board to see its results instead.'
+            : 'The draft couldn’t be loaded right now. It may have been removed, or the connection dropped. You can try a fresh campaign, or head back and reopen it from the board.'}
+        </Text>
+      </Alert>
+      <Group gap="sm">
+        <Button variant="default" onClick={onBack}>
+          Back to Marketing
+        </Button>
+        <Button color="red" onClick={onStartFresh}>
+          New campaign
+        </Button>
+      </Group>
+    </Stack>
+  </Center>
+);
 
 // ── The unified Create entry — what × how ────────────────────────────────────
 const CreateEntry = ({

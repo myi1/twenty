@@ -141,6 +141,50 @@ export interface SaveCampaignResponse extends RouteEnvelopeError {
   status?: string;
 }
 
+// ── /marketing/campaign-edit (S6 — listing-aware draft re-edit) ──────────────
+// Loads a DRAFT campaign's editable fields back into the builder. S6 makes the
+// builder listing-aware on reopen: a listing-backed draft re-hydrates the
+// listing (objective → LISTING) and re-runs the permit gate, instead of being
+// shunted to a read-only detail. The route's `editable` flag still gates
+// genuinely non-editable campaigns (sent/sending/scheduled/system/SOCIAL).
+//
+// BACKEND TODO(S6-backend): the current /marketing/campaign-edit route
+// (propel-crm-integration: src/logic-functions/marketing-campaign-edit-route.ts)
+// returns editable:false when cmp.listingId is set, and does NOT return
+// listingId or the A/B fields. For S6 it must:
+//   1. treat a DRAFT, non-system EMAIL listing-backed campaign as editable;
+//   2. return `listingId` (so the wizard re-hydrates the listing + re-gates the
+//      permit) and the A/B config fields (abEnabled, abSubjectB, abBodyB,
+//      abSlicePct, abWinnerMetric, abDecideAfterHours, abMinEvents,
+//      abTemplateBId) so reopening a draft restores its A/B test instead of
+//      silently dropping it on the next save.
+// The fields below are typed as optional so the UI degrades gracefully against
+// the not-yet-widened route (missing listingId → treated as a segment draft;
+// missing A/B fields → A/B defaults), and lights up fully once it lands.
+export interface CampaignEditResponse extends RouteEnvelopeError {
+  ok?: boolean;
+  editable?: boolean;
+  campaignId?: string;
+  status?: string;
+  name?: string;
+  channel?: RealChannel;
+  subject?: string;
+  body?: string;
+  language?: TemplateLanguage;
+  segmentId?: string | null;
+  waTemplateId?: string | null;
+  // S6 — present once the route is widened; absent on the current route.
+  listingId?: string | null;
+  abEnabled?: boolean;
+  abSubjectB?: string;
+  abBodyB?: string;
+  abSlicePct?: number;
+  abWinnerMetric?: AbWinnerMetric;
+  abDecideAfterHours?: number;
+  abMinEvents?: number;
+  abTemplateBId?: string | null;
+}
+
 // ── /marketing/test-send ─────────────────────────────────────────────────────
 export interface TestSendResponse extends RouteEnvelopeError {
   ok?: boolean;

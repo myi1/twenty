@@ -113,13 +113,15 @@ export const CampaignsTab = ({
     }
   };
 
-  // A draft (no listing) opens the editable builder; a sequence opens its editor;
-  // everything live/sent opens the lightweight read-only summary drawer.
+  // S6 — every DRAFT (listing-backed or not) opens the editable builder, deep-
+  // linked to that draft via ?edit=<id> so its fields re-hydrate (a listing draft
+  // re-runs the permit gate in place instead of the old read-only escape hatch).
+  // A sequence opens its editor; everything live/sent opens the read-only summary.
   const openRow = (r: UnifiedRow) => {
     if (r.kind === 'sequence') {
       navigate(AppPath.MarketingSequenceEditor);
-    } else if (r.status === 'draft' && r.hasListing !== true) {
-      navigate(AppPath.MarketingCampaignBuilder);
+    } else if (r.status === 'draft') {
+      navigate(`${AppPath.MarketingCampaignBuilder}?edit=${encodeURIComponent(r.id)}`);
     } else {
       setSummaryRow(r);
     }
@@ -207,10 +209,11 @@ export const CampaignsTab = ({
           </Table.Thead>
           <Table.Tbody>
             {shown.map((r) => {
+              // S6 — every draft is editable now (listing drafts re-edit in
+              // place via the listing-aware builder), so the "Edit" affordance
+              // shows for all campaign drafts regardless of a listing.
               const isDraftEditable =
-                r.kind === 'campaign' &&
-                r.status === 'draft' &&
-                r.hasListing !== true;
+                r.kind === 'campaign' && r.status === 'draft';
               const seq = r.seq;
               return (
                 <Table.Tr
