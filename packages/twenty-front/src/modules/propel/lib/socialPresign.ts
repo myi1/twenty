@@ -17,10 +17,11 @@
 
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 
-// 100 MB ceiling for the presigned video path (the composer enforces this before we
-// even request a presign). B2 itself handles far larger, but 100 MB is a sane social
-// limit and keeps a single PUT + progress bar responsive.
-export const VIDEO_MAX_BYTES = 100 * 1024 * 1024;
+// 2 GB ceiling for the presigned video path (the composer enforces this before we
+// even request a presign), matching the CRM presign route's social-video ceiling.
+// B2 handles far larger, but 2 GB is a sane social limit and the single PUT +
+// progress bar stays responsive.
+export const VIDEO_MAX_BYTES = 2 * 1024 * 1024 * 1024;
 
 // The presign request's `scope` — namespaces the B2 key server-side (e.g. social/…).
 // Kept as a constant so the one social caller is unambiguous; widen to a param if

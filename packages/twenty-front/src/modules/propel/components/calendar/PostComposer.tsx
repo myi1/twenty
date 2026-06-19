@@ -302,7 +302,7 @@ const ComposerBody = ({
 
   // A VIDEO takes the presigned-B2 path: we ask the CRM for a presigned URL, PUT the
   // raw bytes straight to B2 with a real progress bar, then attach by public URL — no
-  // base64, no 7 MB body cap (videos allowed up to 100 MB). Images keep the instant
+  // base64, no 7 MB body cap (videos allowed up to 2 GB). Images keep the instant
   // base64 /marketing/media/upload route.
   const uploadVideoFile = useCallback(
     (id: string, file: File) => {
@@ -967,7 +967,7 @@ const ComposerBody = ({
               />
             </div>
             <Text size="xs" c="dimmed" mt={6}>
-              Images up to 7 MB; videos up to 100 MB. Drag thumbnails to reorder.
+              Images up to 7 MB; videos up to 2 GB. Drag thumbnails to reorder.
             </Text>
           </div>
 
