@@ -143,3 +143,22 @@ export interface ReplySendEnvelope {
 // STICKER is inbound-only). The composer tags an upload with it from its
 // content-type so the route picks the right WhatsApp media kind / Meta type.
 export type OutboundMediaKind = 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT';
+
+// ── Quick replies (POST /inbox/quick-replies) ────────────────────────────────
+// The shared canned-reply library for the composer picker. Any authenticated
+// member may read (agents USE them; managers CURATE via the standard record UI).
+// The client groups by `category` (blank → "General") and filters by title+body.
+// Shape lockstepped with quick-replies-list-route.ts.
+export interface QuickReply {
+  id: string;
+  title: string;
+  body: string;
+  category: string;
+  languageCode: 'EN' | 'AR';
+}
+
+export interface QuickRepliesPayload {
+  ok?: boolean;
+  quickReplies?: QuickReply[];
+  error?: string;
+}

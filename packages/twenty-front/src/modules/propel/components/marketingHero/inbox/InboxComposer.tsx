@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActionIcon,
   Box,
@@ -6,15 +6,22 @@ import {
   FileButton,
   Group,
   Image,
+  Popover,
+  Progress,
+  ScrollArea,
   Stack,
   Text,
   Textarea,
+  TextInput,
+  UnstyledButton,
 } from '@mantine/core';
 import {
   IconAlertTriangle,
+  IconBolt,
   IconClock,
   IconFile,
   IconPaperclip,
+  IconSearch,
   IconSend,
   IconSparkles,
   IconVideo,
@@ -26,9 +33,11 @@ import {
   type InboxMediaKind,
   type InboxSurface,
   type OutboundMediaKind,
+  type QuickReply,
 } from '@/propel/types/inbox';
 import {
   fetchInboxAi,
+  fetchQuickReplies,
   interpretSendResult,
   sendInboxReply,
   shouldSendOnKeyDown,
@@ -84,8 +93,19 @@ export const InboxComposer = ({
   const [uploadName, setUploadName] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState('');
+  // 0..1 for the large/presigned path (real byte-progress), or null for the small
+  // inline path (single round-trip → indeterminate spinner only).
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const uploadingRef = useRef(false);
   const resetFileRef = useRef<(() => void) | null>(null);
+
+  // ── Quick replies (canned-reply picker) ────────────────────────────────────
+  const [qrOpen, setQrOpen] = useState(false);
+  const [qrItems, setQrItems] = useState<QuickReply[]>([]);
+  const [qrLoaded, setQrLoaded] = useState(false);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrFilter, setQrFilter] = useState('');
+  const qrLoadingRef = useRef(false);
 
   const hasMedia = mediaUrl.trim().length > 0;
   const hasDraft = text.trim().length > 0;
@@ -96,19 +116,23 @@ export const InboxComposer = ({
     setUploadName('');
     setMediaKind('DOCUMENT');
     setUploadErr('');
+    setUploadProgress(null);
     resetFileRef.current?.();
   }, []);
 
   // Pick (or drop/paste via FileButton). Read the File's bytes directly (real
-  // frontend — no front-component token RPC), upload to /marketing/media/upload,
-  // and stage the returned durable B2 URL.
+  // frontend — no front-component token RPC). Tiny files take the inline JSON path;
+  // a large doc/video routes through /marketing/media/presign → a direct B2 PUT (up
+  // to 100 MB) with real byte-progress. Either way we stage the durable URL.
   const onPickFile = useCallback(
     (file: File | null) => {
       if (!file || uploadingRef.current) return;
       uploadingRef.current = true;
       setUploading(true);
       setUploadErr('');
-      uploadInboxMedia(file)
+      setUploadName(file.name);
+      setUploadProgress(null);
+      uploadInboxMedia(file, (fraction) => setUploadProgress(fraction))
         .then((res) => {
           if (res.ok) {
             setMediaUrl(res.url);
@@ -116,14 +140,17 @@ export const InboxComposer = ({
             setUploadName(res.fileName);
           } else {
             setUploadErr(res.message);
+            setUploadName('');
           }
         })
-        .catch(() =>
-          setUploadErr('Upload failed — check your connection and try again.'),
-        )
+        .catch(() => {
+          setUploadErr('Upload failed — check your connection and try again.');
+          setUploadName('');
+        })
         .finally(() => {
           uploadingRef.current = false;
           setUploading(false);
+          setUploadProgress(null);
         });
     },
     [],
@@ -257,6 +284,68 @@ export const InboxComposer = ({
     [id, channel, text, sending, notify],
   );
 
+  // ── Quick replies ──────────────────────────────────────────────────────────
+  // Lazy-load the shared library the first time the picker opens (any authed member
+  // may read). Never blocks the composer; a failure yields an empty list + empty
+  // state, never a thrown error.
+  const loadQuickReplies = useCallback(async () => {
+    if (qrLoadingRef.current) return;
+    qrLoadingRef.current = true;
+    setQrLoading(true);
+    try {
+      const items = await fetchQuickReplies();
+      setQrItems(items);
+      setQrLoaded(true);
+    } finally {
+      qrLoadingRef.current = false;
+      setQrLoading(false);
+    }
+  }, []);
+
+  const toggleQuickReplies = useCallback(() => {
+    setQrOpen((open) => {
+      const next = !open;
+      if (next && !qrLoaded && !qrLoadingRef.current) void loadQuickReplies();
+      if (!next) setQrFilter('');
+      return next;
+    });
+  }, [qrLoaded, loadQuickReplies]);
+
+  // Append the canned body to whatever's drafted (NEVER destroy typed text), with
+  // smart spacing, then bump the epoch so an in-flight AI result can't clobber it.
+  const pickQuickReply = useCallback((qr: QuickReply) => {
+    const t = (qr.body || '').trim();
+    if (t) {
+      setText((d) =>
+        !d ? t : d.endsWith(' ') || d.endsWith('\n') ? `${d}${t}` : `${d} ${t}`,
+      );
+      composerEpochRef.current += 1;
+      setSendError(null);
+    }
+    setQrOpen(false);
+    setQrFilter('');
+  }, []);
+
+  // Filter (title + body, case-insensitive) then group by category (blank →
+  // "General") for the picker — ported from the legacy chat-panel.
+  const qrGroups = useMemo<[string, QuickReply[]][]>(() => {
+    const q = qrFilter.trim().toLowerCase();
+    const visible = q
+      ? qrItems.filter(
+          (r) =>
+            r.title.toLowerCase().includes(q) || r.body.toLowerCase().includes(q),
+        )
+      : qrItems;
+    const m = new Map<string, QuickReply[]>();
+    for (const r of visible) {
+      const cat = r.category || 'General';
+      const arr = m.get(cat) ?? [];
+      arr.push(r);
+      m.set(cat, arr);
+    }
+    return Array.from(m.entries());
+  }, [qrItems, qrFilter]);
+
   const placeholder =
     channel === 'WHATSAPP'
       ? 'Type a WhatsApp reply…'
@@ -319,8 +408,60 @@ export const InboxComposer = ({
           </Group>
         ) : null}
 
+        {/* In-flight upload chip — filename + a progress bar. The large/presigned
+            path reports real byte-progress; the small inline path shows an
+            indeterminate (animated, no value) bar. */}
+        {uploading ? (
+          <Group
+            gap={11}
+            wrap="nowrap"
+            p={8}
+            style={{
+              border: '1px solid var(--mantine-color-default-border)',
+              borderRadius: 11,
+            }}
+          >
+            <Box
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 8,
+                flex: 'none',
+                display: 'grid',
+                placeItems: 'center',
+                border: '1px solid var(--mantine-color-default-border)',
+                color: 'var(--mantine-color-dimmed)',
+              }}
+            >
+              <IconPaperclip size={18} />
+            </Box>
+            <Box style={{ flex: 1, minWidth: 0 }}>
+              <Text
+                size="sm"
+                fw={600}
+                style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+              >
+                {uploadName || 'Uploading…'}
+              </Text>
+              <Progress
+                mt={6}
+                size="sm"
+                radius="xl"
+                color="red"
+                value={uploadProgress === null ? 100 : Math.round(uploadProgress * 100)}
+                animated={uploadProgress === null}
+              />
+              <Text size="xs" c="dimmed" mt={3}>
+                {uploadProgress === null
+                  ? 'Uploading…'
+                  : `Uploading… ${Math.round(uploadProgress * 100)}%`}
+              </Text>
+            </Box>
+          </Group>
+        ) : null}
+
         {/* Staged-attachment preview chip */}
-        {hasMedia ? (
+        {!uploading && hasMedia ? (
           <Group
             gap={11}
             wrap="nowrap"
@@ -389,6 +530,108 @@ export const InboxComposer = ({
         ) : null}
 
         <Group gap={10} align="flex-end" wrap="nowrap">
+          {/* Quick replies — a ⚡ Popover with a searchable, category-grouped list
+              of canned replies; clicking one appends its body to the draft. */}
+          <Popover
+            opened={qrOpen}
+            onChange={setQrOpen}
+            position="top-start"
+            offset={8}
+            shadow="md"
+            width={320}
+            withinPortal
+          >
+            <Popover.Target>
+              <ActionIcon
+                variant={qrOpen ? 'light' : 'default'}
+                color={qrOpen ? 'red' : undefined}
+                size={40}
+                radius="md"
+                onClick={toggleQuickReplies}
+                aria-label="Quick replies"
+                aria-expanded={qrOpen}
+                title="Quick replies"
+              >
+                <IconBolt size={19} />
+              </ActionIcon>
+            </Popover.Target>
+            <Popover.Dropdown p={0}>
+              <Box p={8} style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
+                <TextInput
+                  value={qrFilter}
+                  onChange={(e) => setQrFilter(e.currentTarget.value)}
+                  placeholder="Search quick replies…"
+                  aria-label="Search quick replies"
+                  size="xs"
+                  leftSection={<IconSearch size={14} />}
+                  autoFocus
+                />
+              </Box>
+              <ScrollArea.Autosize mah={300} type="auto">
+                <Box p={6}>
+                  {qrLoading && qrItems.length === 0 ? (
+                    <Text size="sm" c="dimmed" ta="center" py="md">
+                      Loading…
+                    </Text>
+                  ) : qrGroups.length === 0 ? (
+                    <Text size="sm" c="dimmed" ta="center" py="md" px="xs">
+                      {qrLoaded
+                        ? qrItems.length === 0
+                          ? 'No quick replies yet — a manager can add them in the Quick Replies list.'
+                          : 'No matches.'
+                        : 'Loading…'}
+                    </Text>
+                  ) : (
+                    qrGroups.map(([cat, items]) => (
+                      <Box key={cat} mb={4}>
+                        <Text
+                          size="xs"
+                          fw={700}
+                          c="dimmed"
+                          tt="uppercase"
+                          px={8}
+                          py={4}
+                          style={{ letterSpacing: 0.4 }}
+                        >
+                          {cat}
+                        </Text>
+                        {items.map((qr) => (
+                          <UnstyledButton
+                            key={qr.id}
+                            onClick={() => pickQuickReply(qr)}
+                            title={qr.body}
+                            style={{
+                              display: 'block',
+                              width: '100%',
+                              textAlign: 'left',
+                              padding: '6px 8px',
+                              borderRadius: 8,
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = 'var(--mantine-color-default-hover)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = 'transparent';
+                            }}
+                          >
+                            <Text size="sm" fw={600} lineClamp={1}>
+                              {qr.title || '(untitled)'}
+                            </Text>
+                            {qr.body ? (
+                              <Text size="xs" c="dimmed" lineClamp={2} mt={1}>
+                                {qr.body}
+                              </Text>
+                            ) : null}
+                          </UnstyledButton>
+                        ))}
+                      </Box>
+                    ))
+                  )}
+                </Box>
+              </ScrollArea.Autosize>
+            </Popover.Dropdown>
+          </Popover>
+
           {/* Attach — a FileButton opening the OS picker; accepts images, video, and
               the brokerage document set. */}
           <FileButton

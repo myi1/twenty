@@ -15,6 +15,8 @@ import {
   type InboxThreadPayload,
   type InboxAiResponse,
   type OutboundMediaKind,
+  type QuickRepliesPayload,
+  type QuickReply,
   type ReplySendEnvelope,
 } from '@/propel/types/inbox';
 
@@ -72,6 +74,14 @@ export const saveInboxMedia = (
     { messageId, channel },
   );
 
+// POST /inbox/quick-replies — the shared canned-reply library for the composer
+// picker. Read-only; no body. Returns [] (never null) so the picker always has a
+// concrete list to group/filter; a transport failure renders the empty state.
+export const fetchQuickReplies = async (): Promise<QuickReply[]> => {
+  const res = await callPropelRoute<QuickRepliesPayload>('/inbox/quick-replies', {});
+  return Array.isArray(res?.quickReplies) ? res.quickReplies : [];
+};
+
 // ── Keyboard-send decision ───────────────────────────────────────────────────
 // Send ONLY on a bare Enter: not Shift (Shift+Enter = newline), not Meta/Ctrl/Alt,
 // and not mid-IME-composition (isComposing OR keyCode 229 for Android/legacy IMEs)
@@ -120,10 +130,17 @@ export const interpretSendResult = (
 };
 
 // ── Outbound media ───────────────────────────────────────────────────────────
-// 7 MB per item — mirrors the server cap (marketing-media.ts MEDIA_MAX_DECODED_BYTES,
-// transport-bounded by Twenty's 10 MB JSON body limit). Enforced client-side from
-// file.size before reading bytes, and again server-side.
-export const MEDIA_MAX_BYTES = 7 * 1024 * 1024;
+// Inline JSON path: 7 MB per item — mirrors the server cap (marketing-media.ts
+// MEDIA_MAX_DECODED_BYTES, transport-bounded by Twenty's 10 MB JSON body limit).
+// Files at or under this size take the fast single-round-trip base64-over-JSON path
+// (/marketing/media/upload). Larger files take the presigned-B2 direct path below.
+export const INLINE_MEDIA_MAX_BYTES = 7 * 1024 * 1024;
+
+// Direct-to-B2 ceiling — mirrors the server's PRESIGN_MAX_BYTES (100 MB). The hard
+// limit for any inbox attachment: covers a large signed contract PDF or a big
+// listing walk-through video. Enforced client-side before any round-trip, and again
+// server-side at presign time.
+export const MEDIA_MAX_BYTES = 100 * 1024 * 1024;
 
 // The brokerage chat-attachment gate: images + video + the document set (contracts,
 // MOUs, floor plans, brochures). Mirrors isAllowedInboxMediaType server-side.
@@ -161,6 +178,11 @@ export type InboxUploadOutcome =
   | { ok: true; url: string; kind: OutboundMediaKind; fileName: string }
   | { ok: false; message: string };
 
+// Optional progress callback (0..1). Only the large/presigned path reports real
+// byte-progress (XHR upload events); the small inline path is a single round-trip,
+// so it reports nothing (the caller shows an indeterminate spinner for it).
+export type UploadProgress = (fraction: number) => void;
+
 const fileToBase64 = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -178,37 +200,29 @@ const fileToBase64 = (file: File): Promise<string> =>
     reader.readAsDataURL(file);
   });
 
-// Upload a picked / dropped / pasted file to /marketing/media/upload and resolve a
-// durable B2 URL. In the REAL frontend we hold the File directly (FileReader →
-// base64) — no front-component token RPC like the worker sandbox. `allowDocuments`
-// is set because the Inbox attaches contracts/brochures, not just images. The route
-// reads `event.body`, so the payload is wrapped (callPropelRoute unwraps a lone
-// `{ body }` server-side-as-is, matching the social composer).
-export const uploadInboxMedia = async (
-  file: File,
-): Promise<InboxUploadOutcome> => {
-  if (!isAllowedInboxMediaType(file.type)) {
-    return {
-      ok: false,
-      message:
-        'That file type can’t be attached. Pick an image, a video, or a document (PDF, Word, Excel, or PowerPoint).',
-    };
-  }
-  if (file.size > MEDIA_MAX_BYTES) {
-    const maxMb = Math.floor(MEDIA_MAX_BYTES / (1024 * 1024));
-    return {
-      ok: false,
-      message: `That file is too large (max ${maxMb} MB). Compress or resize it and try again.`,
-    };
-  }
+// The frozen presign-route response (see marketing-media-presign-route.ts). The
+// durable publicUrl + the uploadUrl/uploadHeaders the browser PUTs the bytes with.
+interface PresignResponse {
+  ok?: boolean;
+  key?: string;
+  uploadUrl?: string;
+  publicUrl?: string;
+  uploadToken?: string;
+  encodedKey?: string;
+  uploadHeaders?: Record<string, string>;
+  error?: string;
+  operatorAction?: string;
+}
 
+// SMALL path: base64-over-JSON to /marketing/media/upload (one round-trip, ≤7 MB).
+// Kept for tiny images so a quick screenshot doesn't pay two extra B2 round-trips.
+const uploadInline = async (file: File): Promise<InboxUploadOutcome> => {
   let contentBase64: string;
   try {
     contentBase64 = await fileToBase64(file);
   } catch {
     return { ok: false, message: "Couldn't read that file. Try another one." };
   }
-
   const res = await callPropelRoute<{
     ok?: boolean;
     url?: string;
@@ -223,7 +237,6 @@ export const uploadInboxMedia = async (
       allowDocuments: true,
     },
   });
-
   if (res !== null && res.ok === true && typeof res.url === 'string') {
     return {
       ok: true,
@@ -232,9 +245,113 @@ export const uploadInboxMedia = async (
       fileName: file.name,
     };
   }
-
   const message =
-    (res && (res.operatorAction || res.error)) ||
-    'Upload failed — try a different file.';
+    (res && (res.operatorAction || res.error)) || 'Upload failed — try a different file.';
   return { ok: false, message };
+};
+
+// PUT the raw File bytes straight to the single-use B2 upload URL the presign route
+// minted. We use XHR (not fetch) ONLY because fetch exposes no upload-progress event
+// — a 100 MB upload needs a real progress bar. Resolves true on a 2xx from B2.
+const putBytesToB2 = (
+  uploadUrl: string,
+  headers: Record<string, string>,
+  file: File,
+  onProgress?: UploadProgress,
+): Promise<boolean> =>
+  new Promise((resolve) => {
+    try {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', uploadUrl, true);
+      for (const [k, v] of Object.entries(headers)) {
+        // B2 wants the raw bytes; let the browser set Content-Length itself.
+        if (k.toLowerCase() === 'content-length') continue;
+        xhr.setRequestHeader(k, v);
+      }
+      if (onProgress) {
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable && e.total > 0) onProgress(Math.min(1, e.loaded / e.total));
+        };
+      }
+      xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300);
+      xhr.onerror = () => resolve(false);
+      xhr.onabort = () => resolve(false);
+      xhr.send(file);
+    } catch {
+      resolve(false);
+    }
+  });
+
+// LARGE path: presign → direct B2 PUT (no bytes through the Twenty server, so it
+// bypasses the 7.5 MB JSON-body ceiling and carries up to 100 MB). The attached
+// media is referenced by the durable publicUrl the route returns (the app re-signs
+// the b2: pointer on read, or serves the stable media-proxy URL).
+const uploadViaPresign = async (
+  file: File,
+  onProgress?: UploadProgress,
+): Promise<InboxUploadOutcome> => {
+  const presign = await callPropelRoute<PresignResponse>('/marketing/media/presign', {
+    filename: file.name,
+    contentType: file.type,
+    sizeBytes: file.size,
+    scope: 'inbox',
+  });
+  if (
+    presign === null ||
+    presign.ok !== true ||
+    typeof presign.uploadUrl !== 'string' ||
+    typeof presign.publicUrl !== 'string' ||
+    !presign.uploadHeaders
+  ) {
+    const message =
+      (presign && (presign.operatorAction || presign.error)) ||
+      'Couldn’t start the upload — try again, or use a smaller file.';
+    return { ok: false, message };
+  }
+
+  const put = await putBytesToB2(presign.uploadUrl, presign.uploadHeaders, file, onProgress);
+  if (!put) {
+    return {
+      ok: false,
+      message: 'The file didn’t finish uploading — check your connection and try again.',
+    };
+  }
+  return {
+    ok: true,
+    url: presign.publicUrl,
+    kind: outboundMediaKindFromContentType(file.type),
+    fileName: file.name,
+  };
+};
+
+// Upload a picked / dropped / pasted file and resolve a durable URL for the message.
+// DISPATCHES by size: tiny files (≤7 MB) take the fast inline base64 path; anything
+// larger takes the presigned-B2 direct path (up to 100 MB), so a big contract or
+// video isn't blocked by the JSON-body ceiling. `onProgress` (0..1) is reported only
+// on the large path (XHR upload events); the inline path is a single round-trip.
+export const uploadInboxMedia = async (
+  file: File,
+  onProgress?: UploadProgress,
+): Promise<InboxUploadOutcome> => {
+  if (!isAllowedInboxMediaType(file.type)) {
+    return {
+      ok: false,
+      message:
+        'That file type can’t be attached. Pick an image, a video, or a document (PDF, Word, Excel, or PowerPoint).',
+    };
+  }
+  if (file.size > MEDIA_MAX_BYTES) {
+    const maxMb = Math.floor(MEDIA_MAX_BYTES / (1024 * 1024));
+    return {
+      ok: false,
+      message: `That file is too large (max ${maxMb} MB). Compress or split it and try again.`,
+    };
+  }
+  if (file.size === 0) {
+    return { ok: false, message: 'That file is empty — pick another one.' };
+  }
+
+  return file.size > INLINE_MEDIA_MAX_BYTES
+    ? uploadViaPresign(file, onProgress)
+    : uploadInline(file);
 };
