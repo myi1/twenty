@@ -85,25 +85,91 @@ const mjmlPlugin = (editor: Editor) =>
   });
 
 // ── Brand kit (INTERIM logo + colors) ────────────────────────────────────────
-// The logo is the REAL RE/MAX Hub brand asset, served from the founder's own site
-// (https://www.remaxhub.ae/assets/Remax_logo.jpeg — 200 image/jpeg, hotlink-safe
-// since it's their domain). It replaces the previous broken sample URL (a wikimedia
-// SVG that 404'd → the broken-image icon the founder saw).
+// The branded-header logo is CONTRAST-AWARE: it shows a WHITE knockout on a dark
+// banner and a BLACK knockout on a light banner, so it's always readable whatever
+// banner color the user picks. We keep BOTH transparent variants and choose by the
+// banner background's luminance (and re-choose live when the user recolors the
+// banner in GrapesJS — see the editor's 'component:update' listener). For the
+// EXPORTED email we bake the actual chosen image into the MJML (email clients don't
+// support CSS filters/blend-modes reliably — the variant must be a real asset).
 //
-// TODO(real wiring): pull logo + colors from the brand-kit backend rather than
+// The variants are inline SVG data-URIs: zero network dependency (can't 404 like an
+// external CDN), genuinely transparent, and render in the GrapesJS canvas.
+//
+// 👉 FOUNDER: to use your EXACT brand logos, replace `logoWhiteUrl` / `logoBlackUrl`
+//    below with your two transparent-PNG asset URLs (host on www.remaxhub.ae/assets/,
+//    e.g. Remax_logo_white.png + Remax_logo_black.png) — that's the swap. (Hosted
+//    transparent PNGs are also the email-client-safe choice for the export; some
+//    clients strip inline-SVG data-URIs.) logoUrl is the original white-background
+//    JPEG, kept for any LIGHT-surface use (not the colored header).
+//
+// TODO(real wiring): pull the logos + colors from the brand-kit backend rather than
 // hardcoding. The fork has NO direct brand-kit READ in the front-end — the social
 // "branded card" affordance (lib/socialBrandCard.ts) instead posts to the SERVER
-// route `/marketing/social/brand-card`, which resolves branding server-side and
-// composites an image via the image-service. To expose logo/colors to this editor,
-// add a small `brandKit:{logoUrl,colorPrimary,colorAccent}` block to the
+// route `/marketing/social/brand-card`, which resolves branding server-side. To
+// expose them to this editor, add a small
+// `brandKit:{logoWhiteUrl,logoBlackUrl,colorPrimary,colorAccent}` block to the
 // marketing-hub route payload and thread it in as a prop (app-side, app:install).
 const BRAND = {
   name: 'RE/MAX Hub',
   logoUrl: 'https://www.remaxhub.ae/assets/Remax_logo.jpeg',
+  // White-knockout wordmark — for DARK banners.
+  logoWhiteUrl:
+    'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMjAiIGhlaWdodD0iODAiIHZpZXdCb3g9IjAgMCAzMjAgODAiPgogIDxnIGZpbGw9IiNmZmZmZmYiIGZvbnQtZmFtaWx5PSJBcmlhbCwgSGVsdmV0aWNhLCBzYW5zLXNlcmlmIiBmb250LXdlaWdodD0iNzAwIj4KICAgIDx0ZXh0IHg9IjAiIHk9IjQwIiBmb250LXNpemU9IjQwIiBsZXR0ZXItc3BhY2luZz0iMSI+UkUvTUFYPC90ZXh0PgogICAgPHRleHQgeD0iMiIgeT0iNjgiIGZvbnQtc2l6ZT0iMjIiIGZvbnQtd2VpZ2h0PSI1MDAiIGxldHRlci1zcGFjaW5nPSI2IiBmaWxsPSIjZmZmZmZmIiBvcGFjaXR5PSIwLjkyIj5IVUI8L3RleHQ+CiAgPC9nPgogIDxyZWN0IHg9IjE1MCIgeT0iMTQiIHdpZHRoPSI2IiBoZWlnaHQ9IjMwIiBmaWxsPSIjREMxQzJFIi8+Cjwvc3ZnPgo=',
+  // Black-knockout wordmark — for LIGHT banners.
+  logoBlackUrl:
+    'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMjAiIGhlaWdodD0iODAiIHZpZXdCb3g9IjAgMCAzMjAgODAiPgogIDxnIGZpbGw9IiMxMTE4MjciIGZvbnQtZmFtaWx5PSJBcmlhbCwgSGVsdmV0aWNhLCBzYW5zLXNlcmlmIiBmb250LXdlaWdodD0iNzAwIj4KICAgIDx0ZXh0IHg9IjAiIHk9IjQwIiBmb250LXNpemU9IjQwIiBsZXR0ZXItc3BhY2luZz0iMSI+UkUvTUFYPC90ZXh0PgogICAgPHRleHQgeD0iMiIgeT0iNjgiIGZvbnQtc2l6ZT0iMjIiIGZvbnQtd2VpZ2h0PSI1MDAiIGxldHRlci1zcGFjaW5nPSI2IiBmaWxsPSIjMTExODI3IiBvcGFjaXR5PSIwLjkyIj5IVUI8L3RleHQ+CiAgPC9nPgogIDxyZWN0IHg9IjE1MCIgeT0iMTQiIHdpZHRoPSI2IiBoZWlnaHQ9IjMwIiBmaWxsPSIjREMxQzJFIi8+Cjwvc3ZnPgo=',
   primary: '#003DA5', // RE/MAX blue   (real wiring → brandKit.colorPrimary)
   accent: '#DC1C2E', // RE/MAX red    (real wiring → brandKit.colorAccent)
   footerText: 'RE/MAX Hub · Dubai, UAE · {{agentName}}',
 } as const;
+
+// A custom attribute marking an mj-image as the CONTRAST-MANAGED brand logo, so the
+// editor's color-change listener can find it and re-pick white/black on recolor.
+const LOGO_FLAG_ATTR = 'data-propel-logo';
+
+// Relative-luminance contrast pick. Parses a CSS color (hex #rgb/#rrggbb or
+// rgb()/rgba()) and returns the readable logo variant: WHITE on dark, BLACK on
+// light. Unknown/transparent colors default to WHITE (the header ships blue).
+const parseColorToRgb = (
+  color: string,
+): { r: number; g: number; b: number } | null => {
+  const c = color.trim().toLowerCase();
+  const hex = c.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/);
+  if (hex) {
+    const h = hex[1];
+    const full =
+      h.length === 3
+        ? h
+            .split('')
+            .map((ch) => ch + ch)
+            .join('')
+        : h;
+    return {
+      r: parseInt(full.slice(0, 2), 16),
+      g: parseInt(full.slice(2, 4), 16),
+      b: parseInt(full.slice(4, 6), 16),
+    };
+  }
+  const rgb = c.match(/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+  if (rgb) {
+    return { r: +rgb[1], g: +rgb[2], b: +rgb[3] };
+  }
+  return null;
+};
+
+const logoForBackground = (bgColor: string | undefined): string => {
+  const rgb = bgColor ? parseColorToRgb(bgColor) : null;
+  if (!rgb) return BRAND.logoWhiteUrl; // default header is blue (dark) → white
+  // WCAG relative luminance (sRGB). >0.5 ⇒ light banner ⇒ black logo.
+  const lin = (v: number) => {
+    const s = v / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance =
+    0.2126 * lin(rgb.r) + 0.7152 * lin(rgb.g) + 0.0722 * lin(rgb.b);
+  return luminance > 0.5 ? BRAND.logoBlackUrl : BRAND.logoWhiteUrl;
+};
 
 // ── Merge tags offered in the toolbar ────────────────────────────────────────
 // MUST be a subset of the email send-drain's DRAIN_POPULATED_FIELDS (the app's
@@ -118,13 +184,12 @@ const BUILTIN_MERGE_TAGS: { token: string; label: string }[] = [
 ];
 
 // The drag-in branded header block — a self-contained MJML section using the
-// brand kit. Dropping it onto the canvas inserts a real, on-brand header.
+// brand kit. The logo is the contrast-aware variant for the section's bg (blue →
+// white) and is flagged with LOGO_FLAG_ATTR so the editor re-picks white/black if
+// the user recolors the banner.
 const BRANDED_HEADER_MJML = `<mj-section background-color="${BRAND.primary}" padding="20px 16px">
   <mj-column>
-    <mj-image width="150px" src="${BRAND.logoUrl}" alt="${BRAND.name}" />
-    <mj-text align="center" color="#ffffff" font-size="13px" letter-spacing="1px" padding-top="8px">
-      ${BRAND.name.toUpperCase()}
-    </mj-text>
+    <mj-image width="170px" ${LOGO_FLAG_ATTR}="1" src="${logoForBackground(BRAND.primary)}" alt="${BRAND.name}" />
   </mj-column>
 </mj-section>`;
 
@@ -133,7 +198,7 @@ const STARTER_MJML = `<mjml>
   <mj-body background-color="#f4f5f7">
     <mj-section background-color="${BRAND.primary}" padding="16px">
       <mj-column>
-        <mj-image width="140px" src="${BRAND.logoUrl}" alt="${BRAND.name}" />
+        <mj-image width="160px" ${LOGO_FLAG_ATTR}="1" src="${logoForBackground(BRAND.primary)}" alt="${BRAND.name}" />
       </mj-column>
     </mj-section>
     <mj-section background-color="#ffffff" padding="24px">
@@ -232,6 +297,44 @@ export const GrapesEmailEditor = ({
         content: `<mj-text font-size="15px" color="#374151">Hi {{firstName}}, …</mj-text>`,
       });
 
+      // Contrast-aware logo: whenever ANY component updates (covers recoloring a
+      // banner via the Style Manager / attribute panel), re-pick white vs black
+      // for every flagged brand logo based on its governing banner background.
+      // Debounced via a microtask flag so a burst of updates re-picks once.
+      let repickQueued = false;
+      const repickLogos = () => {
+        repickQueued = false;
+        const wrapper = editor.getWrapper();
+        if (!wrapper) return;
+        const logos = wrapper.find(`[${LOGO_FLAG_ATTR}]`);
+        for (const logo of logos) {
+          // Walk up to the nearest ancestor carrying a background-color attribute
+          // (the mj-section banner). MJML stores bg-color as an ATTRIBUTE.
+          let node: ReturnType<typeof logo.parent> = logo.parent();
+          let bg: string | undefined;
+          while (node) {
+            const attrs = node.getAttributes();
+            const candidate = attrs['background-color'];
+            if (typeof candidate === 'string' && candidate !== '') {
+              bg = candidate;
+              break;
+            }
+            node = node.parent();
+          }
+          const wanted = logoForBackground(bg);
+          if (logo.getAttributes().src !== wanted) {
+            // Quiet update (avoid_store) so this programmatic swap doesn't spam
+            // the undo stack or re-fire our own listener into a loop.
+            logo.addAttributes({ src: wanted }, { avoidStore: true });
+          }
+        }
+      };
+      editor.on('component:update', () => {
+        if (repickQueued) return;
+        repickQueued = true;
+        queueMicrotask(repickLogos);
+      });
+
       // Restore a saved GrapesJS design if we have one, else the starter. The
       // project JSON (re-editable) is preferred; bodyMjml is a forward-compat
       // hook; otherwise the starter skeleton. (Today templates only persist HTML
@@ -246,6 +349,8 @@ export const GrapesEmailEditor = ({
       } else {
         editor.setComponents(STARTER_MJML);
       }
+      // Pick the right variant for the seeded design's banners on first load.
+      queueMicrotask(repickLogos);
     },
     [initial],
   );
