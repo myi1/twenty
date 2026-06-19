@@ -36,6 +36,7 @@ export const GrapesEmailBuilder = ({
   customFields,
   onSaved,
   onClose,
+  onApplyHtml,
 }: GrapesEmailBuilderProps) => (
   <Suspense
     fallback={
@@ -55,6 +56,7 @@ export const GrapesEmailBuilder = ({
       customFields={customFields}
       onSaved={onSaved}
       onClose={onClose}
+      onApplyHtml={onApplyHtml}
     />
   </Suspense>
 );

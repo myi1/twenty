@@ -1,8 +1,11 @@
 import {
   ActionIcon,
+  Alert,
   Badge,
+  Button,
   Card,
   Group,
+  Modal,
   NumberInput,
   Select,
   Stack,
@@ -10,17 +13,21 @@ import {
   Textarea,
   TextInput,
 } from '@mantine/core';
+import { useState } from 'react';
 import {
+  IconAlertCircle,
   IconArrowDown,
   IconArrowsSplit2,
   IconArrowUp,
   IconClock,
   IconFlag,
+  IconLayoutGrid,
   IconMail,
   IconMessage,
   IconPhone,
   IconTrash,
 } from 'twenty-ui/display';
+import { GrapesEmailBuilder } from '@/propel/components/campaign/GrapesEmailBuilder';
 import {
   type ConditionKind,
   type SequenceStepDraft,
@@ -77,6 +84,13 @@ export const StepEditorCard = ({
   onMove: (dir: -1 | 1) => void;
   onRemove: () => void;
 }) => {
+  // EMAIL step → GrapesJS designer, opened as a modal over the sequence editor.
+  // "Use this design" writes the compiled HTML into this step's templateBody.
+  const [designOpen, setDesignOpen] = useState(false);
+  const bodyIsHtml = /^\s*<(?:!doctype|html|table|div|mjml)/i.test(
+    step.templateBody ?? '',
+  );
+
   return (
     <Card
       withBorder
@@ -89,7 +103,9 @@ export const StepEditorCard = ({
         borderColor: selected
           ? 'var(--mantine-color-red-6)'
           : 'var(--mantine-color-default-border)',
-        boxShadow: selected ? '0 0 0 2px var(--mantine-color-red-light)' : undefined,
+        boxShadow: selected
+          ? '0 0 0 2px var(--mantine-color-red-light)'
+          : undefined,
       }}
     >
       <Stack gap="sm">
@@ -188,6 +204,21 @@ export const StepEditorCard = ({
               placeholder="Email subject"
               onClick={(e) => e.stopPropagation()}
             />
+            <Group justify="flex-end">
+              <Button
+                size="compact-xs"
+                variant="light"
+                color="red"
+                leftSection={<IconLayoutGrid size={13} />}
+                disabled={!editable}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDesignOpen(true);
+                }}
+              >
+                Design in builder
+              </Button>
+            </Group>
             <Textarea
               size="xs"
               autosize
@@ -199,14 +230,56 @@ export const StepEditorCard = ({
               placeholder="Email body — {{firstName}} personalises it"
               onClick={(e) => e.stopPropagation()}
             />
+            {bodyIsHtml ? (
+              <Alert
+                color="yellow"
+                variant="light"
+                py={6}
+                icon={<IconAlertCircle size={14} />}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Text size="xs">
+                  Designed HTML email. The current send still renders the body
+                  as text into the standard layout — rich HTML won’t send
+                  verbatim until HTML-email sending is enabled.
+                </Text>
+              </Alert>
+            ) : null}
+            {/* GrapesJS designer for this step's email, as a modal over the editor. */}
+            <Modal
+              opened={designOpen}
+              onClose={() => setDesignOpen(false)}
+              title="Design email step"
+              fullScreen
+              zIndex={6000}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                style={{ height: 'calc(100vh - 120px)', display: 'flex' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <GrapesEmailBuilder
+                  mode="campaign"
+                  initial={{
+                    subject: step.templateSubject ?? '',
+                    bodyText: step.templateBody ?? '',
+                  }}
+                  onApplyHtml={(html) => {
+                    onPatch({ templateBody: html });
+                    setDesignOpen(false);
+                  }}
+                  onClose={() => setDesignOpen(false)}
+                />
+              </div>
+            </Modal>
           </>
         ) : null}
 
         {step.stepType === 'SEND_WHATSAPP' ? (
           waOptions.length === 0 ? (
             <Text size="xs" c="yellow.7">
-              No approved WhatsApp template available — create and approve one in
-              Templates first.
+              No approved WhatsApp template available — create and approve one
+              in Templates first.
             </Text>
           ) : (
             <Select
@@ -244,7 +317,9 @@ export const StepEditorCard = ({
               onChange={(value) =>
                 onPatch({
                   waitDays: clampInt(
-                    typeof value === 'number' ? value : parseInt(String(value), 10),
+                    typeof value === 'number'
+                      ? value
+                      : parseInt(String(value), 10),
                     0,
                     60,
                   ),
@@ -305,7 +380,8 @@ export const StepEditorCard = ({
                   comboboxProps={{ withinPortal: true }}
                   onChange={(value) =>
                     onPatch({
-                      yesStepIndex: value === '' || value == null ? null : Number(value),
+                      yesStepIndex:
+                        value === '' || value == null ? null : Number(value),
                     })
                   }
                   onClick={(e) => e.stopPropagation()}
@@ -325,7 +401,8 @@ export const StepEditorCard = ({
                   comboboxProps={{ withinPortal: true }}
                   onChange={(value) =>
                     onPatch({
-                      noStepIndex: value === '' || value == null ? null : Number(value),
+                      noStepIndex:
+                        value === '' || value == null ? null : Number(value),
                     })
                   }
                   onClick={(e) => e.stopPropagation()}
@@ -337,8 +414,8 @@ export const StepEditorCard = ({
 
         {step.stepType === 'CREATE_TASK' ? (
           <Text size="xs" c="dimmed">
-            Creates a call task for the person&rsquo;s agent and ends their journey
-            here.
+            Creates a call task for the person&rsquo;s agent and ends their
+            journey here.
           </Text>
         ) : null}
         {step.stepType === 'EXIT' ? (

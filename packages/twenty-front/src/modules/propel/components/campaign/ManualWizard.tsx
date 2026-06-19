@@ -18,8 +18,10 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   IconAlertCircle,
+  IconArrowLeft,
   IconCheck,
   IconDeviceFloppy,
+  IconLayoutGrid,
   IconMail,
   IconPlus,
   IconSparkles,
@@ -49,6 +51,7 @@ import {
 } from '@/propel/lib/waTemplateRenderer';
 import { AbTestPanel } from '@/propel/components/campaign/AbTestPanel';
 import { ComposeToolbar } from '@/propel/components/campaign/ComposeToolbar';
+import { GrapesEmailBuilder } from '@/propel/components/campaign/GrapesEmailBuilder';
 import { GuardrailsCard } from '@/propel/components/campaign/GuardrailsCard';
 import { EmailPreview } from '@/propel/components/campaign/EmailPreview';
 import { SegmentCreateModal } from '@/propel/components/campaign/SegmentCreateModal';
@@ -71,6 +74,14 @@ import {
 } from '@/propel/types/campaignBuilder';
 
 export const WIZARD_STEPS = ['Setup', 'Compose', 'Audience', 'Review'] as const;
+
+// Heuristic: did the body come from the GrapesJS designer (compiled HTML) rather
+// than being hand-typed markdown? The designer emits a full <!doctype/<html> /
+// <table>-based document, so a leading doctype/html/table tag is a reliable tell.
+// Used only to show the right hint in the Compose step (the send drain itself
+// doesn't branch on this yet — see the HTML-body note in state).
+const isLikelyHtml = (s: string): boolean =>
+  /^\s*<(?:!doctype|html|table|div|mjml)/i.test(s);
 
 // The manual campaign wizard (single-message). Owns ALL campaign state and wires
 // every route: draft-copy (AI assist), save-campaign (DRAFT upsert + schedule),
@@ -114,13 +125,23 @@ export const ManualWizard = ({
   const [createdSegments, setCreatedSegments] = useState<SegmentOption[]>([]);
   const [segmentModalOpen, setSegmentModalOpen] = useState(false);
   const [steer, setSteer] = useState('');
+  // EMAIL design surface — the GrapesJS builder opens as a full-cover overlay over
+  // the wizard (founder UX: designing the email is HOW you author it, reached from
+  // the EMAIL Compose step, not a separate top-level "what"). "Use this design"
+  // brings the compiled HTML back into bodyText. NOTE: the email SEND drain today
+  // markdown-renders bodyText into a fixed branded shell (campaign-renderer), so a
+  // rich GrapesJS HTML body needs a backend HTML-body send mode before it sends
+  // verbatim — flagged inline in the Compose step + in the design overlay.
+  const [designOpen, setDesignOpen] = useState(false);
   const [permitWarning, setPermitWarning] = useState<string | null>(null);
   const [genState, setGenState] = useState<'idle' | 'generating' | 'failed'>(
     'idle',
   );
   const [campaignId, setCampaignId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [testState, setTestState] = useState<'idle' | 'sending' | 'sent'>('idle');
+  const [testState, setTestState] = useState<'idle' | 'sending' | 'sent'>(
+    'idle',
+  );
   const [sendMode, setSendMode] = useState<'now' | 'schedule'>('now');
   const [scheduleAt, setScheduleAt] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -216,13 +237,17 @@ export const ManualWizard = ({
   );
   const emailPreviewSamples = useMemo<MergeValues>(() => {
     const out: MergeValues = { ...PREVIEW_SAMPLES };
-    for (const cf of customFields) (out as Record<string, string>)[cf.key] = cf.value;
+    for (const cf of customFields)
+      (out as Record<string, string>)[cf.key] = cf.value;
     return out;
   }, [customFields]);
   const composePreviewSamples = useMemo<MergeValues>(
     () =>
       listingFieldsActive
-        ? { ...emailPreviewSamples, ...listingPreviewSamples(listing?.name ?? null) }
+        ? {
+            ...emailPreviewSamples,
+            ...listingPreviewSamples(listing?.name ?? null),
+          }
         : emailPreviewSamples,
     [listingFieldsActive, emailPreviewSamples, listing],
   );
@@ -236,7 +261,8 @@ export const ManualWizard = ({
     setLanguage(initialPlan.language === 'AR' ? 'AR' : 'EN');
     if (initialPlan.subject) setSubject(initialPlan.subject);
     if (initialPlan.body) setBodyText(initialPlan.body);
-    if (initialPlan.whatsappTemplateId) setWaTemplateId(initialPlan.whatsappTemplateId);
+    if (initialPlan.whatsappTemplateId)
+      setWaTemplateId(initialPlan.whatsappTemplateId);
     setName(
       initialPlan.subject?.trim()
         ? initialPlan.subject
@@ -260,7 +286,8 @@ export const ManualWizard = ({
     if (typeof initialDraft.name === 'string') setName(initialDraft.name);
     setChannel(initialDraft.channel === 'WHATSAPP' ? 'WHATSAPP' : 'EMAIL');
     setLanguage(initialDraft.language === 'AR' ? 'AR' : 'EN');
-    if (typeof initialDraft.subject === 'string') setSubject(initialDraft.subject);
+    if (typeof initialDraft.subject === 'string')
+      setSubject(initialDraft.subject);
     if (typeof initialDraft.body === 'string') setBodyText(initialDraft.body);
     if (initialDraft.segmentId) setSegmentId(initialDraft.segmentId);
     if (initialDraft.waTemplateId) setWaTemplateId(initialDraft.waTemplateId);
@@ -338,7 +365,11 @@ export const ManualWizard = ({
       const end = el?.selectionEnd ?? start;
       const sel = value.slice(start, end) || action.placeholder;
       const next =
-        value.slice(0, start) + action.before + sel + action.after + value.slice(end);
+        value.slice(0, start) +
+        action.before +
+        sel +
+        action.after +
+        value.slice(end);
       setValue(next);
       const selStart = start + action.before.length;
       const selEnd = selStart + sel.length;
@@ -357,7 +388,8 @@ export const ManualWizard = ({
     [insertTokenInto, bodyText],
   );
   const applyFormat = useCallback(
-    (action: FormatAction) => applyFormatTo(bodyRef, bodyText, setBodyText, action),
+    (action: FormatAction) =>
+      applyFormatTo(bodyRef, bodyText, setBodyText, action),
     [applyFormatTo, bodyText],
   );
   const insertTokenB = useCallback(
@@ -374,9 +406,10 @@ export const ManualWizard = ({
   // ── validation gates ───────────────────────────────────────────────────────
   const copyTokensFillable = useMemo(
     () =>
-      [...parseTemplate(subject).fields, ...parseTemplate(bodyText).fields].every(
-        (f) => composeAllowedKeys.has(f),
-      ),
+      [
+        ...parseTemplate(subject).fields,
+        ...parseTemplate(bodyText).fields,
+      ].every((f) => composeAllowedKeys.has(f)),
     [subject, bodyText, composeAllowedKeys],
   );
   // A/B variant B (EMAIL) is only validated when the test is ON. It must be
@@ -406,10 +439,10 @@ export const ManualWizard = ({
       ? Boolean(name.trim() && waTemplateId && abReady)
       : Boolean(
           name.trim() &&
-            subject.trim() &&
-            bodyText.trim() &&
-            copyTokensFillable &&
-            abReady,
+          subject.trim() &&
+          bodyText.trim() &&
+          copyTokensFillable &&
+          abReady,
         );
 
   // The A/B patch sent to save-campaign. When the test is OFF we send only
@@ -451,11 +484,15 @@ export const ManualWizard = ({
       const res = await callPropelRoute<DraftCopyResponse>(
         '/marketing/draft-copy',
         {
-          objective: listingFieldsActive ? 'PROMOTE_LISTING' : 'REACTIVATE_SEGMENT',
+          objective: listingFieldsActive
+            ? 'PROMOTE_LISTING'
+            : 'REACTIVATE_SEGMENT',
           language,
           ...(listingFieldsActive && listingId ? { listingId } : {}),
           ...(segment ? { segmentName: segment.name } : {}),
-          ...(steer.trim() ? { extraDirection: steer.trim().slice(0, 300) } : {}),
+          ...(steer.trim()
+            ? { extraDirection: steer.trim().slice(0, 300) }
+            : {}),
         },
       );
       if (
@@ -465,7 +502,10 @@ export const ManualWizard = ({
         typeof res.body !== 'string'
       ) {
         setGenState('failed');
-        notify(envelopeMessage(res, 'Could not draft copy — write it yourself.'), 'error');
+        notify(
+          envelopeMessage(res, 'Could not draft copy — write it yourself.'),
+          'error',
+        );
         return;
       }
       setSubject(res.subject);
@@ -475,7 +515,15 @@ export const ManualWizard = ({
     } catch {
       setGenState('failed');
     }
-  }, [genState, listingFieldsActive, language, listingId, segment, steer, notify]);
+  }, [
+    genState,
+    listingFieldsActive,
+    language,
+    listingId,
+    segment,
+    steer,
+    notify,
+  ]);
 
   // Honest re-resolve of the SAVED segment: save-segment with { resolve:true }
   // re-runs the REAL resolver (same code path as the materializer) for this
@@ -501,12 +549,18 @@ export const ManualWizard = ({
       } else {
         // No fresh number → keep the stamped count, never fabricate one.
         notify(
-          envelopeMessage(res, 'Could not refresh the estimate — showing the last count.'),
+          envelopeMessage(
+            res,
+            'Could not refresh the estimate — showing the last count.',
+          ),
           'error',
         );
       }
     } catch {
-      notify('Could not refresh the estimate — showing the last count.', 'error');
+      notify(
+        'Could not refresh the estimate — showing the last count.',
+        'error',
+      );
     } finally {
       setPreviewing(false);
     }
@@ -525,9 +579,10 @@ export const ManualWizard = ({
           templateSubject: channel === 'WHATSAPP' ? '' : subject,
           templateBody: channel === 'WHATSAPP' ? '' : bodyText,
           templateLanguage: language,
-          listingId: listingFieldsActive ? listingId ?? '' : '',
+          listingId: listingFieldsActive ? (listingId ?? '') : '',
           segmentId,
-          whatsappTemplateId: channel === 'WHATSAPP' ? waTemplateId ?? '' : '',
+          whatsappTemplateId:
+            channel === 'WHATSAPP' ? (waTemplateId ?? '') : '',
           ...abSavePatch,
         },
       );
@@ -572,9 +627,10 @@ export const ManualWizard = ({
           templateSubject: channel === 'WHATSAPP' ? '' : subject,
           templateBody: channel === 'WHATSAPP' ? '' : bodyText,
           templateLanguage: language,
-          listingId: listingFieldsActive ? listingId ?? '' : '',
+          listingId: listingFieldsActive ? (listingId ?? '') : '',
           segmentId,
-          whatsappTemplateId: channel === 'WHATSAPP' ? waTemplateId ?? '' : '',
+          whatsappTemplateId:
+            channel === 'WHATSAPP' ? (waTemplateId ?? '') : '',
           ...abSavePatch,
         },
       );
@@ -610,9 +666,12 @@ export const ManualWizard = ({
     if (!campaignId || testState === 'sending') return;
     setTestState('sending');
     try {
-      const res = await callPropelRoute<TestSendResponse>('/marketing/test-send', {
-        campaignId,
-      });
+      const res = await callPropelRoute<TestSendResponse>(
+        '/marketing/test-send',
+        {
+          campaignId,
+        },
+      );
       if (!res || res.error) {
         notify(envelopeMessage(res, 'Test send failed.'), 'error');
         setTestState('idle');
@@ -655,7 +714,10 @@ export const ManualWizard = ({
       return;
     }
     if (Date.parse(iso) <= Date.now()) {
-      notify('That time is in the past — pick a future time (Asia/Dubai).', 'error');
+      notify(
+        'That time is in the past — pick a future time (Asia/Dubai).',
+        'error',
+      );
       return;
     }
     setSubmitting(true);
@@ -665,7 +727,10 @@ export const ManualWizard = ({
         { campaignId, scheduledAt: iso },
       );
       if (!res || res.error) {
-        notify(envelopeMessage(res, 'Could not schedule the campaign.'), 'error');
+        notify(
+          envelopeMessage(res, 'Could not schedule the campaign.'),
+          'error',
+        );
         return;
       }
       notify('Campaign scheduled.', 'success');
@@ -714,8 +779,15 @@ export const ManualWizard = ({
       // The cap pass only rides when `rulesPreview` is present AND well-formed —
       // an error envelope (or a route that couldn't resolve the audience) carries
       // none, so we surface an honest "couldn't check" rather than a fake 0.
-      if (res && res.rulesPreview && typeof res.rulesPreview.capReached === 'number') {
-        setCapPreview({ state: 'loaded', capReached: res.rulesPreview.capReached });
+      if (
+        res &&
+        res.rulesPreview &&
+        typeof res.rulesPreview.capReached === 'number'
+      ) {
+        setCapPreview({
+          state: 'loaded',
+          capReached: res.rulesPreview.capReached,
+        });
       } else {
         setCapPreview({ state: 'error' });
       }
@@ -731,9 +803,50 @@ export const ManualWizard = ({
     if (activeStep === 1 && !draftReady) return;
     setActiveStep((s) => Math.min(s + 1, 3));
   }, [activeStep, setupReady, draftReady]);
-  const goBack = useCallback(() => setActiveStep((s) => Math.max(s - 1, 0)), []);
+  const goBack = useCallback(
+    () => setActiveStep((s) => Math.max(s - 1, 0)),
+    [],
+  );
 
   const estimate = segment?.lastResolvedCount ?? 0;
+
+  // EMAIL design surface — full-cover GrapesJS builder over the wizard. Opened
+  // from the Compose step's "Design in builder"; "Use this design" returns the
+  // compiled HTML into bodyText, "Close" discards. The wizard's state is preserved
+  // underneath (this is a view swap, not a remount).
+  if (designOpen) {
+    return (
+      <Stack gap="sm" style={{ flex: 1, minHeight: 0 }}>
+        <Group justify="space-between" wrap="nowrap">
+          <Button
+            size="compact-sm"
+            variant="subtle"
+            color="gray"
+            leftSection={<IconArrowLeft size={14} />}
+            onClick={() => setDesignOpen(false)}
+          >
+            Back to the campaign
+          </Button>
+          <Text size="xs" c="dimmed" ta="right" maw={420}>
+            Designing the email. “Use this design” brings the layout into your
+            campaign body.
+          </Text>
+        </Group>
+        <Box style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+          <GrapesEmailBuilder
+            mode="campaign"
+            customFields={customFields}
+            onApplyHtml={(html) => {
+              setBodyText(html);
+              setDesignOpen(false);
+              notify('Design applied to the campaign body.', 'success');
+            }}
+            onClose={() => setDesignOpen(false)}
+          />
+        </Box>
+      </Stack>
+    );
+  }
 
   return (
     <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
@@ -796,6 +909,8 @@ export const ManualWizard = ({
             onFormatB={applyFormatB}
             copyTokensFillableB={copyTokensFillableB}
             waTemplates={approvedTemplates}
+            onOpenDesigner={() => setDesignOpen(true)}
+            bodyIsDesignHtml={isLikelyHtml(bodyText)}
           />
         )}
 
@@ -935,7 +1050,12 @@ const PropelStepper = ({ active }: { active: number }) => (
       const done = idx < active;
       const current = idx === active;
       return (
-        <Group key={label} gap={8} wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+        <Group
+          key={label}
+          gap={8}
+          wrap="nowrap"
+          style={{ flex: 1, minWidth: 0 }}
+        >
           <Box
             style={{
               width: 26,
@@ -948,8 +1068,7 @@ const PropelStepper = ({ active }: { active: number }) => (
               fontWeight: 700,
               background:
                 done || current ? 'var(--mantine-color-red-6)' : 'transparent',
-              color:
-                done || current ? '#fff' : 'var(--mantine-color-dimmed)',
+              color: done || current ? '#fff' : 'var(--mantine-color-dimmed)',
               border:
                 done || current
                   ? 'none'
@@ -1054,8 +1173,8 @@ const SetupStep = ({
       />
       {objective === 'LISTING' && (
         <Text size="xs" c="dimmed" mt={6}>
-          A listing promo still sends to a segment (picked in Audience); sending is
-          gated by the Trakheesi permit.
+          A listing promo still sends to a segment (picked in Audience); sending
+          is gated by the Trakheesi permit.
         </Text>
       )}
     </Box>
@@ -1122,6 +1241,8 @@ const ComposeStep = ({
   onFormatB,
   copyTokensFillableB,
   waTemplates,
+  onOpenDesigner,
+  bodyIsDesignHtml,
 }: {
   channel: 'EMAIL' | 'WHATSAPP';
   subject: string;
@@ -1155,6 +1276,10 @@ const ComposeStep = ({
   copyTokensFillableB: boolean;
   // Full approved-template records for the WhatsApp A/B variant-B picker.
   waTemplates: WaTemplateOption[];
+  // Open the GrapesJS email designer (EMAIL only).
+  onOpenDesigner: () => void;
+  // True when the body looks like designer-emitted HTML (changes the body hint).
+  bodyIsDesignHtml: boolean;
 }) => {
   if (channel === 'WHATSAPP') {
     return (
@@ -1172,8 +1297,8 @@ const ComposeStep = ({
           nothingFoundMessage="No approved templates"
         />
         <Text size="xs" c="dimmed">
-          WhatsApp body comes from the approved template — there&rsquo;s nothing to
-          write here.
+          WhatsApp body comes from the approved template — there&rsquo;s nothing
+          to write here.
         </Text>
 
         {/* S7 — the FILLED template preview (parity with email's live preview):
@@ -1212,48 +1337,78 @@ const ComposeStep = ({
             <Text size="sm" fw={600} c="var(--mantine-color-text)">
               Email content
             </Text>
-            <Popover width={300} position="bottom-end" withArrow shadow="md">
-              <Popover.Target>
-                <Button
-                  size="compact-sm"
-                  variant="light"
-                  color="red"
-                  leftSection={<IconSparkles size={14} />}
-                  loading={genState === 'generating'}
-                >
-                  Draft with AI
-                </Button>
-              </Popover.Target>
-              <Popover.Dropdown>
-                <Stack gap="xs">
-                  <Text size="xs" c="dimmed">
-                    Optional steer — what should the copy emphasize?
-                  </Text>
-                  <Textarea
-                    autosize
-                    minRows={2}
-                    maxRows={4}
-                    placeholder="e.g. warm, low-pressure, one clear reply prompt"
-                    value={steer}
-                    onChange={(e) => onSteer(e.currentTarget.value)}
-                  />
+            <Group gap="xs" wrap="nowrap">
+              {/* Design in builder — opens the GrapesJS email designer in-flow. */}
+              <Button
+                size="compact-sm"
+                variant="light"
+                color="red"
+                leftSection={<IconLayoutGrid size={14} />}
+                onClick={onOpenDesigner}
+              >
+                Design in builder
+              </Button>
+              <Popover width={300} position="bottom-end" withArrow shadow="md">
+                <Popover.Target>
                   <Button
                     size="compact-sm"
+                    variant="light"
                     color="red"
+                    leftSection={<IconSparkles size={14} />}
                     loading={genState === 'generating'}
-                    onClick={onGenerate}
                   >
-                    Generate
+                    Draft with AI
                   </Button>
-                  {genState === 'failed' && (
-                    <Text size="xs" c="red">
-                      Generation failed — write the copy manually.
+                </Popover.Target>
+                <Popover.Dropdown>
+                  <Stack gap="xs">
+                    <Text size="xs" c="dimmed">
+                      Optional steer — what should the copy emphasize?
                     </Text>
-                  )}
-                </Stack>
-              </Popover.Dropdown>
-            </Popover>
+                    <Textarea
+                      autosize
+                      minRows={2}
+                      maxRows={4}
+                      placeholder="e.g. warm, low-pressure, one clear reply prompt"
+                      value={steer}
+                      onChange={(e) => onSteer(e.currentTarget.value)}
+                    />
+                    <Button
+                      size="compact-sm"
+                      color="red"
+                      loading={genState === 'generating'}
+                      onClick={onGenerate}
+                    >
+                      Generate
+                    </Button>
+                    {genState === 'failed' && (
+                      <Text size="xs" c="red">
+                        Generation failed — write the copy manually.
+                      </Text>
+                    )}
+                  </Stack>
+                </Popover.Dropdown>
+              </Popover>
+            </Group>
           </Group>
+
+          {/* When the body is designer-emitted HTML, the current send drain (which
+              markdown-renders the body into a fixed branded shell) can't send it
+              verbatim — flag it honestly. Sending rich HTML as-is needs the backend
+              HTML-body mode (out of scope for this staging UI iteration). */}
+          {bodyIsDesignHtml && (
+            <Alert
+              color="yellow"
+              variant="light"
+              icon={<IconAlertCircle size={16} />}
+            >
+              This body is a designed HTML email. Heads up: the current send
+              still renders the body as text into the standard branded layout,
+              so the rich design won’t send pixel-for-pixel until HTML-email
+              sending is enabled. You can keep designing, save it as a template,
+              or switch back to typed copy.
+            </Alert>
+          )}
 
           <TextInput
             ref={subjectRef}
@@ -1293,8 +1448,8 @@ const ComposeStep = ({
               variant="light"
               icon={<IconAlertCircle size={16} />}
             >
-              Your copy uses a merge field this campaign can&rsquo;t fill — it would
-              send blank. Remove it or attach a listing.
+              Your copy uses a merge field this campaign can&rsquo;t fill — it
+              would send blank. Remove it or attach a listing.
             </Alert>
           )}
           {permitWarning && (
@@ -1336,8 +1491,8 @@ const ComposeStep = ({
             permitNumber={permitNumberSample}
           />
           <Text size="xs" c="dimmed">
-            The real branded email, rendered with sample values. Send a test from
-            Review to see it in your inbox.
+            The real branded email, rendered with sample values. Send a test
+            from Review to see it in your inbox.
             {permitNumberSample
               ? ' The Trakheesi permit number appears in the footer — required on every listing promo.'
               : ''}
@@ -1404,9 +1559,9 @@ const WaTemplatePreview = ({
         </Box>
       </Box>
       <Text size="xs" c="dimmed" mt={6}>
-        The approved template, rendered with sample values — the real per-recipient
-        values fill at send time. Any {'{{n}}'} still showing is a param with no
-        sample.
+        The approved template, rendered with sample values — the real
+        per-recipient values fill at send time. Any {'{{n}}'} still showing is a
+        param with no sample.
       </Text>
     </Box>
   );
@@ -1531,8 +1686,8 @@ const AudienceStep = ({
 
     {allSegments.length === 0 && (
       <Alert color="gray" variant="light" icon={<IconUsers size={16} />}>
-        You don&rsquo;t have any audiences yet. Create one from a CSV/Excel upload
-        or live criteria with &ldquo;New segment&rdquo;.
+        You don&rsquo;t have any audiences yet. Create one from a CSV/Excel
+        upload or live criteria with &ldquo;New segment&rdquo;.
       </Alert>
     )}
   </Stack>
@@ -1590,7 +1745,10 @@ const ReviewStep = ({
         <Group justify="space-between" align="center" wrap="nowrap">
           <ReviewRow label="Campaign" value={name} />
         </Group>
-        <ReviewRow label="Channel" value={channel === 'WHATSAPP' ? 'WhatsApp' : 'Email'} />
+        <ReviewRow
+          label="Channel"
+          value={channel === 'WHATSAPP' ? 'WhatsApp' : 'Email'}
+        />
         <ReviewRow label="Audience" value={segmentName || '—'} />
         <ReviewRow
           label="Estimated reach"
@@ -1629,14 +1787,18 @@ const ReviewStep = ({
         icon={<IconAlertCircle size={16} />}
         title="This listing’s permit isn’t valid yet"
       >
-        A listing promo can&rsquo;t send until its Trakheesi permit is valid. You
-        can save this as a draft now; sending stays blocked until the permit
+        A listing promo can&rsquo;t send until its Trakheesi permit is valid.
+        You can save this as a draft now; sending stays blocked until the permit
         clears (the send is re-checked at launch).
       </Alert>
     )}
 
     {permitWarning && !permitBlocked && (
-      <Alert color="yellow" variant="light" icon={<IconAlertCircle size={16} />}>
+      <Alert
+        color="yellow"
+        variant="light"
+        icon={<IconAlertCircle size={16} />}
+      >
         {permitWarning}
       </Alert>
     )}

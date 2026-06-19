@@ -84,41 +84,44 @@ const mjmlPlugin = (editor: Editor) =>
       'https://via.placeholder.com/600x300/eeeeee/999999?text=Image',
   });
 
-// ── Brand kit (INTERIM logo + colors) ────────────────────────────────────────
+// ── Brand kit (REAL logos + colors) ──────────────────────────────────────────
 // The branded-header logo is CONTRAST-AWARE: it shows a WHITE knockout on a dark
 // banner and a BLACK knockout on a light banner, so it's always readable whatever
 // banner color the user picks. We keep BOTH transparent variants and choose by the
 // banner background's luminance (and re-choose live when the user recolors the
 // banner in GrapesJS — see the editor's 'component:update' listener). For the
-// EXPORTED email we bake the actual chosen image into the MJML (email clients don't
+// EXPORTED email we bake the chosen image into the MJML (email clients don't
 // support CSS filters/blend-modes reliably — the variant must be a real asset).
 //
-// The variants are inline SVG data-URIs: zero network dependency (can't 404 like an
-// external CDN), genuinely transparent, and render in the GrapesJS canvas.
-//
-// 👉 FOUNDER: to use your EXACT brand logos, replace `logoWhiteUrl` / `logoBlackUrl`
-//    below with your two transparent-PNG asset URLs (host on www.remaxhub.ae/assets/,
-//    e.g. Remax_logo_white.png + Remax_logo_black.png) — that's the swap. (Hosted
-//    transparent PNGs are also the email-client-safe choice for the export; some
-//    clients strip inline-SVG data-URIs.) logoUrl is the original white-background
-//    JPEG, kept for any LIGHT-surface use (not the colored header).
-//
-// TODO(real wiring): pull the logos + colors from the brand-kit backend rather than
-// hardcoding. The fork has NO direct brand-kit READ in the front-end — the social
-// "branded card" affordance (lib/socialBrandCard.ts) instead posts to the SERVER
-// route `/marketing/social/brand-card`, which resolves branding server-side. To
-// expose them to this editor, add a small
-// `brandKit:{logoWhiteUrl,logoBlackUrl,colorPrimary,colorAccent}` block to the
-// marketing-hub route payload and thread it in as a prop (app-side, app:install).
+// 👉 FOUNDER / OPS NOTES:
+//  (a) These are the founder's REAL transparent-PNG logos, hosted on the staging
+//      `/heroes/brand/` mount (remax-hub-logo-white.png + remax-hub-logo-black.png).
+//  (b) For PROD, the SAME two files must be copied to prod's `/heroes/brand/` mount
+//      (the prod /heroes bind-dir on the Coolify box) — otherwise the header logo
+//      404s on prod. We build ABSOLUTE URLs from window.location.origin so the
+//      exported email points at the right host automatically (crm.remaxhub.ae on
+//      prod, the m4 host on staging).
+//  (c) Eventual brand-kit wiring needs a dark/light logo PAIR — the brand kit
+//      currently stores a SINGLE `logoUrl`, so it must gain `logoWhiteUrl` +
+//      `logoBlackUrl` (or a generic "logoOnDark"/"logoOnLight") before this can
+//      read from it. The fork has no direct brand-kit READ in the front-end today
+//      (the social "branded card" resolves branding server-side via
+//      /marketing/social/brand-card); exposing the pair to this editor is an
+//      app-side change (app:install) — out of scope for this staging iteration.
+const BRAND_LOGO_PATH = '/heroes/brand';
+// Absolute origin so the EXPORTED email HTML references a reachable host (relative
+// would break once the email leaves the app). In the browser this is the current
+// origin; the empty-string fallback keeps it safe in any non-DOM build context.
+const ORIGIN =
+  typeof window !== 'undefined' && typeof window.location?.origin === 'string'
+    ? window.location.origin
+    : '';
 const BRAND = {
   name: 'RE/MAX Hub',
-  logoUrl: 'https://www.remaxhub.ae/assets/Remax_logo.jpeg',
-  // White-knockout wordmark — for DARK banners.
-  logoWhiteUrl:
-    'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMjAiIGhlaWdodD0iODAiIHZpZXdCb3g9IjAgMCAzMjAgODAiPgogIDxnIGZpbGw9IiNmZmZmZmYiIGZvbnQtZmFtaWx5PSJBcmlhbCwgSGVsdmV0aWNhLCBzYW5zLXNlcmlmIiBmb250LXdlaWdodD0iNzAwIj4KICAgIDx0ZXh0IHg9IjAiIHk9IjQwIiBmb250LXNpemU9IjQwIiBsZXR0ZXItc3BhY2luZz0iMSI+UkUvTUFYPC90ZXh0PgogICAgPHRleHQgeD0iMiIgeT0iNjgiIGZvbnQtc2l6ZT0iMjIiIGZvbnQtd2VpZ2h0PSI1MDAiIGxldHRlci1zcGFjaW5nPSI2IiBmaWxsPSIjZmZmZmZmIiBvcGFjaXR5PSIwLjkyIj5IVUI8L3RleHQ+CiAgPC9nPgogIDxyZWN0IHg9IjE1MCIgeT0iMTQiIHdpZHRoPSI2IiBoZWlnaHQ9IjMwIiBmaWxsPSIjREMxQzJFIi8+Cjwvc3ZnPgo=',
-  // Black-knockout wordmark — for LIGHT banners.
-  logoBlackUrl:
-    'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMjAiIGhlaWdodD0iODAiIHZpZXdCb3g9IjAgMCAzMjAgODAiPgogIDxnIGZpbGw9IiMxMTE4MjciIGZvbnQtZmFtaWx5PSJBcmlhbCwgSGVsdmV0aWNhLCBzYW5zLXNlcmlmIiBmb250LXdlaWdodD0iNzAwIj4KICAgIDx0ZXh0IHg9IjAiIHk9IjQwIiBmb250LXNpemU9IjQwIiBsZXR0ZXItc3BhY2luZz0iMSI+UkUvTUFYPC90ZXh0PgogICAgPHRleHQgeD0iMiIgeT0iNjgiIGZvbnQtc2l6ZT0iMjIiIGZvbnQtd2VpZ2h0PSI1MDAiIGxldHRlci1zcGFjaW5nPSI2IiBmaWxsPSIjMTExODI3IiBvcGFjaXR5PSIwLjkyIj5IVUI8L3RleHQ+CiAgPC9nPgogIDxyZWN0IHg9IjE1MCIgeT0iMTQiIHdpZHRoPSI2IiBoZWlnaHQ9IjMwIiBmaWxsPSIjREMxQzJFIi8+Cjwvc3ZnPgo=',
+  // White-knockout logo — for DARK banners. (Real transparent PNG, /heroes/brand.)
+  logoWhiteUrl: `${ORIGIN}${BRAND_LOGO_PATH}/remax-hub-logo-white.png`,
+  // Black-knockout logo — for LIGHT banners.
+  logoBlackUrl: `${ORIGIN}${BRAND_LOGO_PATH}/remax-hub-logo-black.png`,
   primary: '#003DA5', // RE/MAX blue   (real wiring → brandKit.colorPrimary)
   accent: '#DC1C2E', // RE/MAX red    (real wiring → brandKit.colorAccent)
   footerText: 'RE/MAX Hub · Dubai, UAE · {{agentName}}',
@@ -246,6 +249,7 @@ export const GrapesEmailEditor = ({
   customFields = [],
   onSaved,
   onClose,
+  onApplyHtml,
 }: GrapesEmailEditorProps) => {
   const notify = usePropelToast();
   // The live GrapesJS Editor instance — an imperative handle to a 3rd-party
@@ -384,6 +388,17 @@ export const GrapesEmailEditor = ({
     editorRef.current?.Commands.run('export-template');
   }, []);
 
+  // USE THIS DESIGN — hand the compiled HTML back to the caller (the one-message
+  // wizard's EMAIL path). Only shown when onApplyHtml is provided.
+  const applyDesign = useCallback(() => {
+    const editor = editorRef.current;
+    if (!editor || !onApplyHtml) return;
+    const { html, errors } = compileHtml(editor);
+    if (errors.length > 0)
+      notify(`Applied with MJML warnings: ${errors[0]}`, 'info');
+    onApplyHtml(html);
+  }, [onApplyHtml, notify]);
+
   // SAVE AS TEMPLATE — compile the design to HTML and persist via the existing
   // marketing-save-email-template-route. We store the exported HTML in the
   // template's `bodyText` field (it's a TEXT field; HTML is text), so the saved
@@ -509,6 +524,7 @@ export const GrapesEmailEditor = ({
           </Button>
           <Button
             size="compact-sm"
+            variant={onApplyHtml ? 'default' : 'filled'}
             color="red"
             leftSection={<IconDeviceFloppy size={14} />}
             onClick={() => {
@@ -519,6 +535,18 @@ export const GrapesEmailEditor = ({
           >
             {isTemplateMode ? 'Save template' : 'Save as template'}
           </Button>
+          {/* Primary action when invoked from the one-message wizard EMAIL path:
+              hand the compiled HTML back to the campaign. */}
+          {onApplyHtml && (
+            <Button
+              size="compact-sm"
+              color="red"
+              leftSection={<IconCheck size={14} />}
+              onClick={applyDesign}
+            >
+              Use this design
+            </Button>
+          )}
         </Group>
       </Group>
 

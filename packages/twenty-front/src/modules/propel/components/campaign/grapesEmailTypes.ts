@@ -37,6 +37,11 @@ export type GrapesEmailEditorProps = {
   onSaved?: (emailTemplateId: string) => void;
   // Optional "Close" affordance (the Templates tab uses it to return to the grid).
   onClose?: () => void;
+  // OPTIONAL — when provided (the one-message wizard's EMAIL path), the editor
+  // shows a primary "Use this design" action that hands the COMPILED HTML back to
+  // the caller. Purely additive: callers that don't pass it (the Templates tab)
+  // are unchanged. The HTML is the cross-client MJML compile, same as Export.
+  onApplyHtml?: (html: string) => void;
 };
 
 // The lazy wrapper (GrapesEmailBuilder) takes the same props as the editor it

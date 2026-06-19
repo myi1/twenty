@@ -18,7 +18,6 @@ import {
   IconArrowLeft,
   IconArrowsSplit2,
   IconBroadcast,
-  IconLayoutGrid,
   IconMessage,
   IconSparkles,
 } from 'twenty-ui/display';
@@ -27,7 +26,6 @@ import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { PropelMantineProvider } from '@/propel/components/PropelMantineProvider';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import { AiBuilderPanel } from '@/propel/components/campaign/AiBuilderPanel';
-import { GrapesEmailBuilder } from '@/propel/components/campaign/GrapesEmailBuilder';
 import { ManualWizard } from '@/propel/components/campaign/ManualWizard';
 import { SendRulesModal } from '@/propel/components/campaign/SendRulesModal';
 import { useCampaignBuilderData } from '@/propel/hooks/useCampaignBuilderData';
@@ -60,11 +58,11 @@ import {
 
 // The authoring stage once the user has picked a "one message" path. The
 // sequence path leaves this page entirely (navigates to the Sequence editor),
-// so it is intentionally NOT a stage here.
-// 'design' — SPIKE: the GrapesJS + MJML drag-and-drop email builder. Added as a
-// sibling stage so it's a real, clickable surface without disturbing the live
-// manual/AI wizard flow.
-type Stage = 'entry' | 'manual' | 'ai' | 'design';
+// so it is intentionally NOT a stage here. Email design (GrapesJS) is no longer a
+// standalone stage — it's the email-authoring SURFACE invoked from inside the
+// "manual" wizard's EMAIL Compose step (founder UX: design is HOW you author an
+// email, not a separate WHAT).
+type Stage = 'entry' | 'manual' | 'ai';
 
 export const MarketingCampaignBuilderPage = () => {
   const navigate = useNavigate();
@@ -155,13 +153,6 @@ export const MarketingCampaignBuilderPage = () => {
     setHandoffPlan(null);
     setDraft(null);
     setStage('ai');
-  }, []);
-
-  // SPIKE — open the GrapesJS + MJML email builder.
-  const startDesign = useCallback(() => {
-    setHandoffPlan(null);
-    setDraft(null);
-    setStage('design');
   }, []);
 
   const handoffToManual = useCallback((plan: AiPlan) => {
@@ -286,19 +277,6 @@ export const MarketingCampaignBuilderPage = () => {
               onManual={startManual}
               onAi={startAi}
               onSequence={goSequences}
-              onDesign={startDesign}
-            />
-          ) : stage === 'design' ? (
-            // The GrapesJS + MJML email designer. Shared with the Templates tab.
-            // "Save as template" persists the design to the reusable library.
-            <GrapesEmailBuilder
-              mode="campaign"
-              customFields={hub.customFields}
-              onSaved={() => {
-                // A campaign-authored design is now a reusable template; the
-                // builder stays open so the user can keep composing the campaign.
-                void refetch();
-              }}
             />
           ) : stage === 'manual' ? (
             <ManualWizard
@@ -386,12 +364,10 @@ const CreateEntry = ({
   onManual,
   onAi,
   onSequence,
-  onDesign,
 }: {
   onManual: () => void;
   onAi: () => void;
   onSequence: () => void;
-  onDesign: () => void;
 }) => (
   <Center style={{ flex: 1, minHeight: 320 }}>
     <Stack gap="lg" maw={680} w="100%">
@@ -439,18 +415,6 @@ const CreateEntry = ({
           footer={
             <Badge size="sm" variant="light" color="gray">
               Opens the sequence editor
-            </Badge>
-          }
-        />
-        {/* SPIKE — drag-and-drop email designer (GrapesJS + MJML). */}
-        <ChoiceCard
-          icon={<IconLayoutGrid size={22} />}
-          title="Design an email"
-          description="Drag-and-drop email builder — branded blocks, merge tags, cross-client HTML export."
-          onClick={onDesign}
-          footer={
-            <Badge size="sm" variant="light" color="red">
-              SPIKE · GrapesJS + MJML
             </Badge>
           }
         />
