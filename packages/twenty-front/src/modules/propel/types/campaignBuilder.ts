@@ -156,13 +156,37 @@ export interface SendRequestResponse extends RouteEnvelopeError {
 }
 
 // ── /marketing/segment-preview ───────────────────────────────────────────────
+// rulesPreview (P2.5): when the request sets `rulesPreview: true`, the route runs
+// the SAME cap-exclusion pass the materializer applies at fire time over the
+// resolved recipients and returns how many would be skipped for hitting their
+// weekly cap — the honest, deterministic number the Review guardrails surface.
+export interface SegmentRulesPreview {
+  capReached: number;
+  // The send-rules snapshot the cap pass ran with (echoed for the caller; the
+  // guardrails card already has its own copy from /marketing/hub, so this is
+  // informational and intentionally loosely typed).
+  rules?: unknown;
+}
+
 export interface SegmentPreviewResponse extends RouteEnvelopeError {
   ok?: boolean;
   channel?: RealChannel;
   estimate?: number;
   description?: string;
   note?: string;
+  rulesPreview?: SegmentRulesPreview;
 }
+
+// The Review cap-skip preview state (S3 guardrails). How many of the chosen
+// audience would be skipped for having already hit their weekly cap — resolved
+// by the SAME pass the materializer runs at fire time. Honest by construction:
+// 'error' renders as "couldn't check" (never zero-filled), and the count is only
+// trusted in the 'loaded' state.
+export type CapPreview =
+  | { state: 'idle' }
+  | { state: 'loading' }
+  | { state: 'loaded'; capReached: number }
+  | { state: 'error' };
 
 // ── /marketing/save-segment ──────────────────────────────────────────────────
 export interface SaveSegmentResponse extends RouteEnvelopeError {

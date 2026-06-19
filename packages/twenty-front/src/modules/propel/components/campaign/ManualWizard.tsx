@@ -51,11 +51,13 @@ import {
   type AbConfig,
   type AiPlan,
   type CampaignBuilderHubPayload,
+  type CapPreview,
   DEFAULT_AB_CONFIG,
   type DraftCopyResponse,
   type SaveCampaignResponse,
   type SegmentOption,
   type SaveSegmentResponse,
+  type SegmentPreviewResponse,
   type SendRequestResponse,
   type SendRulesPayload,
   type TestSendResponse,
@@ -114,6 +116,10 @@ export const ManualWizard = ({
     description: string;
   } | null>(null);
   const [previewing, setPreviewing] = useState(false);
+  // S3 — the real cap-skip count for the Review guardrails (how many of THIS
+  // audience already hit their weekly cap). Resolved by /marketing/segment-preview
+  // with rulesPreview:true — the same cap pass the materializer runs at fire time.
+  const [capPreview, setCapPreview] = useState<CapPreview>({ state: 'idle' });
 
   const subjectRef = useRef<HTMLInputElement | null>(null);
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
@@ -573,6 +579,45 @@ export const ManualWizard = ({
     }
   }, [campaignId, submitting, scheduleAt, notify, onDone]);
 
+  // ── Review cap-skip preview ─────────────────────────────────────────────────
+  // When the user reaches Review with a chosen segment, resolve the REAL number
+  // of recipients that would be skipped for hitting their weekly cap — the same
+  // pass the materializer runs at fire time (POST /marketing/segment-preview,
+  // rulesPreview:true), keyed to the scheduled day so a future-dated blast
+  // previews against the cap buckets as they'll stand then. Honest: a failed /
+  // unanswerable preview sets 'error' ("couldn't check") and never zero-fills.
+  // Re-runs when the segment, channel, or scheduled instant changes.
+  const scheduledIso =
+    sendMode === 'schedule' ? dubaiLocalToIso(scheduleAt) : null;
+  useEffect(() => {
+    // Only meaningful on Review, and only when there's an audience to resolve.
+    if (activeStep !== 3 || !segmentId) {
+      setCapPreview({ state: 'idle' });
+      return;
+    }
+    let active = true;
+    setCapPreview({ state: 'loading' });
+    void callPropelRoute<SegmentPreviewResponse>('/marketing/segment-preview', {
+      segmentId,
+      channel,
+      rulesPreview: true,
+      ...(scheduledIso ? { scheduledAt: scheduledIso } : {}),
+    }).then((res) => {
+      if (!active) return;
+      // The cap pass only rides when `rulesPreview` is present AND well-formed —
+      // an error envelope (or a route that couldn't resolve the audience) carries
+      // none, so we surface an honest "couldn't check" rather than a fake 0.
+      if (res && res.rulesPreview && typeof res.rulesPreview.capReached === 'number') {
+        setCapPreview({ state: 'loaded', capReached: res.rulesPreview.capReached });
+      } else {
+        setCapPreview({ state: 'error' });
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [activeStep, segmentId, channel, scheduledIso]);
+
   // ── step navigation ────────────────────────────────────────────────────────
   const goNext = useCallback(() => {
     if (activeStep === 0 && !setupReady) return;
@@ -678,6 +723,7 @@ export const ManualWizard = ({
             permitWarning={permitWarning}
             ab={abActive ? ab : null}
             sendRules={sendRules}
+            capPreview={capPreview}
             onEditRules={onEditRules}
           />
         )}
@@ -1261,6 +1307,7 @@ const ReviewStep = ({
   permitWarning,
   ab,
   sendRules,
+  capPreview,
   onEditRules,
 }: {
   name: string;
@@ -1277,6 +1324,7 @@ const ReviewStep = ({
   permitWarning: string | null;
   ab: AbConfig | null;
   sendRules: SendRulesPayload | undefined;
+  capPreview: CapPreview;
   onEditRules?: () => void;
 }) => (
   <Stack gap="md" maw={560}>
@@ -1333,6 +1381,7 @@ const ReviewStep = ({
       channel={channel}
       estimate={estimate}
       scheduledLocal={sendMode === 'schedule' ? scheduleAt : ''}
+      capPreview={capPreview}
       onEditRules={onEditRules}
     />
 
