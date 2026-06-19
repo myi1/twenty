@@ -24,6 +24,7 @@ import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { PropelMantineProvider } from '@/propel/components/PropelMantineProvider';
 import { AiBuilderPanel } from '@/propel/components/campaign/AiBuilderPanel';
 import { ManualWizard } from '@/propel/components/campaign/ManualWizard';
+import { SendRulesModal } from '@/propel/components/campaign/SendRulesModal';
 import { useCampaignBuilderData } from '@/propel/hooks/useCampaignBuilderData';
 import { type AiPlan } from '@/propel/types/campaignBuilder';
 
@@ -56,9 +57,12 @@ type Stage = 'entry' | 'manual' | 'ai';
 
 export const MarketingCampaignBuilderPage = () => {
   const navigate = useNavigate();
-  const { isLoading, ...hub } = useCampaignBuilderData();
+  const { isLoading, refetch, ...hub } = useCampaignBuilderData();
   const [stage, setStage] = useState<Stage>('entry');
   const [handoffPlan, setHandoffPlan] = useState<AiPlan | null>(null);
+  // S3 / Gap B — the graduated Send-Rules editor, opened from the Review
+  // guardrails "Edit rules" link as a modal (no more round-trip to the hub).
+  const [rulesOpen, setRulesOpen] = useState(false);
 
   const goHome = useCallback(() => {
     navigate(AppPath.MarketingHub);
@@ -68,14 +72,23 @@ export const MarketingCampaignBuilderPage = () => {
     navigate(AppPath.MarketingSequenceEditor);
   }, [navigate]);
 
-  // S3 — the Review guardrails "Edit rules" affordance. The send-rules editor
-  // currently lives on the Marketing hub (the in-sandbox Send Rules sheet, not
-  // yet graduated to a fork hero); route there so the user can adjust caps /
-  // quiet hours. When a dedicated rules hero lands, repoint this.
-  // TODO(S8 graduation): repoint to a graduated Send-Rules surface if one ships.
+  // Gap B — open the graduated send-rules editor in place. The card only shows
+  // "Edit rules" when sendRules is present, so the modal always has a singleton
+  // to seed from; guard anyway so a missing payload is a no-op rather than a
+  // crash.
   const goEditRules = useCallback(() => {
-    navigate(AppPath.MarketingHub);
-  }, [navigate]);
+    if (hub.sendRules) setRulesOpen(true);
+  }, [hub.sendRules]);
+
+  // On a successful save, refetch the hub so the Review guardrails summary picks
+  // up the new caps/quiet-hours/Friday-pause live, without leaving Review.
+  const handleRulesClose = useCallback(
+    (changed: boolean) => {
+      setRulesOpen(false);
+      if (changed) void refetch();
+    },
+    [refetch],
+  );
 
   const startManual = useCallback(() => {
     setHandoffPlan(null);
@@ -164,6 +177,10 @@ export const MarketingCampaignBuilderPage = () => {
           )}
         </div>
       </PageContainer>
+
+      {rulesOpen && hub.sendRules && (
+        <SendRulesModal rules={hub.sendRules} onClose={handleRulesClose} />
+      )}
     </PropelMantineProvider>
   );
 };

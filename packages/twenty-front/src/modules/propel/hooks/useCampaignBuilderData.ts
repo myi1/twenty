@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import { type CampaignBuilderHubPayload } from '@/propel/types/campaignBuilder';
 
@@ -41,6 +41,18 @@ export const useCampaignBuilderData = () => {
     };
   }, []);
 
+  // Re-pull the hub after a mutation that changes what the builder reads — e.g.
+  // editing the send rules from the Review guardrails, so the guardrails summary
+  // refreshes live without leaving Review. Fails soft like the initial load: a
+  // null response leaves the last good payload in place (never blanks the UI).
+  const refetch = useCallback(async () => {
+    const payload = await callPropelRoute<CampaignBuilderHubPayload>(
+      '/marketing/hub',
+      {},
+    );
+    if (payload !== null) setHub(payload);
+  }, []);
+
   const data = useMemo(
     () => ({
       segments: hub?.segments ?? EMPTY.segments,
@@ -56,5 +68,5 @@ export const useCampaignBuilderData = () => {
     [hub],
   );
 
-  return { ...data, isLoading };
+  return { ...data, isLoading, refetch };
 };
