@@ -250,6 +250,9 @@ export const GrapesEmailEditor = ({
   onSaved,
   onClose,
   onApplyHtml,
+  onHtmlChange,
+  onProjectChange,
+  hideToolbar,
 }: GrapesEmailEditorProps) => {
   const notify = usePropelToast();
   // The live GrapesJS Editor instance — an imperative handle to a 3rd-party
@@ -257,6 +260,17 @@ export const GrapesEmailEditor = ({
   // pattern PostComposer uses for its imperative refs.
   // oxlint-disable-next-line twenty/no-state-useref
   const editorRef = useRef<Editor | null>(null);
+  // Latest change callbacks held in a ref so the editor's once-mounted listener
+  // always calls the current closures without re-subscribing on every render.
+  // oxlint-disable-next-line twenty/no-state-useref
+  const changeCbRef = useRef({ onHtmlChange, onProjectChange });
+  changeCbRef.current = { onHtmlChange, onProjectChange };
+  // The seed (initial design) is captured ONCE — the editor owns its canvas after
+  // mount and must NOT re-seed when the parent re-renders with a new `initial`
+  // object (which the embedded compose surface does on every body sync). Holding
+  // it in a ref keeps onEditor stable (empty deps) so the canvas never resets.
+  // oxlint-disable-next-line twenty/no-state-useref
+  const initialRef = useRef(initial);
 
   const [exportOpen, setExportOpen] = useState(false);
   const [exportHtml, setExportHtml] = useState('');
@@ -333,17 +347,59 @@ export const GrapesEmailEditor = ({
           }
         }
       };
+      // Debounced compile-and-sync for the EMBEDDED compose surface: the design
+      // IS the content, so we hand the compiled HTML (+ project JSON) back on every
+      // settled edit — no apply button. 400ms after the last change keeps MJML
+      // compiles off the typing hot path. Guarded so it's inert unless a change
+      // callback is wired.
+      let syncTimer: ReturnType<typeof setTimeout> | undefined;
+      const syncContent = () => {
+        const { onHtmlChange: onHtml, onProjectChange: onProject } =
+          changeCbRef.current;
+        if (!onHtml && !onProject) return;
+        if (onHtml) {
+          const { html } = compileHtml(editor);
+          onHtml(html);
+        }
+        if (onProject) {
+          try {
+            onProject(JSON.stringify(editor.getProjectData()));
+          } catch {
+            /* project serialization is best-effort */
+          }
+        }
+      };
+      const queueSync = () => {
+        if (
+          !changeCbRef.current.onHtmlChange &&
+          !changeCbRef.current.onProjectChange
+        )
+          return;
+        if (syncTimer) clearTimeout(syncTimer);
+        syncTimer = setTimeout(syncContent, 400);
+      };
+
       editor.on('component:update', () => {
-        if (repickQueued) return;
-        repickQueued = true;
-        queueMicrotask(repickLogos);
+        if (!repickQueued) {
+          repickQueued = true;
+          queueMicrotask(repickLogos);
+        }
+        queueSync();
       });
+      // Also catch style/attribute edits + add/remove that 'component:update' may
+      // not cover, so the embedded surface stays in sync with visual changes.
+      editor.on(
+        'component:styleUpdate component:add component:remove',
+        queueSync,
+      );
 
       // Restore a saved GrapesJS design if we have one, else the starter. The
-      // project JSON (re-editable) is preferred; bodyMjml is a forward-compat
-      // hook; otherwise the starter skeleton. (Today templates only persist HTML
+      // project JSON (re-editable) is preferred; otherwise the starter skeleton.
+      // Read from the ONCE-captured ref so a parent re-render (the embedded
+      // compose surface re-passes a new `initial` on every body sync) never
+      // re-seeds and wipes the user's canvas. (Today templates only persist HTML
       // in bodyText — see GrapesEmailBuilder's note — so re-open starts fresh.)
-      const seed = initial?.designProjectJson;
+      const seed = initialRef.current?.designProjectJson;
       if (seed) {
         try {
           editor.loadProjectData(JSON.parse(seed));
@@ -355,8 +411,12 @@ export const GrapesEmailEditor = ({
       }
       // Pick the right variant for the seeded design's banners on first load.
       queueMicrotask(repickLogos);
+      // Emit the initial content once so the embedded compose surface has the
+      // starter/restored design as its body immediately (before any user edit).
+      queueSync();
     },
-    [initial],
+    // Stable — seeds once from initialRef; never re-seeds on parent re-render.
+    [],
   );
 
   // Insert a merge tag into the selected text component (or a new text block).
@@ -458,17 +518,23 @@ export const GrapesEmailEditor = ({
 
   return (
     <Stack gap="xs" style={{ flex: 1, minHeight: 0 }}>
-      {/* Toolbar — merge tags + export + save, themed to roughly match Pulse. */}
+      {/* Toolbar — merge tags + export + save, themed to roughly match Pulse.
+          When embedded as the compose surface (hideToolbar), it's trimmed to the
+          essentials: insert merge tag + MJML view + Save as template. The design
+          IS the content (synced live), so there's no Export/"Use this design"
+          here, and no GrapesJS badge cluttering the campaign step. */}
       <Group justify="space-between" wrap="nowrap">
         <Group gap="xs" wrap="nowrap">
-          <Badge
-            size="sm"
-            variant="light"
-            color="red"
-            leftSection={<IconBuildingSkyscraper size={12} />}
-          >
-            GrapesJS · MJML
-          </Badge>
+          {!hideToolbar && (
+            <Badge
+              size="sm"
+              variant="light"
+              color="red"
+              leftSection={<IconBuildingSkyscraper size={12} />}
+            >
+              GrapesJS · MJML
+            </Badge>
+          )}
           <Menu shadow="md" width={220} position="bottom-start">
             <Menu.Target>
               <Button
@@ -514,14 +580,16 @@ export const GrapesEmailEditor = ({
           >
             MJML view
           </Button>
-          <Button
-            size="compact-sm"
-            variant="default"
-            leftSection={<IconCode size={14} />}
-            onClick={exportProductionHtml}
-          >
-            Export HTML
-          </Button>
+          {!hideToolbar && (
+            <Button
+              size="compact-sm"
+              variant="default"
+              leftSection={<IconCode size={14} />}
+              onClick={exportProductionHtml}
+            >
+              Export HTML
+            </Button>
+          )}
           <Button
             size="compact-sm"
             variant={onApplyHtml ? 'default' : 'filled'}
@@ -535,8 +603,8 @@ export const GrapesEmailEditor = ({
           >
             {isTemplateMode ? 'Save template' : 'Save as template'}
           </Button>
-          {/* Primary action when invoked from the one-message wizard EMAIL path:
-              hand the compiled HTML back to the campaign. */}
+          {/* Explicit-apply action (sequence email STEP modal). NOT shown when
+              embedded as the compose surface — there the design syncs live. */}
           {onApplyHtml && (
             <Button
               size="compact-sm"

@@ -4,9 +4,7 @@ import {
   Box,
   Button,
   Card,
-  Grid,
   Group,
-  Loader,
   Popover,
   SegmentedControl,
   Select,
@@ -18,10 +16,8 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   IconAlertCircle,
-  IconArrowLeft,
   IconCheck,
   IconDeviceFloppy,
-  IconLayoutGrid,
   IconMail,
   IconPlus,
   IconSparkles,
@@ -35,25 +31,17 @@ import {
   dubaiLocalToIso,
   envelopeMessage,
   LISTING_MERGE_FIELDS,
-  listingPreviewSamples,
-  PREVIEW_SAMPLES,
   type FormatAction,
 } from '@/propel/lib/campaignBuilderConfig';
-import {
-  type MergeField,
-  type MergeValues,
-  parseTemplate,
-} from '@/propel/lib/campaignRenderer';
+import { type MergeField, parseTemplate } from '@/propel/lib/campaignRenderer';
 import {
   previewTemplateBody,
   renderParams,
   WA_PREVIEW_SAMPLES,
 } from '@/propel/lib/waTemplateRenderer';
 import { AbTestPanel } from '@/propel/components/campaign/AbTestPanel';
-import { ComposeToolbar } from '@/propel/components/campaign/ComposeToolbar';
 import { GrapesEmailBuilder } from '@/propel/components/campaign/GrapesEmailBuilder';
 import { GuardrailsCard } from '@/propel/components/campaign/GuardrailsCard';
-import { EmailPreview } from '@/propel/components/campaign/EmailPreview';
 import { SegmentCreateModal } from '@/propel/components/campaign/SegmentCreateModal';
 import {
   type AbConfig,
@@ -125,14 +113,6 @@ export const ManualWizard = ({
   const [createdSegments, setCreatedSegments] = useState<SegmentOption[]>([]);
   const [segmentModalOpen, setSegmentModalOpen] = useState(false);
   const [steer, setSteer] = useState('');
-  // EMAIL design surface — the GrapesJS builder opens as a full-cover overlay over
-  // the wizard (founder UX: designing the email is HOW you author it, reached from
-  // the EMAIL Compose step, not a separate top-level "what"). "Use this design"
-  // brings the compiled HTML back into bodyText. NOTE: the email SEND drain today
-  // markdown-renders bodyText into a fixed branded shell (campaign-renderer), so a
-  // rich GrapesJS HTML body needs a backend HTML-body send mode before it sends
-  // verbatim — flagged inline in the Compose step + in the design overlay.
-  const [designOpen, setDesignOpen] = useState(false);
   const [permitWarning, setPermitWarning] = useState<string | null>(null);
   const [genState, setGenState] = useState<'idle' | 'generating' | 'failed'>(
     'idle',
@@ -160,7 +140,6 @@ export const ManualWizard = ({
   const [capPreview, setCapPreview] = useState<CapPreview>({ state: 'idle' });
 
   const subjectRef = useRef<HTMLInputElement | null>(null);
-  const bodyRef = useRef<HTMLTextAreaElement | null>(null);
 
   // ── A/B test slice (S2) ────────────────────────────────────────────────────
   // Kept as ONE orthogonal slice (an AbConfig object) rather than scattered
@@ -235,22 +214,8 @@ export const ManualWizard = ({
         : segmentSafeEmailKeys,
     [listingFieldsActive, segmentSafeEmailKeys],
   );
-  const emailPreviewSamples = useMemo<MergeValues>(() => {
-    const out: MergeValues = { ...PREVIEW_SAMPLES };
-    for (const cf of customFields)
-      (out as Record<string, string>)[cf.key] = cf.value;
-    return out;
-  }, [customFields]);
-  const composePreviewSamples = useMemo<MergeValues>(
-    () =>
-      listingFieldsActive
-        ? {
-            ...emailPreviewSamples,
-            ...listingPreviewSamples(listing?.name ?? null),
-          }
-        : emailPreviewSamples,
-    [listingFieldsActive, emailPreviewSamples, listing],
-  );
+  // The email live-preview sample maps were removed with the inline EmailPreview —
+  // the GrapesJS builder's own canvas is the preview now.
 
   // ── hydrate from an AI plan handoff (once) ─────────────────────────────────
   const hydratedRef = useRef(false);
@@ -383,15 +348,9 @@ export const ManualWizard = ({
     [],
   );
 
-  const insertToken = useCallback(
-    (field: string) => insertTokenInto(bodyRef, bodyText, setBodyText, field),
-    [insertTokenInto, bodyText],
-  );
-  const applyFormat = useCallback(
-    (action: FormatAction) =>
-      applyFormatTo(bodyRef, bodyText, setBodyText, action),
-    [applyFormatTo, bodyText],
-  );
+  // insertToken/applyFormat (A-variant body) were removed with the email markdown
+  // editor — EMAIL compose is now the GrapesJS builder. The shared helpers
+  // (insertTokenInto/applyFormatTo) stay for the A/B variant-B text inputs below.
   const insertTokenB = useCallback(
     (field: string) =>
       insertTokenInto(bodyBRef, ab.bodyB, (v) => patchAb({ bodyB: v }), field),
@@ -810,44 +769,6 @@ export const ManualWizard = ({
 
   const estimate = segment?.lastResolvedCount ?? 0;
 
-  // EMAIL design surface — full-cover GrapesJS builder over the wizard. Opened
-  // from the Compose step's "Design in builder"; "Use this design" returns the
-  // compiled HTML into bodyText, "Close" discards. The wizard's state is preserved
-  // underneath (this is a view swap, not a remount).
-  if (designOpen) {
-    return (
-      <Stack gap="sm" style={{ flex: 1, minHeight: 0 }}>
-        <Group justify="space-between" wrap="nowrap">
-          <Button
-            size="compact-sm"
-            variant="subtle"
-            color="gray"
-            leftSection={<IconArrowLeft size={14} />}
-            onClick={() => setDesignOpen(false)}
-          >
-            Back to the campaign
-          </Button>
-          <Text size="xs" c="dimmed" ta="right" maw={420}>
-            Designing the email. “Use this design” brings the layout into your
-            campaign body.
-          </Text>
-        </Group>
-        <Box style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-          <GrapesEmailBuilder
-            mode="campaign"
-            customFields={customFields}
-            onApplyHtml={(html) => {
-              setBodyText(html);
-              setDesignOpen(false);
-              notify('Design applied to the campaign body.', 'success');
-            }}
-            onClose={() => setDesignOpen(false)}
-          />
-        </Box>
-      </Stack>
-    );
-  }
-
   return (
     <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
       <PropelStepper active={activeStep} />
@@ -885,13 +806,8 @@ export const ManualWizard = ({
             onBody={setBodyText}
             language={language}
             subjectRef={subjectRef}
-            bodyRef={bodyRef}
             mergeFields={composeMergeFields}
             customFields={customFields}
-            onInsertToken={insertToken}
-            onFormat={applyFormat}
-            previewSamples={composePreviewSamples}
-            permitNumberSample={listingFieldsActive ? 'P-DLD-00000' : undefined}
             steer={steer}
             onSteer={setSteer}
             genState={genState}
@@ -909,7 +825,6 @@ export const ManualWizard = ({
             onFormatB={applyFormatB}
             copyTokensFillableB={copyTokensFillableB}
             waTemplates={approvedTemplates}
-            onOpenDesigner={() => setDesignOpen(true)}
             bodyIsDesignHtml={isLikelyHtml(bodyText)}
           />
         )}
@@ -1217,13 +1132,8 @@ const ComposeStep = ({
   onBody,
   language,
   subjectRef,
-  bodyRef,
   mergeFields,
   customFields,
-  onInsertToken,
-  onFormat,
-  previewSamples,
-  permitNumberSample,
   steer,
   onSteer,
   genState,
@@ -1241,7 +1151,6 @@ const ComposeStep = ({
   onFormatB,
   copyTokensFillableB,
   waTemplates,
-  onOpenDesigner,
   bodyIsDesignHtml,
 }: {
   channel: 'EMAIL' | 'WHATSAPP';
@@ -1251,13 +1160,8 @@ const ComposeStep = ({
   onBody: (v: string) => void;
   language: 'EN' | 'AR';
   subjectRef: React.Ref<HTMLInputElement>;
-  bodyRef: React.Ref<HTMLTextAreaElement>;
   mergeFields: MergeField[];
   customFields: { id: string; key: string; value: string; label: string }[];
-  onInsertToken: (field: string) => void;
-  onFormat: (action: FormatAction) => void;
-  previewSamples: MergeValues;
-  permitNumberSample?: string;
   steer: string;
   onSteer: (v: string) => void;
   genState: 'idle' | 'generating' | 'failed';
@@ -1276,9 +1180,7 @@ const ComposeStep = ({
   copyTokensFillableB: boolean;
   // Full approved-template records for the WhatsApp A/B variant-B picker.
   waTemplates: WaTemplateOption[];
-  // Open the GrapesJS email designer (EMAIL only).
-  onOpenDesigner: () => void;
-  // True when the body looks like designer-emitted HTML (changes the body hint).
+  // True when the body is designer-emitted HTML (shows the send-path-gap notice).
   bodyIsDesignHtml: boolean;
 }) => {
   if (channel === 'WHATSAPP') {
@@ -1330,176 +1232,139 @@ const ComposeStep = ({
   }
 
   return (
-    <Grid gutter="lg" style={{ minHeight: 0 }}>
-      <Grid.Col span={{ base: 12, md: 6 }}>
-        <Stack gap="sm">
-          <Group justify="space-between" align="flex-end">
-            <Text size="sm" fw={600} c="var(--mantine-color-text)">
-              Email content
-            </Text>
-            <Group gap="xs" wrap="nowrap">
-              {/* Design in builder — opens the GrapesJS email designer in-flow. */}
+    // EMAIL Compose = the embedded GrapesJS builder IS the surface (founder UX:
+    // "compose should just be the GrapesJS builder"). Subject sits above the
+    // canvas; the builder's live canvas is the preview (so no separate preview
+    // column). The design syncs to bodyText continuously via onHtmlChange — no
+    // markdown textarea, no "Design in builder" button, no HTML-into-a-textfield.
+    <Stack gap="sm" style={{ flex: 1, minHeight: 0 }}>
+      <Group justify="space-between" align="flex-end">
+        <Text size="sm" fw={600} c="var(--mantine-color-text)">
+          Email content
+        </Text>
+        {/* "Draft with AI" stays — it pre-fills the builder's text. */}
+        <Popover width={300} position="bottom-end" withArrow shadow="md">
+          <Popover.Target>
+            <Button
+              size="compact-sm"
+              variant="light"
+              color="red"
+              leftSection={<IconSparkles size={14} />}
+              loading={genState === 'generating'}
+            >
+              Draft with AI
+            </Button>
+          </Popover.Target>
+          <Popover.Dropdown>
+            <Stack gap="xs">
+              <Text size="xs" c="dimmed">
+                Optional steer — what should the copy emphasize? The AI text
+                pre-fills the builder; keep designing from there.
+              </Text>
+              <Textarea
+                autosize
+                minRows={2}
+                maxRows={4}
+                placeholder="e.g. warm, low-pressure, one clear reply prompt"
+                value={steer}
+                onChange={(e) => onSteer(e.currentTarget.value)}
+              />
               <Button
                 size="compact-sm"
-                variant="light"
                 color="red"
-                leftSection={<IconLayoutGrid size={14} />}
-                onClick={onOpenDesigner}
+                loading={genState === 'generating'}
+                onClick={onGenerate}
               >
-                Design in builder
+                Generate
               </Button>
-              <Popover width={300} position="bottom-end" withArrow shadow="md">
-                <Popover.Target>
-                  <Button
-                    size="compact-sm"
-                    variant="light"
-                    color="red"
-                    leftSection={<IconSparkles size={14} />}
-                    loading={genState === 'generating'}
-                  >
-                    Draft with AI
-                  </Button>
-                </Popover.Target>
-                <Popover.Dropdown>
-                  <Stack gap="xs">
-                    <Text size="xs" c="dimmed">
-                      Optional steer — what should the copy emphasize?
-                    </Text>
-                    <Textarea
-                      autosize
-                      minRows={2}
-                      maxRows={4}
-                      placeholder="e.g. warm, low-pressure, one clear reply prompt"
-                      value={steer}
-                      onChange={(e) => onSteer(e.currentTarget.value)}
-                    />
-                    <Button
-                      size="compact-sm"
-                      color="red"
-                      loading={genState === 'generating'}
-                      onClick={onGenerate}
-                    >
-                      Generate
-                    </Button>
-                    {genState === 'failed' && (
-                      <Text size="xs" c="red">
-                        Generation failed — write the copy manually.
-                      </Text>
-                    )}
-                  </Stack>
-                </Popover.Dropdown>
-              </Popover>
-            </Group>
-          </Group>
+              {genState === 'failed' && (
+                <Text size="xs" c="red">
+                  Generation failed — design the email manually.
+                </Text>
+              )}
+            </Stack>
+          </Popover.Dropdown>
+        </Popover>
+      </Group>
 
-          {/* When the body is designer-emitted HTML, the current send drain (which
-              markdown-renders the body into a fixed branded shell) can't send it
-              verbatim — flag it honestly. Sending rich HTML as-is needs the backend
-              HTML-body mode (out of scope for this staging UI iteration). */}
-          {bodyIsDesignHtml && (
-            <Alert
-              color="yellow"
-              variant="light"
-              icon={<IconAlertCircle size={16} />}
-            >
-              This body is a designed HTML email. Heads up: the current send
-              still renders the body as text into the standard branded layout,
-              so the rich design won’t send pixel-for-pixel until HTML-email
-              sending is enabled. You can keep designing, save it as a template,
-              or switch back to typed copy.
-            </Alert>
-          )}
+      <TextInput
+        ref={subjectRef}
+        label="Subject"
+        placeholder="Subject line"
+        value={subject}
+        onChange={(e) => onSubject(e.currentTarget.value)}
+      />
 
-          <TextInput
-            ref={subjectRef}
-            label="Subject"
-            placeholder="Subject line"
-            value={subject}
-            onChange={(e) => onSubject(e.currentTarget.value)}
-          />
-
-          <Box>
-            <Text size="sm" fw={600} mb={6} c="var(--mantine-color-text)">
-              Body
-            </Text>
-            <ComposeToolbar
-              mergeFields={mergeFields}
-              customFields={customFields}
-              onFormat={onFormat}
-              onInsertToken={onInsertToken}
-            />
-            <Textarea
-              ref={bodyRef}
-              mt={8}
-              autosize
-              minRows={10}
-              maxRows={18}
-              placeholder={
-                'Hi {{firstName}},\n\nWrite your message here. Use **bold**, lists, [links](https://…) and [[Buttons]](https://…).'
-              }
-              value={bodyText}
-              onChange={(e) => onBody(e.currentTarget.value)}
-            />
-          </Box>
-
-          {!copyTokensFillable && (
-            <Alert
-              color="red"
-              variant="light"
-              icon={<IconAlertCircle size={16} />}
-            >
-              Your copy uses a merge field this campaign can&rsquo;t fill — it
-              would send blank. Remove it or attach a listing.
-            </Alert>
-          )}
-          {permitWarning && (
-            <Alert
-              color="yellow"
-              variant="light"
-              icon={<IconAlertCircle size={16} />}
-            >
-              {permitWarning}
-            </Alert>
-          )}
-
-          <AbTestPanel
-            ab={ab}
-            onChange={onAbChange}
-            channel="EMAIL"
-            subjectBRef={subjectBRef}
-            bodyBRef={bodyBRef}
-            mergeFields={mergeFields}
-            customFields={customFields}
-            onInsertTokenB={onInsertTokenB}
-            onFormatB={onFormatB}
-            copyTokensFillableB={copyTokensFillableB}
-            waTemplates={waTemplates}
-            waTemplateAId={null}
-          />
-        </Stack>
-      </Grid.Col>
-      <Grid.Col span={{ base: 12, md: 6 }}>
-        <Stack gap="xs">
-          <Text size="sm" fw={600} c="var(--mantine-color-text)">
-            Live preview
+      {/* The send-path-gap notice (kept per #58): the design syncs to the body,
+          but the send drain still text-renders it into the standard layout until
+          HTML-email sending lands. This is backend work, NOT this compose UX. */}
+      {bodyIsDesignHtml && (
+        <Alert
+          color="yellow"
+          variant="light"
+          py={6}
+          icon={<IconAlertCircle size={16} />}
+        >
+          <Text size="xs">
+            Heads up: HTML-email sending isn’t enabled yet, so this design sends
+            as text in the standard branded layout (not pixel-for-pixel) for
+            now.
           </Text>
-          <EmailPreview
-            subject={subject}
-            body={bodyText}
-            language={language}
-            values={previewSamples}
-            permitNumber={permitNumberSample}
-          />
-          <Text size="xs" c="dimmed">
-            The real branded email, rendered with sample values. Send a test
-            from Review to see it in your inbox.
-            {permitNumberSample
-              ? ' The Trakheesi permit number appears in the footer — required on every listing promo.'
-              : ''}
+        </Alert>
+      )}
+      {!copyTokensFillable && (
+        <Alert
+          color="red"
+          variant="light"
+          py={6}
+          icon={<IconAlertCircle size={16} />}
+        >
+          <Text size="xs">
+            Your email uses a merge field this campaign can’t fill — it would
+            send blank. Remove it or attach a listing.
           </Text>
-        </Stack>
-      </Grid.Col>
-    </Grid>
+        </Alert>
+      )}
+      {permitWarning && (
+        <Alert
+          color="yellow"
+          variant="light"
+          py={6}
+          icon={<IconAlertCircle size={16} />}
+        >
+          <Text size="xs">{permitWarning}</Text>
+        </Alert>
+      )}
+
+      {/* THE compose surface — the embedded GrapesJS email builder. It seeds from
+          the current body (so AI-drafted copy / a re-edited draft carry in), syncs
+          the compiled HTML back to bodyText live, and its trimmed toolbar offers
+          merge-tag insert + MJML view + Save-as-template. */}
+      <Box style={{ flex: 1, minHeight: 460, display: 'flex' }}>
+        <GrapesEmailBuilder
+          mode="campaign"
+          customFields={customFields}
+          hideToolbar
+          initial={{ subject, bodyText, languageCode: language }}
+          onHtmlChange={onBody}
+        />
+      </Box>
+
+      <AbTestPanel
+        ab={ab}
+        onChange={onAbChange}
+        channel="EMAIL"
+        subjectBRef={subjectBRef}
+        bodyBRef={bodyBRef}
+        mergeFields={mergeFields}
+        customFields={customFields}
+        onInsertTokenB={onInsertTokenB}
+        onFormatB={onFormatB}
+        copyTokensFillableB={copyTokensFillableB}
+        waTemplates={waTemplates}
+        waTemplateAId={null}
+      />
+    </Stack>
   );
 };
 

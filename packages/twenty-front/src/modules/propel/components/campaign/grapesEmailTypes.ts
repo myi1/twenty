@@ -37,11 +37,27 @@ export type GrapesEmailEditorProps = {
   onSaved?: (emailTemplateId: string) => void;
   // Optional "Close" affordance (the Templates tab uses it to return to the grid).
   onClose?: () => void;
-  // OPTIONAL — when provided (the one-message wizard's EMAIL path), the editor
-  // shows a primary "Use this design" action that hands the COMPILED HTML back to
-  // the caller. Purely additive: callers that don't pass it (the Templates tab)
-  // are unchanged. The HTML is the cross-client MJML compile, same as Export.
+  // OPTIONAL — when provided (e.g. a sequence email STEP modal), the editor shows
+  // a primary "Use this design" action that hands the COMPILED HTML back to the
+  // caller on click. Purely additive: callers that don't pass it are unchanged.
   onApplyHtml?: (html: string) => void;
+  // OPTIONAL — when provided, the editor is the EMBEDDED compose surface (the
+  // one-message wizard's EMAIL Compose step). The design IS the content: the
+  // compiled HTML is synced back continuously (debounced) on every edit, so there
+  // is NO explicit apply button — the builder simply IS the email. Passing this
+  // ALSO hides the "Use this design"/"Close" affordances (they don't apply when
+  // embedded as the step itself). Additive; callers that don't pass it are
+  // unchanged. The HTML is the cross-client MJML compile, same as Export.
+  onHtmlChange?: (html: string) => void;
+  // OPTIONAL — fired (debounced) with the GrapesJS project JSON alongside
+  // onHtmlChange, so the embedding surface can persist a re-editable snapshot if a
+  // place to store it exists. (No backing field today — see GrapesEmailTemplateSeed
+  // — so the wizard ignores it for now; wired so the plumbing is ready.)
+  onProjectChange?: (projectJson: string) => void;
+  // OPTIONAL — hide the editor's own toolbar chrome (badge, MJML view, Export,
+  // Save-as-template) when the embedding surface supplies its own controls. Used
+  // by the embedded compose surface to keep the step clean (Subject + canvas).
+  hideToolbar?: boolean;
 };
 
 // The lazy wrapper (GrapesEmailBuilder) takes the same props as the editor it
