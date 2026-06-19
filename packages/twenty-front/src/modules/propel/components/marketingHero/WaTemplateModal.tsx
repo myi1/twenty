@@ -3,6 +3,7 @@ import {
   Box,
   Button,
   Group,
+  List,
   Modal,
   SegmentedControl,
   Stack,
@@ -11,44 +12,66 @@ import {
   TextInput,
 } from '@mantine/core';
 import { useEffect, useMemo, useState } from 'react';
+import { IconTrash } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
+import {
+  bodyParamCount,
+  bodyPlaceholdersValid,
+  DRAIN_POPULATED_FIELDS,
+  hasNonNumericPlaceholder,
+  previewTemplateBody,
+  renderParams,
+  validateCreateInput,
+  WA_PARAM_FIELDS,
+  type WaButtonInput,
+  type WaHeaderInput,
+  type WaMergeField,
+  type WaMergeValues,
+  type WaTemplateCreateInput,
+} from '@/propel/lib/waTemplate';
 import { type WaTemplateOption } from '@/propel/types/marketingHome';
 
 // Mantine modal rebuild of the legacy WhatsApp TemplateEditorSheet
-// (marketing-cloud-tpleditors.tsx). WhatsApp templates are pre-approved by Meta:
-// the editor captures the EXACT body Meta reviews plus the positional {{1..n}} →
-// merge-field binding (paramMap, APPEND-ONLY — the click order IS the {{n}} order).
-// "Save draft" persists via POST /marketing/save-template; "Submit to Meta" sends
-// the typed create-input to POST /marketing/wa-template-create.
+// (marketing-cloud-tpleditors.tsx), brought to FULL parity. WhatsApp templates are
+// pre-approved by Meta: the editor captures the EXACT body Meta reviews plus the
+// positional {{1..n}} → merge-field binding (paramMap, APPEND-ONLY — the click
+// order IS the {{n}} order). "Save draft" persists via POST /marketing/save-template;
+// "Submit to Meta" sends the typed create-input to POST /marketing/wa-template-create.
 //
-// PARITY NOTE: the legacy editor mirrored the FULL Meta create-input validation
-// client-side (wa-template-create.validateCreateInput) + header/footer/buttons
-// component assembly + the drain-aware placeholder renderer (wa-template-renderer).
-// Those libs are NOT ported into twenty-front here; this rebuild keeps the
-// essential client gates (Meta name format + a strict numbered-placeholder
-// sequence check that matches the save-template route) and a STATIC TEXT header +
-// footer, and relies on the wa-template-create route as the authoritative Meta
-// validator — surfacing its error/operatorAction verbatim. Submitting buttons /
-// media headers and the inline "X things to fix" mirror are the remaining parity
-// gap (see the TODO at the bottom). The body→paramMap binding, bodyExample, and
-// save are full-fidelity.
+// PARITY (matches the legacy completeness, not just the route as sole validator):
+//   • client-side Meta-validation mirror (validateCreateInput) → the prominent
+//     "N things to fix" submit BLOCKER, reusing the same pure helpers
+//     (waTemplate.ts — the fork-local port of wa-template-create + wa-template-renderer);
+//   • the FULL optional-component editor: header None/Text/Image/Video/Document
+//     (media headers take an example handle), QUICK_REPLY + URL + PHONE_NUMBER
+//     buttons with per-type limits, body sample-value inputs persisted via bodyExample;
+//   • the drain-aware FILLED preview (previewTemplateBody + renderParams) — the
+//     same substitution the hub preview + rendered-content hash use.
 
-// The merge fields the drain can populate for a WhatsApp positional param — the
-// exact DRAIN_POPULATED_FIELDS set the save route gates against.
-const WA_BINDING_FIELDS = [
-  'firstName',
-  'lastName',
-  'fullName',
-  'email',
-  'phone',
-  'listingTitle',
-  'permitNumber',
-  'agentName',
-  'agentPhone',
-  'agentEmail',
-  'officeName',
-];
+// Sample fills for the live preview — covers EVERY field the drain can populate
+// (DRAIN_POPULATED_FIELDS): the recipient identity set, the assigned-agent set, the
+// office singleton, and the listing/recipient snapshot. Cosmetic; real sends fill
+// from live data.
+const TEMPLATE_PREVIEW_SAMPLES: WaMergeValues = {
+  firstName: 'Sara',
+  lastName: 'Ahmed',
+  fullName: 'Sara Ahmed',
+  email: 'sara.ahmed@example.com',
+  phone: '+971 50 555 6666',
+  agentName: 'John Carter',
+  agentPhone: '+971 50 333 4444',
+  agentEmail: 'john.carter@remax.ae',
+  officeName: 'RE/MAX Hub',
+  listingTitle: 'Marina View 2BR',
+  permitNumber: 'RERA-12345',
+};
+
+// WhatsApp vocabulary that is valid but NOT yet auto-filled by the drain — shown as
+// a read-only reference so the catalog is honest about what can/can't bind.
+const WA_NOT_YET_FILLABLE = WA_PARAM_FIELDS.filter(
+  (f) => !DRAIN_POPULATED_FIELDS.includes(f),
+);
 
 const TPL_STATUSES = [
   'DRAFT',
@@ -64,31 +87,27 @@ const SUBMIT_LOCALE: Record<'EN' | 'AR', string> = { EN: 'en_US', AR: 'ar' };
 const titleCase = (s: string): string =>
   s ? s.charAt(0) + s.slice(1).toLowerCase() : s;
 
-// Distinct numbered placeholders the body uses (e.g. {{1}}, {{2}}…). Reuse counts
-// once. Mirrors the count side of the route's bodyPlaceholdersValid contract.
-const distinctBodyParams = (body: string): number[] => {
-  const nums = new Set<number>();
-  for (const m of body.matchAll(/\{\{\s*(\d+)\s*\}\}/g)) {
-    nums.add(Number(m[1]));
-  }
-  return [...nums].sort((a, b) => a - b);
-};
+// ── optional-component editor state (Meta submit only; not persisted locally) ──
+// HEADER / FOOTER / BUTTONS aren't drain-bound, so they ride into Meta's components
+// schema at submit time and aren't stored on the local whatsappTemplate row.
+type HeaderFormat = 'NONE' | 'TEXT' | 'IMAGE' | 'VIDEO' | 'DOCUMENT';
+type EditorButton =
+  | { type: 'QUICK_REPLY'; text: string }
+  | { type: 'URL'; text: string; url: string; example: string }
+  | { type: 'PHONE_NUMBER'; text: string; phoneNumber: string };
 
-// A non-numeric placeholder ({{name}}) is invalid for WhatsApp.
-const hasNonNumericPlaceholder = (body: string): boolean =>
-  /\{\{\s*[a-zA-Z_]/.test(body);
+const BUTTON_KINDS: { v: EditorButton['type']; label: string }[] = [
+  { v: 'QUICK_REPLY', label: 'Quick reply' },
+  { v: 'URL', label: 'Visit URL' },
+  { v: 'PHONE_NUMBER', label: 'Call' },
+];
 
-// The body's distinct {{n}} must be exactly {1..N} where N = paramMap.length
-// (numbered in range, no gaps) — the same contract the save-template route enforces.
-const placeholdersValid = (body: string, paramCount: number): boolean => {
-  if (hasNonNumericPlaceholder(body)) return false;
-  const nums = distinctBodyParams(body);
-  if (nums.length !== paramCount) return false;
-  for (let i = 0; i < paramCount; i += 1) {
-    if (nums[i] !== i + 1) return false;
-  }
-  return true;
-};
+const newButton = (type: EditorButton['type']): EditorButton =>
+  type === 'URL'
+    ? { type: 'URL', text: '', url: '', example: '' }
+    : type === 'PHONE_NUMBER'
+      ? { type: 'PHONE_NUMBER', text: '', phoneNumber: '' }
+      : { type: 'QUICK_REPLY', text: '' };
 
 export const WaTemplateModal = ({
   initial,
@@ -111,16 +130,25 @@ export const WaTemplateModal = ({
     initial?.bodyExample ?? [],
   );
   const [status, setStatus] = useState<string>(initial?.status ?? 'DRAFT');
+  // Optional components — submit-only, not persisted on the local row.
+  const [headerFormat, setHeaderFormat] = useState<HeaderFormat>('NONE');
   const [headerText, setHeaderText] = useState('');
+  const [headerExample, setHeaderExample] = useState('');
   const [footer, setFooter] = useState('');
+  const [buttons, setButtons] = useState<EditorButton[]>([]);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState<{ id: string } | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  // The distinct {{n}} the body needs sample values for (1..k). Reuse counts once.
+  const bodyParams = useMemo(() => bodyParamCount(bodyText), [bodyText]);
+
   // Append-only binding: the chip adds {{n}} at the end and pushes its field.
-  const appendParam = (key: string) => {
-    setBodyText((b) => `${b}${b && !b.endsWith(' ') ? ' ' : ''}{{${paramMap.length + 1}}}`);
+  const appendParam = (key: WaMergeField) => {
+    setBodyText(
+      (b) => `${b}${b && !b.endsWith(' ') ? ' ' : ''}{{${paramMap.length + 1}}}`,
+    );
     setParamMap((m) => [...m, key]);
   };
   const clearParams = () => {
@@ -135,12 +163,23 @@ export const WaTemplateModal = ({
     [bodyText],
   );
   const seqOk = useMemo(
-    () => placeholdersValid(bodyText, paramMap.length),
+    () => bodyPlaceholdersValid(bodyText, paramMap.length),
     [bodyText, paramMap.length],
   );
-  const bodyParamCount = useMemo(
-    () => distinctBodyParams(bodyText).length,
-    [bodyText],
+
+  // Drain-aware FILLED preview — the same substitution the hub preview + the
+  // rendered-content hash use (NOT what's sent: Meta renders from the approved body).
+  const previewBody = useMemo(
+    () =>
+      previewTemplateBody(
+        bodyText,
+        renderParams(
+          paramMap as WaMergeField[],
+          TEMPLATE_PREVIEW_SAMPLES,
+          languageCode,
+        ).params,
+      ),
+    [bodyText, paramMap, languageCode],
   );
 
   // Editing a reviewed template: any Meta-reviewed field changing invalidates the
@@ -166,8 +205,79 @@ export const WaTemplateModal = ({
   // A template managed in Meta (has a Meta id OR status !== DRAFT) is not
   // resubmittable from here — mirrors the server's editTemplateId gate.
   const alreadyInMeta = Boolean(
-    initial && (initial.metaTemplateId || (initial.status && initial.status !== 'DRAFT')),
+    initial &&
+      (initial.metaTemplateId ||
+        (initial.status && initial.status !== 'DRAFT')),
   );
+
+  // Assemble the typed create-input from editor state (mirrors the route's parse).
+  const createInput = useMemo<WaTemplateCreateInput>(() => {
+    const header: WaHeaderInput | undefined =
+      headerFormat === 'TEXT' && headerText.trim()
+        ? {
+            format: 'TEXT',
+            text: headerText,
+            example: headerExample.trim() || undefined,
+          }
+        : headerFormat === 'IMAGE' ||
+            headerFormat === 'VIDEO' ||
+            headerFormat === 'DOCUMENT'
+          ? {
+              format: headerFormat,
+              example: headerExample.trim() || undefined,
+            }
+          : undefined;
+    const btns: WaButtonInput[] = buttons.map((b) =>
+      b.type === 'URL'
+        ? {
+            type: 'URL',
+            text: b.text,
+            url: b.url,
+            example: b.example.trim() || undefined,
+          }
+        : b.type === 'PHONE_NUMBER'
+          ? { type: 'PHONE_NUMBER', text: b.text, phoneNumber: b.phoneNumber }
+          : { type: 'QUICK_REPLY', text: b.text },
+    );
+    return {
+      name: name.trim(),
+      language: SUBMIT_LOCALE[languageCode],
+      category,
+      bodyText,
+      bodyExample: bodyExample.slice(0, bodyParams.count),
+      paramMap,
+      header,
+      footer: footer.trim() || undefined,
+      buttons: btns,
+    };
+  }, [
+    name,
+    languageCode,
+    category,
+    bodyText,
+    bodyExample,
+    bodyParams.count,
+    paramMap,
+    headerFormat,
+    headerText,
+    headerExample,
+    footer,
+    buttons,
+  ]);
+
+  // Client-mirrored Meta validation — the Submit button gates on the same checks
+  // the route runs server-side, so a submit the route would reject can't fire.
+  const submitProblems = useMemo(
+    () => validateCreateInput(createInput),
+    [createInput],
+  );
+  // !saving guards a save→submit race.
+  const canSubmit =
+    submitProblems.length === 0 &&
+    !submitting &&
+    submitted === null &&
+    !saving &&
+    !alreadyInMeta;
 
   const save = async () => {
     if (!canSave) return;
@@ -184,7 +294,7 @@ export const WaTemplateModal = ({
       category,
       bodyText,
       paramMap,
-      bodyExample: bodyExample.slice(0, bodyParamCount),
+      bodyExample: bodyExample.slice(0, bodyParams.count),
       status,
     });
     setSaving(false);
@@ -202,19 +312,6 @@ export const WaTemplateModal = ({
     notify(initial ? 'Template updated.' : 'Template created.', 'success');
     onClose(true);
   };
-
-  // Submit the typed create-input to Meta. The route is the authoritative Meta
-  // validator; on ENV_MISSING (e.g. staging without WABA creds) it returns a typed
-  // envelope we surface as a toast. Server gates name/body/example/buttons.
-  const canSubmit =
-    name.trim() !== '' &&
-    nameOk &&
-    seqOk &&
-    bodyText.trim() !== '' &&
-    !submitting &&
-    submitted === null &&
-    !saving &&
-    !alreadyInMeta;
 
   const submitToMeta = async () => {
     if (!canSubmit) return;
@@ -235,14 +332,11 @@ export const WaTemplateModal = ({
       language: SUBMIT_LOCALE[languageCode],
       category,
       bodyText,
-      bodyExample: bodyExample.slice(0, bodyParamCount),
+      bodyExample: createInput.bodyExample,
       paramMap,
-      header:
-        headerText.trim() !== ''
-          ? { format: 'TEXT', text: headerText.trim() }
-          : undefined,
-      footer: footer.trim() !== '' ? footer.trim() : undefined,
-      buttons: [],
+      header: createInput.header,
+      footer: createInput.footer,
+      buttons: createInput.buttons,
     });
     setSubmitting(false);
     if (res === null || res.error !== undefined || res.id === undefined) {
@@ -251,13 +345,22 @@ export const WaTemplateModal = ({
           ? res.error || "WhatsApp isn't configured on this environment."
           : res?.error || 'Could not submit the template to Meta.';
       setSubmitError(res?.code === 'ENV_MISSING' ? null : msg);
-      notify(res?.code === 'ENV_MISSING' ? msg : res?.operatorAction || msg, 'error');
+      notify(
+        res?.code === 'ENV_MISSING' ? msg : res?.operatorAction || msg,
+        'error',
+      );
       return;
     }
     setSubmitted({ id: res.id });
-    if (res.warning !== undefined && res.warning !== '') notify(res.warning, 'info');
+    if (res.warning !== undefined && res.warning !== '')
+      notify(res.warning, 'info');
     notify('Submitted to Meta — pending approval.', 'success');
   };
+
+  const headerIsMedia =
+    headerFormat === 'IMAGE' ||
+    headerFormat === 'VIDEO' ||
+    headerFormat === 'DOCUMENT';
 
   return (
     <Modal
@@ -273,7 +376,9 @@ export const WaTemplateModal = ({
           description="Meta format — lowercase letters, digits and underscores."
           value={name}
           onChange={(e) =>
-            setName(e.currentTarget.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))
+            setName(
+              e.currentTarget.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
+            )
           }
           placeholder="listing_launch_en"
           styles={{ input: { fontFamily: 'monospace' } }}
@@ -306,6 +411,12 @@ export const WaTemplateModal = ({
                 { label: 'Utility', value: 'UTILITY' },
               ]}
             />
+            {category === 'UTILITY' ? (
+              <Text size="xs" c="dimmed" mt={6} maw={420}>
+                Campaigns are MARKETING — Meta recategorizes promotional content
+                submitted as Utility.
+              </Text>
+            ) : null}
           </Box>
         </Group>
 
@@ -323,7 +434,7 @@ export const WaTemplateModal = ({
             <Text size="xs" tt="uppercase" c="dimmed" ff="monospace">
               add field
             </Text>
-            {WA_BINDING_FIELDS.map((f) => (
+            {DRAIN_POPULATED_FIELDS.map((f) => (
               <Button
                 key={f}
                 size="compact-xs"
@@ -352,6 +463,12 @@ export const WaTemplateModal = ({
               {paramMap.map((k, i) => `{{${i + 1}}} ← ${k}`).join('  ·  ')}
             </Text>
           ) : null}
+          {WA_NOT_YET_FILLABLE.length > 0 ? (
+            <Text size="xs" c="dimmed" mt={6}>
+              Also in the vocabulary, not yet auto-filled:{' '}
+              {WA_NOT_YET_FILLABLE.join(', ')}.
+            </Text>
+          ) : null}
           {badPlaceholder ? (
             <Text size="xs" c="red" mt={6}>
               WhatsApp uses numbered placeholders only — {'{{1}}'}, {'{{2}}'}…
@@ -366,14 +483,35 @@ export const WaTemplateModal = ({
           ) : null}
         </Box>
 
-        {/* Sample values — Meta needs one per {{n}} to review */}
-        {bodyParamCount > 0 && !badPlaceholder ? (
+        {/* Drain-aware FILLED preview */}
+        {bodyText.trim() !== '' ? (
           <Box>
             <Text size="sm" fw={600} mb={6}>
-              {`Sample values — for Meta’s review of {{1}}…{{${bodyParamCount}}}`}
+              Preview
+            </Text>
+            <Box
+              style={{
+                border: '1px solid var(--mantine-color-default-border)',
+                borderRadius: 8,
+                padding: 14,
+                direction: rtl ? 'rtl' : 'ltr',
+                whiteSpace: 'pre-wrap',
+                lineHeight: 1.5,
+              }}
+            >
+              <Text size="sm">{previewBody}</Text>
+            </Box>
+          </Box>
+        ) : null}
+
+        {/* Sample values — Meta needs one per {{n}} to review */}
+        {bodyParams.ok && bodyParams.count > 0 ? (
+          <Box>
+            <Text size="sm" fw={600} mb={6}>
+              {`Sample values — for Meta’s review of {{1}}…{{${bodyParams.count}}}`}
             </Text>
             <Stack gap={8}>
-              {Array.from({ length: bodyParamCount }, (_, i) => (
+              {Array.from({ length: bodyParams.count }, (_, i) => (
                 <Group key={i} gap={8} wrap="nowrap">
                   <Text ff="monospace" size="sm" c="blue" w={38}>
                     {`{{${i + 1}}}`}
@@ -397,20 +535,208 @@ export const WaTemplateModal = ({
           </Box>
         ) : null}
 
-        <TextInput
-          label="Header (optional, static text)"
-          value={headerText}
-          onChange={(e) => setHeaderText(e.currentTarget.value)}
-          placeholder="A short header line"
-          maxLength={60}
-        />
+        {/* Optional HEADER */}
+        <Box>
+          <Text size="sm" fw={600} mb={6}>
+            Header (optional)
+          </Text>
+          <SegmentedControl
+            value={headerFormat}
+            onChange={(v) => setHeaderFormat(v as HeaderFormat)}
+            data={[
+              { label: 'None', value: 'NONE' },
+              { label: 'Text', value: 'TEXT' },
+              { label: 'Image', value: 'IMAGE' },
+              { label: 'Video', value: 'VIDEO' },
+              { label: 'Document', value: 'DOCUMENT' },
+            ]}
+          />
+          {headerFormat === 'TEXT' ? (
+            <Stack gap={8} mt={10}>
+              <TextInput
+                value={headerText}
+                onChange={(e) => setHeaderText(e.currentTarget.value)}
+                placeholder="A short header line"
+                maxLength={60}
+              />
+              <Text size="xs" c="dimmed">
+                Up to 60 characters; a static line shown above the message. A text
+                header may use at most one variable, written {'{{1}}'}.
+              </Text>
+              {/\{\{\s*1\s*\}\}/.test(headerText) ? (
+                <TextInput
+                  label="Header variable example"
+                  value={headerExample}
+                  onChange={(e) => setHeaderExample(e.currentTarget.value)}
+                  placeholder="Sample value for {{1}}"
+                />
+              ) : null}
+            </Stack>
+          ) : headerIsMedia ? (
+            <Stack gap={8} mt={10}>
+              <TextInput
+                label="Sample media handle (optional)"
+                value={headerExample}
+                onChange={(e) => setHeaderExample(e.currentTarget.value)}
+                placeholder="Meta media handle from the resumable upload API"
+              />
+              <Text size="xs" c="dimmed">
+                Media headers need a send-time asset the campaign sender can’t
+                supply yet — submitting one will be blocked below. Use a static
+                text header for now.
+              </Text>
+            </Stack>
+          ) : null}
+        </Box>
+
+        {/* Optional FOOTER */}
         <TextInput
           label="Footer (optional)"
+          description="Up to 60 characters; no variables."
           value={footer}
           onChange={(e) => setFooter(e.currentTarget.value)}
           placeholder="Use the buttons below to opt out"
           maxLength={60}
         />
+
+        {/* Optional BUTTONS — quick reply / URL / call */}
+        <Box>
+          <Text size="sm" fw={600} mb={6}>
+            Buttons (optional)
+          </Text>
+          {buttons.length > 0 ? (
+            <Stack gap={10} mb={10}>
+              {buttons.map((b, i) => (
+                <Box
+                  key={i}
+                  style={{
+                    border: '1px solid var(--mantine-color-default-border)',
+                    borderRadius: 8,
+                    padding: 12,
+                  }}
+                >
+                  <Group gap={8} mb={8}>
+                    <Text size="xs" fw={600} c="dimmed">
+                      {BUTTON_KINDS.find((k) => k.v === b.type)?.label}
+                    </Text>
+                    <Button
+                      ml="auto"
+                      size="compact-xs"
+                      variant="subtle"
+                      color="red"
+                      leftSection={<IconTrash size={12} />}
+                      onClick={() =>
+                        setButtons((arr) => arr.filter((_, j) => j !== i))
+                      }
+                    >
+                      Remove
+                    </Button>
+                  </Group>
+                  <Stack gap={8}>
+                    <TextInput
+                      value={b.text}
+                      onChange={(e) =>
+                        setButtons((arr) =>
+                          arr.map((x, j) =>
+                            j === i ? { ...x, text: e.currentTarget.value } : x,
+                          ),
+                        )
+                      }
+                      placeholder="Button label (max 25 chars)"
+                      maxLength={25}
+                    />
+                    {b.type === 'URL' ? (
+                      <>
+                        <TextInput
+                          value={b.url}
+                          onChange={(e) =>
+                            setButtons((arr) =>
+                              arr.map((x, j) =>
+                                j === i && x.type === 'URL'
+                                  ? { ...x, url: e.currentTarget.value }
+                                  : x,
+                              ),
+                            )
+                          }
+                          placeholder="https://example.com/deals"
+                        />
+                        {bodyParamCount(b.url).count > 0 ? (
+                          <Text size="xs" c="red">
+                            Use a fixed link — dynamic {'{{1}}'} URLs aren’t
+                            supported by the campaign sender yet.
+                          </Text>
+                        ) : null}
+                      </>
+                    ) : b.type === 'PHONE_NUMBER' ? (
+                      <TextInput
+                        value={b.phoneNumber}
+                        onChange={(e) =>
+                          setButtons((arr) =>
+                            arr.map((x, j) =>
+                              j === i && x.type === 'PHONE_NUMBER'
+                                ? { ...x, phoneNumber: e.currentTarget.value }
+                                : x,
+                            ),
+                          )
+                        }
+                        placeholder="+15550051310"
+                      />
+                    ) : null}
+                  </Stack>
+                </Box>
+              ))}
+            </Stack>
+          ) : null}
+          <Group gap={8}>
+            {BUTTON_KINDS.map((k) => (
+              <Button
+                key={k.v}
+                size="compact-xs"
+                variant="light"
+                color="blue"
+                onClick={() => setButtons((arr) => [...arr, newButton(k.v)])}
+              >
+                + {k.label}
+              </Button>
+            ))}
+          </Group>
+          <Text size="xs" c="dimmed" mt={6}>
+            Up to 10 buttons; at most 2 URL and 1 call button.
+          </Text>
+        </Box>
+
+        {/* Submit state / problems */}
+        {submitted ? (
+          <Alert color="yellow" title="Submitted — pending Meta approval">
+            Meta is reviewing this template (id {submitted.id}). It can’t send
+            until APPROVED — the next template sync will update its status here.
+          </Alert>
+        ) : submitError ? (
+          <Alert color="red" title="Meta rejected the template">
+            {submitError}
+          </Alert>
+        ) : submitProblems.length > 0 ? (
+          <Alert
+            color="yellow"
+            title={
+              submitProblems.length === 1
+                ? 'Can’t submit to Meta yet — one thing to fix:'
+                : `Can’t submit to Meta yet — ${submitProblems.length} things to fix:`
+            }
+          >
+            <List size="sm" spacing={4}>
+              {submitProblems.map((p, i) => (
+                <List.Item key={i}>{p}</List.Item>
+              ))}
+            </List>
+            {submitProblems.some((p) => /example/i.test(p)) ? (
+              <Text size="xs" c="dimmed" mt={8}>
+                Fill the “Sample values” boxes above — one example per {'{{n}}'}{' '}
+                placeholder — and Submit lights up.
+              </Text>
+            ) : null}
+          </Alert>
+        ) : null}
 
         <Box>
           <Text size="sm" fw={600} mb={6}>
@@ -427,29 +753,35 @@ export const WaTemplateModal = ({
                   color={status === s ? 'red' : undefined}
                   disabled={lockReviewed}
                   onClick={() => !lockReviewed && setStatus(s)}
+                  title={
+                    lockReviewed
+                      ? 'Edited content must be re-submitted to Meta before it can be marked reviewed'
+                      : undefined
+                  }
                 >
                   {titleCase(s)}
                 </Button>
               );
             })}
           </Group>
+          {reviewedDirty &&
+          (initial?.status === 'APPROVED' || initial?.status === 'SUBMITTED') ? (
+            <Text size="xs" c="orange" mt={6}>
+              You edited a Meta-reviewed field — this template must be
+              re-submitted to Meta, so it can’t stay {titleCase(initial.status)}.
+            </Text>
+          ) : status === 'APPROVED' ? (
+            <Text size="xs" c="orange" mt={6}>
+              APPROVED makes this template sendable — flip it only after WhatsApp
+              Manager shows Approved for this exact body.
+            </Text>
+          ) : null}
           {initial?.rejectionReason ? (
             <Text size="xs" c="dimmed" mt={6}>
               Meta’s rejection reason: {initial.rejectionReason}
             </Text>
           ) : null}
         </Box>
-
-        {submitted ? (
-          <Alert color="yellow" title="Submitted — pending Meta approval">
-            Meta is reviewing this template (id {submitted.id}). It can’t send until
-            APPROVED — the next template sync will update its status here.
-          </Alert>
-        ) : submitError ? (
-          <Alert color="red" title="Meta rejected the template">
-            {submitError}
-          </Alert>
-        ) : null}
 
         {/* Footer actions */}
         {submitted ? (
@@ -487,6 +819,11 @@ export const WaTemplateModal = ({
                   onClick={() => void submitToMeta()}
                   loading={submitting}
                   disabled={!canSubmit}
+                  title={
+                    submitProblems.length > 0
+                      ? submitProblems.join(' ')
+                      : 'Submit this template to Meta for approval'
+                  }
                 >
                   Submit to Meta
                 </Button>
@@ -498,12 +835,3 @@ export const WaTemplateModal = ({
     </Modal>
   );
 };
-
-// TODO(wa-template-submit-parity): port the legacy client-side Meta validation
-// mirror (wa-template-create.validateCreateInput → the inline "N things to fix"
-// callout) + the full component editor (media/variable headers, QUICK_REPLY / URL
-// / PHONE_NUMBER buttons with their per-type limits) + the drain-aware preview
-// (wa-template-renderer.previewTemplateBody). This rebuild relies on the
-// wa-template-create ROUTE as the authoritative validator and ships a static text
-// header + footer only. See propel-crm-integration src/shared/
-// marketing-cloud-tpleditors.tsx + wa-template-create.ts + wa-template-renderer.ts.
