@@ -3,7 +3,6 @@ import {
   Box,
   Button,
   Center,
-  Drawer,
   Group,
   Loader,
   Stack,
@@ -22,6 +21,7 @@ import {
   IconPlayerPlay,
   IconPlus,
 } from 'twenty-ui/display';
+import { CampaignDetail } from '@/propel/components/marketingHero/CampaignDetail';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import {
   type CampaignFilter,
@@ -50,21 +50,21 @@ const FILTERS: { id: CampaignFilter; label: string }[] = [
   { id: 'sent', label: 'Sent' },
 ];
 
-// Campaigns tab of the unified Marketing hero — the LIST only, ported from the
-// legacy Marketing Cloud CampaignsView (marketing-cloud-campaigns.tsx) into a
-// Mantine table. One filterable table across every status (drafts / scheduled /
-// sending / sent + sequences), with status pills and per-row sequence
-// pause/activate via /marketing/activate-sequence.
+// Campaigns tab of the unified Marketing hero — the LIST, ported from the legacy
+// Marketing Cloud CampaignsView (marketing-cloud-campaigns.tsx) into a Mantine
+// table. One filterable table across every status (drafts / scheduled / sending /
+// sent + sequences), with status pills and per-row sequence pause/activate via
+// /marketing/activate-sequence.
 //
-// DEFERRED: the heavy ~300-LOC campaign detail drill-in (PulseCampaignDetail —
-// KPI tiles, funnel, timeline, recipient activity, send/schedule-from-detail,
-// retry-failed) is NOT ported in this lane. Instead, a row click:
+// A row click:
 //   • draft (no listing)  → opens the editable campaign builder page
 //   • sequence            → opens the sequence editor page
-//   • everything else      → opens a lightweight read-only summary drawer built
-//                            from the row data we already have (no extra fetch)
-// The full detail port is the FOLLOW-UP needed to retire the legacy. See the TODO
-// at the bottom of this file.
+//   • everything live/sent → opens the rich CampaignDetail surface (full drill-in,
+//                            replacing the old lightweight summary drawer) — KPI
+//                            tiles, conversion funnel, send timeline, recipient
+//                            activity (reply→Call), A/B summary, problem box, and
+//                            the retry-failed action, fed by POST
+//                            /marketing/campaign-detail.
 export const CampaignsTab = ({
   payload,
   isLoading,
@@ -78,7 +78,8 @@ export const CampaignsTab = ({
   const notify = usePropelToast();
   const [filter, setFilter] = useState<CampaignFilter>('all');
   const [seqBusy, setSeqBusy] = useState<string | null>(null);
-  const [summaryRow, setSummaryRow] = useState<UnifiedRow | null>(null);
+  // When set, the tab swaps the list for the full CampaignDetail drill-in.
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   const rows = useMemo(
     () => (payload ? buildCampaignRows(payload) : []),
@@ -114,18 +115,33 @@ export const CampaignsTab = ({
   };
 
   // A draft (no listing) opens the editable builder; a sequence opens its editor;
-  // everything live/sent opens the lightweight read-only summary drawer.
+  // everything live/sent opens the rich CampaignDetail drill-in.
   const openRow = (r: UnifiedRow) => {
     if (r.kind === 'sequence') {
       navigate(AppPath.MarketingSequenceEditor);
     } else if (r.status === 'draft' && r.hasListing !== true) {
       navigate(AppPath.MarketingCampaignBuilder);
     } else {
-      setSummaryRow(r);
+      setDetailId(r.id);
     }
   };
 
   const newCampaign = () => navigate(AppPath.MarketingCampaignBuilder);
+
+  // The detail drill-in fully takes over the tab body (mirrors the legacy
+  // CampaignsView, which swapped the list for PulseCampaignDetail). On back, a
+  // mutation (retry) reloads the list before showing it again.
+  if (detailId !== null) {
+    return (
+      <CampaignDetail
+        campaignId={detailId}
+        onBack={(changed) => {
+          setDetailId(null);
+          if (changed === true) reload();
+        }}
+      />
+    );
+  }
 
   if (isLoading && payload === null) {
     return (
@@ -306,52 +322,6 @@ export const CampaignsTab = ({
           </Table.Tbody>
         </Table>
       )}
-
-      {/* Lightweight read-only summary drawer (live/sent/scheduled rows) — built
-          from the row we already have; the full detail drill-in is deferred. */}
-      <Drawer
-        opened={summaryRow !== null}
-        onClose={() => setSummaryRow(null)}
-        position="right"
-        size="md"
-        title={summaryRow?.name ?? ''}
-        zIndex={5000}
-      >
-        {summaryRow ? (
-          <Stack gap="md">
-            <Group gap="xs">
-              <ChannelGlyph channel={summaryRow.channel} />
-              <Badge variant="light" color={statusTone(summaryRow.status)}>
-                {summaryRow.statusLabel}
-              </Badge>
-            </Group>
-            <SummaryField label="Audience" value={summaryRow.audience} />
-            <SummaryField label="Performance" value={summaryRow.perf} />
-            <SummaryField label="When" value={summaryRow.when || '—'} />
-            <Text size="xs" c="dimmed">
-              Full campaign analytics (funnel, recipient activity, retry, send /
-              schedule) are coming with the detail view port.
-            </Text>
-          </Stack>
-        ) : null}
-      </Drawer>
     </Box>
   );
 };
-
-const SummaryField = ({ label, value }: { label: string; value: string }) => (
-  <Box>
-    <Text size="xs" tt="uppercase" c="dimmed" fw={700}>
-      {label}
-    </Text>
-    <Text size="sm">{value}</Text>
-  </Box>
-);
-
-// TODO(campaign-detail-port): port the legacy PulseCampaignDetail
-// (marketing-cloud-campaigns.tsx) — POST /marketing/campaign-detail drill-in with
-// KPI tiles, conversion funnel, timeline, recipient activity (reply→Call
-// deep-link), A/B summary, problem box + /marketing/retry-failed, and the
-// send/schedule-from-detail controls (/marketing/send-request,
-// /marketing/save-campaign) that un-strand a listing-promo draft. Needed for full
-// parity before the legacy Campaigns surface can be retired.
