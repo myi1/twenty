@@ -41,6 +41,7 @@ import {
 } from '@/propel/lib/waTemplateRenderer';
 import { AbTestPanel } from '@/propel/components/campaign/AbTestPanel';
 import { GrapesEmailBuilder } from '@/propel/components/campaign/GrapesEmailBuilder';
+import { type GrapesEmailAiContext } from '@/propel/components/campaign/grapesEmailTypes';
 import { GuardrailsCard } from '@/propel/components/campaign/GuardrailsCard';
 import { SegmentCreateModal } from '@/propel/components/campaign/SegmentCreateModal';
 import {
@@ -826,6 +827,14 @@ export const ManualWizard = ({
             copyTokensFillableB={copyTokensFillableB}
             waTemplates={approvedTemplates}
             bodyIsDesignHtml={isLikelyHtml(bodyText)}
+            aiContext={{
+              objective: listingFieldsActive
+                ? 'PROMOTE_LISTING'
+                : 'REACTIVATE_SEGMENT',
+              language,
+              listingId: listingFieldsActive ? listingId : null,
+              segmentName: segment?.name ?? null,
+            }}
           />
         )}
 
@@ -1152,6 +1161,7 @@ const ComposeStep = ({
   copyTokensFillableB,
   waTemplates,
   bodyIsDesignHtml,
+  aiContext,
 }: {
   channel: 'EMAIL' | 'WHATSAPP';
   subject: string;
@@ -1182,6 +1192,8 @@ const ComposeStep = ({
   waTemplates: WaTemplateOption[];
   // True when the body is designer-emitted HTML (shows the send-path-gap notice).
   bodyIsDesignHtml: boolean;
+  // Grounding context for the embedded builder's AI co-pilot (EMAIL only).
+  aiContext: GrapesEmailAiContext;
 }) => {
   if (channel === 'WHATSAPP') {
     return (
@@ -1347,6 +1359,8 @@ const ComposeStep = ({
           hideToolbar
           initial={{ subject, bodyText, languageCode: language }}
           onHtmlChange={onBody}
+          aiContext={aiContext}
+          onSubjectSuggested={onSubject}
         />
       </Box>
 

@@ -38,6 +38,7 @@ import grapesjsMjml from 'grapesjs-mjml';
 import GjsEditor from '@grapesjs/react';
 import { useCallback, useRef, useState } from 'react';
 import {
+  ActionIcon,
   Anchor,
   Badge,
   Box,
@@ -45,11 +46,14 @@ import {
   Code,
   CopyButton,
   Group,
+  Loader,
   Menu,
   Modal,
+  Paper,
   ScrollArea,
   Stack,
   Text,
+  Textarea,
   TextInput,
 } from '@mantine/core';
 import {
@@ -59,7 +63,10 @@ import {
   IconCopy,
   IconCheck,
   IconDeviceFloppy,
+  IconSend,
+  IconSparkles,
   IconTag,
+  IconX,
 } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
@@ -196,6 +203,42 @@ const BRANDED_HEADER_MJML = `<mj-section background-color="${BRAND.primary}" pad
   </mj-column>
 </mj-section>`;
 
+// Flag on the main CONTENT mj-column so the AI co-pilot can find it and rewrite
+// just the body copy (greeting + paragraphs), leaving the header/footer/branding
+// intact. We use an MJML `css-class` (not a data-* attr): css-class is a
+// first-class MJML attribute that grapesjs-mjml reliably round-trips into the
+// component's class list, so `wrapper.find('.propel-ai-body')` is robust across
+// the plugin's component model (a custom data-* attr is not guaranteed to survive
+// MJML parsing on every tag). Distinct from LOGO_FLAG_ATTR (the logo image).
+const AI_BODY_CLASS = 'propel-ai-body';
+
+// Render the AI's plain-text body (line-broken paragraphs) into the content
+// column's MJML: a greeting heading + one mj-text paragraph per blank-line block +
+// a CTA button. Keeps the brand styling; merge tags in the copy survive verbatim.
+const escapeMjmlText = (s: string): string =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+const contentColumnMjml = (bodyText: string): string => {
+  const blocks = bodyText
+    .split(/\n{2,}/)
+    .map((b) => b.trim())
+    .filter(Boolean);
+  const paras = (blocks.length > 0 ? blocks : [bodyText.trim()])
+    .map(
+      (b) =>
+        `<mj-text font-size="15px" line-height="1.6" color="#374151">${escapeMjmlText(
+          b,
+        ).replace(/\n/g, '<br/>')}</mj-text>`,
+    )
+    .join('\n        ');
+  return `<mj-column css-class="${AI_BODY_CLASS}">
+        ${paras}
+        <mj-button background-color="${BRAND.accent}" href="#" font-weight="600">
+          View the listing
+        </mj-button>
+      </mj-column>`;
+};
+
 // The MJML the canvas opens with when there's no saved design to restore.
 const STARTER_MJML = `<mjml>
   <mj-body background-color="#f4f5f7">
@@ -205,13 +248,13 @@ const STARTER_MJML = `<mjml>
       </mj-column>
     </mj-section>
     <mj-section background-color="#ffffff" padding="24px">
-      <mj-column>
+      <mj-column css-class="${AI_BODY_CLASS}">
         <mj-text font-size="22px" font-weight="700" color="#111827">
           Hi {{firstName}},
         </mj-text>
         <mj-text font-size="15px" line-height="1.6" color="#374151">
           Drag a block from the left, drop the <strong>Branded header</strong>,
-          insert a merge tag from the toolbar, then save it as a template.
+          or ask the AI co-pilot to write this email for you.
         </mj-text>
         <mj-button background-color="${BRAND.accent}" href="#" font-weight="600">
           View the listing
@@ -253,6 +296,8 @@ export const GrapesEmailEditor = ({
   onHtmlChange,
   onProjectChange,
   hideToolbar,
+  aiContext,
+  onSubjectSuggested,
 }: GrapesEmailEditorProps) => {
   const notify = usePropelToast();
   // The live GrapesJS Editor instance — an imperative handle to a 3rd-party
@@ -283,6 +328,26 @@ export const GrapesEmailEditor = ({
   const [tplName, setTplName] = useState(initial?.name ?? '');
   const [tplSubject, setTplSubject] = useState(initial?.subject ?? '');
   const [saving, setSaving] = useState(false);
+
+  // ── AI co-pilot (#57) ──────────────────────────────────────────────────────
+  // Shown only when aiContext is provided (the campaign builder). A chat-style
+  // panel where the user asks the AI to write/refine the email; each request is
+  // grounded against the real campaign + the CURRENT copy and applies the result
+  // to the canvas (rewrites the flagged content column). Backed by the EXISTING
+  // /marketing/draft-copy route (copy in/out) — see the gap note in the panel.
+  const [aiOpen, setAiOpen] = useState(true);
+  const [aiInput, setAiInput] = useState('');
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiLog, setAiLog] = useState<{ role: 'you' | 'ai'; text: string }[]>(
+    [],
+  );
+  // Latest grounding context held in a ref so the once-mounted helpers read fresh.
+  // oxlint-disable-next-line twenty/no-state-useref
+  const aiCtxRef = useRef(aiContext);
+  aiCtxRef.current = aiContext;
+  // oxlint-disable-next-line twenty/no-state-useref
+  const onSubjectRef = useRef(onSubjectSuggested);
+  onSubjectRef.current = onSubjectSuggested;
 
   // Merge-tag menu = built-ins + the workspace custom fields (saved snippets).
   const mergeTags = [
@@ -433,6 +498,138 @@ export const GrapesEmailEditor = ({
     }
   }, []);
 
+  // ── AI co-pilot helpers ────────────────────────────────────────────────────
+  // Read the CURRENT body copy off the canvas (the flagged content column's text)
+  // so each AI request is iterative — it edits what's there, not a blank slate.
+  const readCurrentBody = useCallback((): string => {
+    const editor = editorRef.current;
+    const wrapper = editor?.getWrapper();
+    if (!wrapper) return '';
+    const col = wrapper.find(`.${AI_BODY_CLASS}`)[0];
+    if (col === undefined) return '';
+    return col
+      .find('mj-text')
+      .map((t) => (t.getInnerHTML?.() ?? '').replace(/<[^>]+>/g, ' '))
+      .join('\n\n')
+      .replace(/\s*\n\s*\n\s*/g, '\n\n')
+      .replace(/[ \t]+/g, ' ')
+      .trim();
+  }, []);
+
+  // After a canvas mutation, push the new HTML out once eagerly (the editor's own
+  // component:update listener also fires, but this makes the embedded compose
+  // surface reflect an AI apply immediately).
+  const emitHtml = useCallback((editor: Editor) => {
+    queueMicrotask(() => {
+      const cb = changeCbRef.current;
+      if (cb.onHtmlChange) {
+        const { html } = compileHtml(editor);
+        cb.onHtmlChange(html);
+      }
+    });
+  }, []);
+
+  // Apply AI copy to the canvas: rewrite the flagged content column's inner MJML
+  // (greeting + paragraphs + CTA), preserving the header/footer/branding. Falls
+  // back to appending a content section if the column flag is missing.
+  const applyAiCopy = useCallback(
+    (bodyText: string) => {
+      const editor = editorRef.current;
+      const wrapper = editor?.getWrapper();
+      if (!editor || !wrapper) return;
+      const col = wrapper.find(`.${AI_BODY_CLASS}`)[0];
+      const inner = contentColumnMjml(bodyText);
+      if (col !== undefined) {
+        // Replace the column with the freshly rendered one (keeps it flagged).
+        col.replaceWith(inner);
+      } else {
+        // No flagged column (a heavily-restructured design) — append a content
+        // section rather than clobbering the user's layout.
+        editor.addComponents(
+          `<mj-section background-color="#ffffff" padding="24px">${inner}</mj-section>`,
+        );
+      }
+      emitHtml(editor);
+    },
+    [emitHtml],
+  );
+
+  // Send a request to the AI co-pilot. Reuses /marketing/draft-copy (the live
+  // backend): grounds with the campaign objective/listing/segment + the current
+  // copy + the user's instruction as extraDirection, applies the returned copy.
+  const sendAiRequest = useCallback(
+    async (request: string) => {
+      const ctx = aiCtxRef.current;
+      const text = request.trim();
+      if (!ctx || aiBusy || text === '') return;
+      setAiBusy(true);
+      setAiLog((l) => [...l, { role: 'you', text }]);
+      setAiInput('');
+      const current = readCurrentBody();
+      // Compose the steer: the user's instruction + (for iterative edits) the
+      // current draft, so the LLM refines rather than starting over. Capped to fit
+      // the route's 300-char extraDirection budget.
+      const steer = (
+        current
+          ? `${text}. Current draft to refine: "${current.slice(0, 200)}"`
+          : text
+      ).slice(0, 300);
+      try {
+        const res = await callPropelRoute<{
+          ok?: boolean;
+          subject?: string;
+          body?: string;
+          error?: string;
+          operatorAction?: string;
+          permitWarning?: string;
+        }>('/marketing/draft-copy', {
+          objective: ctx.objective,
+          language: ctx.language,
+          ...(ctx.listingId ? { listingId: ctx.listingId } : {}),
+          ...(ctx.segmentName ? { segmentName: ctx.segmentName } : {}),
+          extraDirection: steer,
+        });
+        if (
+          !res ||
+          (res.error !== undefined && res.error !== '') ||
+          typeof res.body !== 'string'
+        ) {
+          const msg =
+            res?.operatorAction ||
+            res?.error ||
+            'The AI couldn’t draft that — try rephrasing.';
+          setAiLog((l) => [...l, { role: 'ai', text: msg }]);
+          notify(msg, 'error');
+          return;
+        }
+        applyAiCopy(res.body);
+        if (typeof res.subject === 'string' && res.subject !== '') {
+          onSubjectRef.current?.(res.subject);
+        }
+        setAiLog((l) => [
+          ...l,
+          {
+            role: 'ai',
+            text: `Updated the email${
+              res.subject ? ` and set the subject to “${res.subject}”` : ''
+            }.${res.permitWarning ? ` ${res.permitWarning}` : ''}`,
+          },
+        ]);
+      } catch {
+        setAiLog((l) => [
+          ...l,
+          {
+            role: 'ai',
+            text: 'The AI request failed — check your connection.',
+          },
+        ]);
+      } finally {
+        setAiBusy(false);
+      }
+    },
+    [aiBusy, readCurrentBody, applyAiCopy, notify],
+  );
+
   // EXPORT — show the real compiled cross-client HTML.
   const exportProductionHtml = useCallback(() => {
     const editor = editorRef.current;
@@ -561,6 +758,18 @@ export const GrapesEmailEditor = ({
           </Menu>
         </Group>
         <Group gap="xs" wrap="nowrap">
+          {/* AI co-pilot toggle — only when the builder has campaign context. */}
+          {aiContext && (
+            <Button
+              size="compact-sm"
+              variant={aiOpen ? 'filled' : 'light'}
+              color="red"
+              leftSection={<IconSparkles size={14} />}
+              onClick={() => setAiOpen((v) => !v)}
+            >
+              AI co-pilot
+            </Button>
+          )}
           {onClose && (
             <Button
               size="compact-sm"
@@ -618,27 +827,48 @@ export const GrapesEmailEditor = ({
         </Group>
       </Group>
 
-      {/* The GrapesJS editor — default UI. grapesjs-mjml swaps the block panel,
-          style manager and devices for MJML-aware ones. */}
+      {/* Canvas + AI co-pilot side panel. The GrapesJS editor uses its default UI
+          (grapesjs-mjml swaps the block panel, style manager and devices for
+          MJML-aware ones); the co-pilot rides alongside as a collapsible panel. */}
       <Box
         style={{
           flex: 1,
           minHeight: 480,
-          border: '1px solid var(--mantine-color-default-border)',
-          borderRadius: 8,
-          overflow: 'hidden',
+          display: 'flex',
+          gap: 8,
+          minWidth: 0,
         }}
       >
-        <GjsEditor
-          grapesjs={grapesjs}
-          onEditor={onEditor}
-          options={{
-            height: '100%',
-            storageManager: false,
-            fromElement: false,
-            plugins: [mjmlPlugin],
+        <Box
+          style={{
+            flex: 1,
+            minWidth: 0,
+            border: '1px solid var(--mantine-color-default-border)',
+            borderRadius: 8,
+            overflow: 'hidden',
           }}
-        />
+        >
+          <GjsEditor
+            grapesjs={grapesjs}
+            onEditor={onEditor}
+            options={{
+              height: '100%',
+              storageManager: false,
+              fromElement: false,
+              plugins: [mjmlPlugin],
+            }}
+          />
+        </Box>
+        {aiContext && aiOpen && (
+          <AiCopilotPanel
+            log={aiLog}
+            input={aiInput}
+            busy={aiBusy}
+            onInput={setAiInput}
+            onSend={sendAiRequest}
+            onClose={() => setAiOpen(false)}
+          />
+        )}
       </Box>
 
       {/* Save-as-template modal — name + optional subject. */}
@@ -756,6 +986,167 @@ export const GrapesEmailEditor = ({
     </Stack>
   );
 };
+
+// ── AI co-pilot panel (#57) ──────────────────────────────────────────────────
+// The in-builder chat/assist surface. The founder types a request ("make a luxury
+// new-listing email", "punch up the headline", "make it warmer") and the co-pilot
+// applies the result to the canvas. Each request sees the CURRENT copy, so it's
+// iterative ("build and improve on it").
+//
+// HONEST CAPABILITY (the #57 gap, flagged in-panel — no dead button): this runs on
+// the EXISTING /marketing/draft-copy route, which returns COPY (subject + body
+// text), not full layout/design (blocks, sections, colors). So the co-pilot writes
+// and refines the email's WORDS inside the branded template — it does NOT yet
+// generate whole layouts or add styled sections (e.g. "add a payment-plan section"
+// yields copy, not a new block). Full design generation needs an MJML-returning
+// route (an app-side change / app:install) — out of scope for this staging hero
+// iteration. The drag-and-drop builder remains for layout; the AI handles the copy.
+const AI_QUICK_ACTIONS = [
+  'Make it warmer',
+  'Make it shorter',
+  'Punch up the headline',
+  'More professional',
+] as const;
+
+const AiCopilotPanel = ({
+  log,
+  input,
+  busy,
+  onInput,
+  onSend,
+  onClose,
+}: {
+  log: { role: 'you' | 'ai'; text: string }[];
+  input: string;
+  busy: boolean;
+  onInput: (v: string) => void;
+  onSend: (request: string) => void;
+  onClose: () => void;
+}) => (
+  <Paper
+    withBorder
+    radius="md"
+    style={{
+      width: 320,
+      flex: 'none',
+      display: 'flex',
+      flexDirection: 'column',
+      minHeight: 0,
+      background: 'var(--mantine-color-body)',
+    }}
+  >
+    <Group
+      justify="space-between"
+      wrap="nowrap"
+      px="sm"
+      py={8}
+      style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}
+    >
+      <Group gap={6} wrap="nowrap">
+        <IconSparkles size={15} color="var(--mantine-color-red-6)" />
+        <Text size="sm" fw={700}>
+          AI co-pilot
+        </Text>
+      </Group>
+      <ActionIcon variant="subtle" color="gray" size="sm" onClick={onClose}>
+        <IconX size={15} />
+      </ActionIcon>
+    </Group>
+
+    <ScrollArea style={{ flex: 1, minHeight: 0 }} px="sm" py="xs">
+      <Stack gap="xs">
+        {log.length === 0 ? (
+          <Stack gap="xs">
+            <Text size="xs" c="dimmed">
+              Describe the email you want, or how to change it. The AI writes
+              and refines the copy on the canvas — drag blocks for layout.
+            </Text>
+            <Text size="xs" c="dimmed" fs="italic">
+              e.g. “Make a luxury new-listing email for a 3-bed villa in Dubai
+              Hills.”
+            </Text>
+          </Stack>
+        ) : (
+          log.map((m, i) => (
+            <Box
+              key={i}
+              style={{
+                alignSelf: m.role === 'you' ? 'flex-end' : 'flex-start',
+                maxWidth: '90%',
+                background:
+                  m.role === 'you'
+                    ? 'var(--mantine-color-red-light)'
+                    : 'var(--mantine-color-default-hover)',
+                borderRadius: 10,
+                padding: '6px 10px',
+              }}
+            >
+              <Text size="xs" style={{ whiteSpace: 'pre-wrap' }}>
+                {m.text}
+              </Text>
+            </Box>
+          ))
+        )}
+        {busy && (
+          <Group gap={6} px={2}>
+            <Loader size="xs" color="red" />
+            <Text size="xs" c="dimmed">
+              Drafting…
+            </Text>
+          </Group>
+        )}
+      </Stack>
+    </ScrollArea>
+
+    <Box px="sm" pt={6} pb={4}>
+      <Group gap={6} mb={6} wrap="wrap">
+        {AI_QUICK_ACTIONS.map((q) => (
+          <Button
+            key={q}
+            size="compact-xs"
+            variant="light"
+            color="gray"
+            disabled={busy}
+            onClick={() => onSend(q)}
+          >
+            {q}
+          </Button>
+        ))}
+      </Group>
+      <Group gap={6} align="flex-end" wrap="nowrap">
+        <Textarea
+          autosize
+          minRows={1}
+          maxRows={4}
+          style={{ flex: 1 }}
+          placeholder="Ask the AI to write or change the email…"
+          value={input}
+          disabled={busy}
+          onChange={(e) => onInput(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              onSend(input);
+            }
+          }}
+        />
+        <ActionIcon
+          variant="filled"
+          color="red"
+          size="lg"
+          disabled={busy || input.trim() === ''}
+          onClick={() => onSend(input)}
+        >
+          <IconSend size={16} />
+        </ActionIcon>
+      </Group>
+      <Text size="9px" c="dimmed" mt={4} lh={1.3}>
+        v1 writes the email COPY. Full layout/section generation is coming — for
+        now, use blocks for design.
+      </Text>
+    </Box>
+  </Paper>
+);
 
 export type { GrapesEmailEditorProps, GrapesEmailTemplateSeed };
 export default GrapesEmailEditor;

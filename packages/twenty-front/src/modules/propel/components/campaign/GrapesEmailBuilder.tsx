@@ -40,6 +40,8 @@ export const GrapesEmailBuilder = ({
   onHtmlChange,
   onProjectChange,
   hideToolbar,
+  aiContext,
+  onSubjectSuggested,
 }: GrapesEmailBuilderProps) => (
   <Suspense
     fallback={
@@ -63,6 +65,8 @@ export const GrapesEmailBuilder = ({
       onHtmlChange={onHtmlChange}
       onProjectChange={onProjectChange}
       hideToolbar={hideToolbar}
+      aiContext={aiContext}
+      onSubjectSuggested={onSubjectSuggested}
     />
   </Suspense>
 );

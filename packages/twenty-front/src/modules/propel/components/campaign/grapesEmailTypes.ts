@@ -58,6 +58,25 @@ export type GrapesEmailEditorProps = {
   // Save-as-template) when the embedding surface supplies its own controls. Used
   // by the embedded compose surface to keep the step clean (Subject + canvas).
   hideToolbar?: boolean;
+  // OPTIONAL — grounding context for the in-builder AI co-pilot (#57). When
+  // present, the co-pilot panel is shown and its requests are grounded against the
+  // real campaign (objective + listing + segment + language) via the existing
+  // /marketing/draft-copy route. Absent ⇒ no AI panel (e.g. the Templates tab,
+  // which has no campaign context). Additive.
+  aiContext?: GrapesEmailAiContext;
+  // OPTIONAL — the co-pilot proposes a SUBJECT alongside body copy; this hands it
+  // back to the embedding surface (the wizard owns the Subject field).
+  onSubjectSuggested?: (subject: string) => void;
+};
+
+// Grounding context for the in-builder AI co-pilot. Mirrors the /marketing/draft-
+// copy request inputs the wizard already computes, so the co-pilot reuses the live
+// backend with the campaign's real objective/listing/segment.
+export type GrapesEmailAiContext = {
+  objective: 'PROMOTE_LISTING' | 'REACTIVATE_SEGMENT';
+  language: 'EN' | 'AR';
+  listingId?: string | null;
+  segmentName?: string | null;
 };
 
 // The lazy wrapper (GrapesEmailBuilder) takes the same props as the editor it
