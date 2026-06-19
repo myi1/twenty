@@ -19,6 +19,7 @@ import {
   IconSend,
 } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
+import { EnrollmentList } from '@/propel/components/sequence/EnrollmentList';
 import { SequenceFlowMap } from '@/propel/components/sequence/SequenceFlowMap';
 import { StepEditorCard } from '@/propel/components/sequence/StepEditorCard';
 import {
@@ -387,6 +388,14 @@ export const SequenceEditor = ({
           </Card>
         </Grid.Col>
       </Grid>
+
+      {/* S4 — enrollment read surface. Only a sequence that has been activated
+          (RUNNING) or was running and is now PAUSED carries enrollments worth
+          showing; a fresh DRAFT has none, and an ARCHIVED one is terminal. */}
+      {initial?.id &&
+        (initial.status === 'RUNNING' || initial.status === 'PAUSED') && (
+          <EnrollmentList sequenceId={initial.id} />
+        )}
     </Stack>
   );
 };
