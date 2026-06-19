@@ -35,15 +35,17 @@ import {
   type MarketingHubPayload,
   type WaTemplateOption,
 } from '@/propel/types/marketingHome';
-import { EmailTemplateModal } from './EmailTemplateModal';
+import { GrapesEmailBuilder } from '@/propel/components/campaign/GrapesEmailBuilder';
 import { WaTemplateModal } from './WaTemplateModal';
 
 // Templates tab of the unified Marketing hero — the email + WhatsApp template
 // catalog + the "Merge tags" sub-tab, ported from the legacy Marketing Cloud
 // TemplatesView (marketing-cloud-templates.tsx) into Mantine. Cards carry an inline
-// two-step delete control + (WhatsApp) a "Sync from Meta" button; clicking a card
-// opens the editor modal (EmailTemplateModal / WaTemplateModal). The "Merge tags"
-// filter shows the built-in merge-tag reference (ALWAYS_AVAILABLE_MERGE_TAGS) + the
+// two-step delete control + (WhatsApp) a "Sync from Meta" button. Clicking an EMAIL
+// card (or "New email template") opens the full-page GrapesJS + MJML editor in
+// place (the one email editor everywhere — TM#50; the old EmailTemplateModal is
+// retired). WhatsApp keeps its lightweight WaTemplateModal. The "Merge tags" filter
+// shows the built-in merge-tag reference (ALWAYS_AVAILABLE_MERGE_TAGS) + the
 // custom-fields CRUD manager (saved snippets). Routes reused:
 //   • POST /marketing/delete-template
 //   • POST /marketing/wa-template-sync
@@ -67,7 +69,8 @@ const snippet = (s: string, n = 220): string =>
 // status + no metaTemplateId) — anything in Meta is managed there. Mirrors the
 // route's server-side rule (waDeleteDecision).
 const waDeletable = (t: WaTemplateOption): boolean =>
-  t.status === 'DRAFT' && (t.metaTemplateId === '' || t.metaTemplateId === undefined);
+  t.status === 'DRAFT' &&
+  (t.metaTemplateId === '' || t.metaTemplateId === undefined);
 
 // Inline two-step delete control: "Delete → Delete? No / Yes".
 const DeleteControl = ({
@@ -137,9 +140,9 @@ const DeleteControl = ({
 const BuiltInMergeTags = () => (
   <Stack gap="md">
     <Text size="xs" c="dimmed" maw={540}>
-      Always available — every email automatically fills these from the recipient,
-      their assigned agent, and your office. Insert them from the composer; nothing
-      to set up.
+      Always available — every email automatically fills these from the
+      recipient, their assigned agent, and your office. Insert them from the
+      composer; nothing to set up.
     </Text>
     <Stack gap="xs">
       {ALWAYS_AVAILABLE_MERGE_TAGS.map((t) => (
@@ -149,7 +152,9 @@ const BuiltInMergeTags = () => (
               size="sm"
               variant="light"
               color="blue"
-              styles={{ label: { fontFamily: 'monospace', textTransform: 'none' } }}
+              styles={{
+                label: { fontFamily: 'monospace', textTransform: 'none' },
+              }}
             >
               {`{{${t.key}}}`}
             </Badge>
@@ -189,7 +194,8 @@ const CustomFieldEditorRow = ({
 
   const trimmedKey = key.trim();
   const keyValid =
-    CUSTOM_FIELD_KEY_RE.test(trimmedKey) && !RESERVED_MERGE_KEYS.has(trimmedKey);
+    CUSTOM_FIELD_KEY_RE.test(trimmedKey) &&
+    !RESERVED_MERGE_KEYS.has(trimmedKey);
   const keyHint =
     trimmedKey === ''
       ? ''
@@ -227,7 +233,10 @@ const CustomFieldEditorRow = ({
       );
       return;
     }
-    notify(isEdit ? 'Custom field updated.' : 'Custom field created.', 'success');
+    notify(
+      isEdit ? 'Custom field updated.' : 'Custom field created.',
+      'success',
+    );
     onSaved();
   };
 
@@ -294,7 +303,9 @@ const CustomFieldsManager = ({
 }) => {
   const notify = usePropelToast();
   const fields = payload.customFields ?? [];
-  const [editing, setEditing] = useState<CustomFieldOption | 'new' | null>(null);
+  const [editing, setEditing] = useState<CustomFieldOption | 'new' | null>(
+    null,
+  );
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
 
@@ -324,9 +335,9 @@ const CustomFieldsManager = ({
     <Stack gap="md">
       <Group align="flex-start" wrap="nowrap">
         <Text size="xs" c="dimmed" maw={540} style={{ flex: 1 }}>
-          Saved snippets: name a merge tag once, give it a fixed value, and every
-          email fills it automatically — so it’s never blank. For email only
-          (WhatsApp uses numbered fields).
+          Saved snippets: name a merge tag once, give it a fixed value, and
+          every email fills it automatically — so it’s never blank. For email
+          only (WhatsApp uses numbered fields).
         </Text>
         {editing === null ? (
           <Button
@@ -356,8 +367,8 @@ const CustomFieldsManager = ({
           <Stack align="center" gap={6} maw={420}>
             <Title order={6}>No custom fields yet</Title>
             <Text size="sm" c="dimmed" ta="center">
-              Add a saved snippet — like your office phone or address — and reuse it
-              in any email with one tag.
+              Add a saved snippet — like your office phone or address — and
+              reuse it in any email with one tag.
             </Text>
           </Stack>
         </Center>
@@ -498,9 +509,9 @@ export const TemplatesTab = ({
   const [filter, setFilter] = useState<TplFilter>('ALL');
   const [syncing, setSyncing] = useState(false);
   const [waEdit, setWaEdit] = useState<WaTemplateOption | 'new' | null>(null);
-  const [emailEdit, setEmailEdit] = useState<EmailTemplateOption | 'new' | null>(
-    null,
-  );
+  const [emailEdit, setEmailEdit] = useState<
+    EmailTemplateOption | 'new' | null
+  >(null);
 
   const waTemplates = payload?.waTemplates ?? [];
   const emailTemplates = payload?.emailTemplates ?? [];
@@ -546,7 +557,9 @@ export const TemplatesTab = ({
     setSyncing(false);
     if (res === null || res.error !== undefined || res.ok !== true) {
       notify(
-        res?.operatorAction || res?.error || 'Could not sync templates from Meta.',
+        res?.operatorAction ||
+          res?.error ||
+          'Could not sync templates from Meta.',
         'error',
       );
       return;
@@ -612,15 +625,66 @@ export const TemplatesTab = ({
     );
   }
 
+  // Email templates now author in the full-page GrapesJS + MJML editor (the one
+  // email editor everywhere — TM#50). Opening a card or "New email template"
+  // swaps the grid for the editor in place; "Close" / a successful save returns
+  // to the grid. WhatsApp templates keep their lightweight modal (no rich body).
+  if (emailEdit !== null) {
+    const seed = emailEdit === 'new' ? null : emailEdit;
+    return (
+      <Box
+        p="md"
+        style={{
+          height: '100%',
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        <Group justify="space-between" align="flex-end" mb="sm" wrap="wrap">
+          <Stack gap={2}>
+            <Title order={4}>
+              {seed ? `Edit template — ${seed.name}` : 'New email template'}
+            </Title>
+            <Text size="sm" c="dimmed" maw={560}>
+              Design the email by dragging blocks. Save it to reuse in any
+              campaign.
+            </Text>
+          </Stack>
+        </Group>
+        <GrapesEmailBuilder
+          mode="template"
+          customFields={customFields}
+          initial={
+            seed
+              ? {
+                  id: seed.id,
+                  name: seed.name,
+                  subject: seed.subject,
+                  bodyText: seed.bodyText,
+                  languageCode: seed.languageCode === 'AR' ? 'AR' : 'EN',
+                }
+              : null
+          }
+          onSaved={() => {
+            setEmailEdit(null);
+            reload();
+          }}
+          onClose={() => setEmailEdit(null)}
+        />
+      </Box>
+    );
+  }
+
   return (
     <Box p="md">
       <Group justify="space-between" align="flex-end" mb="md" wrap="wrap">
         <Stack gap={2}>
           <Title order={4}>Templates</Title>
           <Text size="sm" c="dimmed" maw={560}>
-            Reusable email copy and WhatsApp messages. Start a campaign from a saved
-            template in the builder. Meta must approve a WhatsApp template before it
-            can send.
+            Reusable email copy and WhatsApp messages. Start a campaign from a
+            saved template in the builder. Meta must approve a WhatsApp template
+            before it can send.
           </Text>
         </Stack>
         <Group gap="xs" align="flex-end">
@@ -726,10 +790,20 @@ export const TemplatesTab = ({
                       size={16}
                       color="var(--mantine-color-green-6)"
                     />
-                    <Text size="sm" fw={600} ff="monospace" truncate style={{ flex: 1 }}>
+                    <Text
+                      size="sm"
+                      fw={600}
+                      ff="monospace"
+                      truncate
+                      style={{ flex: 1 }}
+                    >
                       {t.name}
                     </Text>
-                    <Badge size="xs" variant="light" color={tplStatusTone(t.status)}>
+                    <Badge
+                      size="xs"
+                      variant="light"
+                      color={tplStatusTone(t.status)}
+                    >
                       {titleCase(t.status)}
                     </Badge>
                   </Group>
@@ -770,16 +844,8 @@ export const TemplatesTab = ({
         </SimpleGrid>
       )}
 
-      {emailEdit !== null ? (
-        <EmailTemplateModal
-          initial={emailEdit === 'new' ? null : emailEdit}
-          customFields={customFields}
-          onClose={(changed) => {
-            setEmailEdit(null);
-            if (changed) reload();
-          }}
-        />
-      ) : null}
+      {/* Email templates author in the full-page GrapesJS editor (handled by the
+          early return above), not a modal. WhatsApp keeps its modal. */}
       {waEdit !== null ? (
         <WaTemplateModal
           initial={waEdit === 'new' ? null : waEdit}

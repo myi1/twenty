@@ -242,8 +242,8 @@ export const MarketingCampaignBuilderPage = () => {
                 >
                   <Text size="sm" c="dimmed">
                     Sending campaigns is restricted to marketing coordinators
-                    (Manager or Admin). Ask a coordinator to build this, or request
-                    the role.
+                    (Manager or Admin). Ask a coordinator to build this, or
+                    request the role.
                   </Text>
                 </Alert>
                 <Button variant="default" onClick={goHome}>
@@ -289,8 +289,17 @@ export const MarketingCampaignBuilderPage = () => {
               onDesign={startDesign}
             />
           ) : stage === 'design' ? (
-            // SPIKE — the GrapesJS + MJML drag-and-drop email builder.
-            <GrapesEmailBuilder />
+            // The GrapesJS + MJML email designer. Shared with the Templates tab.
+            // "Save as template" persists the design to the reusable library.
+            <GrapesEmailBuilder
+              mode="campaign"
+              customFields={hub.customFields}
+              onSaved={() => {
+                // A campaign-authored design is now a reusable template; the
+                // builder stays open so the user can keep composing the campaign.
+                void refetch();
+              }}
+            />
           ) : stage === 'manual' ? (
             <ManualWizard
               hub={hub}
@@ -303,8 +312,8 @@ export const MarketingCampaignBuilderPage = () => {
             <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
               <Group justify="space-between">
                 <Text size="sm" c="dimmed">
-                  Describe what you want to send — every number is verified against
-                  your real data before it&rsquo;s shown.
+                  Describe what you want to send — every number is verified
+                  against your real data before it&rsquo;s shown.
                 </Text>
                 <Button
                   size="compact-sm"
