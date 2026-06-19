@@ -542,6 +542,13 @@ export const ManualWizard = ({
           channel,
           templateSubject: channel === 'WHATSAPP' ? '' : subject,
           templateBody: channel === 'WHATSAPP' ? '' : bodyText,
+          // #58 — designed-HTML send mode. When the email Compose builder synced a
+          // compiled GrapesJS/MJML HTML document into bodyText, flag it so the send
+          // path ships it as cross-client HTML (merge values escaped) instead of
+          // markdown-rendering it. false for plain/markdown + WhatsApp (markdown
+          // shell, the existing behaviour). The server also content-detects as a
+          // fallback, but the explicit flag is the clean signal.
+          bodyIsHtml: channel === 'WHATSAPP' ? false : isLikelyHtml(bodyText),
           templateLanguage: language,
           listingId: listingFieldsActive ? (listingId ?? '') : '',
           segmentId,
@@ -590,6 +597,8 @@ export const ManualWizard = ({
           channel,
           templateSubject: channel === 'WHATSAPP' ? '' : subject,
           templateBody: channel === 'WHATSAPP' ? '' : bodyText,
+          // #58 — designed-HTML send mode (see saveAndReview for the rationale).
+          bodyIsHtml: channel === 'WHATSAPP' ? false : isLikelyHtml(bodyText),
           templateLanguage: language,
           listingId: listingFieldsActive ? (listingId ?? '') : '',
           segmentId,
@@ -840,7 +849,6 @@ export const ManualWizard = ({
             onFormatB={applyFormatB}
             copyTokensFillableB={copyTokensFillableB}
             waTemplates={approvedTemplates}
-            bodyIsDesignHtml={isLikelyHtml(bodyText)}
             aiContext={{
               objective: listingFieldsActive
                 ? 'PROMOTE_LISTING'
@@ -1175,7 +1183,6 @@ const ComposeStep = ({
   onFormatB,
   copyTokensFillableB,
   waTemplates,
-  bodyIsDesignHtml,
   aiContext,
 }: {
   channel: 'EMAIL' | 'WHATSAPP';
@@ -1205,8 +1212,6 @@ const ComposeStep = ({
   copyTokensFillableB: boolean;
   // Full approved-template records for the WhatsApp A/B variant-B picker.
   waTemplates: WaTemplateOption[];
-  // True when the body is designer-emitted HTML (shows the send-path-gap notice).
-  bodyIsDesignHtml: boolean;
   // Grounding context for the embedded builder's AI co-pilot (EMAIL only).
   aiContext: GrapesEmailAiContext;
 }) => {
@@ -1366,23 +1371,10 @@ const ComposeStep = ({
         onChange={(e) => setVariantSubject(e.currentTarget.value)}
       />
 
-      {/* The send-path-gap notice (kept per #58): the design syncs to the body,
-          but the send drain still text-renders it into the standard layout until
-          HTML-email sending lands. This is backend work, NOT this compose UX. */}
-      {bodyIsDesignHtml && (
-        <Alert
-          color="yellow"
-          variant="light"
-          py={6}
-          icon={<IconAlertCircle size={16} />}
-        >
-          <Text size="xs">
-            Heads up: HTML-email sending isn’t enabled yet, so this design sends
-            as text in the standard branded layout (not pixel-for-pixel) for
-            now.
-          </Text>
-        </Alert>
-      )}
+      {/* #58 — the old "HTML-email sending isn't enabled yet" notice is removed:
+          HTML send is now LIVE (staging v0.5.33, marketingCampaign.bodyIsHtml).
+          A designed-HTML body now ships as cross-client HTML. The merge-field
+          warning below stays — that one's still valid. */}
       {!copyTokensFillable && (
         <Alert
           color="red"
