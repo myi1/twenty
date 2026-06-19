@@ -3,7 +3,6 @@ import { AppPath, SettingsPath } from 'twenty-shared/types';
 import {
   IconBroadcast,
   IconBuildingSkyscraper,
-  IconFileText,
   IconHelpCircle,
   IconSettings,
   IconUsers,
@@ -87,13 +86,11 @@ export const NavigationDrawerOtherSection = () => {
             Icon={IconUsers}
           />
         )}
-        {PROPEL_MARKETING_HUB_ENABLED && (
-          <NavigationDrawerItem
-            label="A2A Studio"
-            to={AppPath.A2AStudio}
-            Icon={IconFileText}
-          />
-        )}
+        {/* A2A Studio has NO standalone nav entry: it's only meaningful opened from
+            a Secondary/Sell opportunity (the "Prepare A2A" command prefills it), and a
+            bare nav link just lands on the "open from an opportunity" placeholder. The
+            /a2a-studio route still resolves (the command + any deep-links navigate to
+            it). Removed per founder 2026-06-19. */}
         {PROPEL_MARKETING_HUB_ENABLED && (
           <NavigationDrawerItem
             label="Listing Studio"
