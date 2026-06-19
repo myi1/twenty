@@ -1,7 +1,39 @@
 import { atom } from 'jotai';
-import { atomWithStorage } from 'jotai/utils';
+import { atomWithStorage, createJSONStorage } from 'jotai/utils';
 
 import { type FamilyState } from '@/ui/utilities/state/jotai/types/FamilyState';
+
+// A localStorage-backed jotai storage that NEVER throws on a failed write.
+// The full metadata store (objectMetadataItems/fieldMetadataItems/views/…) can
+// exceed the browser's ~5MB localStorage budget on a workspace with many custom
+// objects + fields, which raises QuotaExceededError. The default jotai storage
+// lets that throw out of the persist write, rejecting the metadata-load promise
+// and leaving every record view stuck on empty skeletons. A failed persist is
+// harmless — the value is still in memory and re-fetched from the server — so we
+// swallow it (and drop the over-quota key so no stale partial value lingers).
+// Also guards private-mode / disabled storage. Applies to every persisted atom.
+const createQuotaSafeLocalStorage = <ValueType>() => {
+  const base = createJSONStorage<ValueType>(() => localStorage);
+  return {
+    ...base,
+    setItem: (storageKey: string, newValue: ValueType): void => {
+      try {
+        base.setItem(storageKey, newValue);
+      } catch (error) {
+        try {
+          localStorage.removeItem(storageKey);
+        } catch {
+          // ignore — storage unavailable
+        }
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[createAtomFamilyState] skipped persisting "${storageKey}" (localStorage full or unavailable); using in-memory value:`,
+          error instanceof Error ? error.message : error,
+        );
+      }
+    },
+  };
+};
 
 export const createAtomFamilyState = <ValueType, FamilyKey>({
   key,
@@ -36,7 +68,7 @@ export const createAtomFamilyState = <ValueType, FamilyKey>({
       ? atomWithStorage<ValueType>(
           atomKey,
           defaultValue,
-          undefined,
+          createQuotaSafeLocalStorage<ValueType>(),
           localStorageOptions ?? undefined,
         )
       : atom(defaultValue);
