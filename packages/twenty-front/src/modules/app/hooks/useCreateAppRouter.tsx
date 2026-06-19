@@ -29,48 +29,12 @@ const RecordShowPage = lazy(() =>
   })),
 );
 
-// The unified Marketing hero (task #41) — one page, internal Mantine tabs (Home /
-// Campaigns / Inbox / Templates / Social / Numbers). Replaces MarketingHomePage at
-// AppPath.MarketingHub; Home is its default tab.
-const MarketingHero = lazy(() =>
-  import('~/pages/propel/MarketingHero').then((module) => ({
-    default: module.MarketingHero,
-  })),
-);
-
-const MarketingCampaignBuilderPage = lazy(() =>
-  import('~/pages/propel/MarketingCampaignBuilderPage').then((module) => ({
-    default: module.MarketingCampaignBuilderPage,
-  })),
-);
-
-const SequenceEditorPage = lazy(() =>
-  import('~/pages/propel/SequenceEditorPage').then((module) => ({
-    default: module.SequenceEditorPage,
-  })),
-);
-
-const OneOnOneRunnerPage = lazy(() =>
-  import('~/pages/propel/OneOnOneRunnerPage').then((module) => ({
-    default: module.OneOnOneRunnerPage,
-  })),
-);
-
-const SocialCalendarPage = lazy(() =>
-  import('~/pages/propel/SocialCalendarPage').then((module) => ({
-    default: module.SocialCalendarPage,
-  })),
-);
-
-const A2AStudioPage = lazy(() =>
-  import('~/pages/propel/A2AStudioPage').then((module) => ({
-    default: module.A2AStudioPage,
-  })),
-);
-
-// ListingStudio is the FIRST hero ported to runtime loading — it no longer ships
-// in the app bundle; HeroRoute fetches it from the /heroes volume at navigation
-// time. The other 6 heroes above still use in-bundle lazy() (ported incrementally).
+// All 7 Propel heroes are now runtime-loaded via <HeroRoute name="…"/> — none of
+// them ship in the app bundle. HeroRoute fetches each one from the /heroes volume at
+// navigation time (see HeroRoute.tsx + heroRegistry.ts). The former in-bundle lazy()
+// imports for MarketingHero / MarketingCampaignBuilderPage / SequenceEditorPage /
+// OneOnOneRunnerPage / SocialCalendarPage / A2AStudioPage were removed here when each
+// graduated to runtime loading (listing-studio led; the other 6 followed).
 
 const SignInUp = lazy(() =>
   import('~/pages/auth/SignInUp').then((module) => ({
@@ -272,51 +236,27 @@ export const useCreateAppRouter = (
           />
           <Route
             path={AppPath.MarketingHub}
-            element={
-              <LazyRoute>
-                <MarketingHero />
-              </LazyRoute>
-            }
+            element={<HeroRoute name="marketing-hub" />}
           />
           <Route
             path={AppPath.MarketingCampaignBuilder}
-            element={
-              <LazyRoute>
-                <MarketingCampaignBuilderPage />
-              </LazyRoute>
-            }
+            element={<HeroRoute name="campaign-builder" />}
           />
           <Route
             path={AppPath.MarketingSequenceEditor}
-            element={
-              <LazyRoute>
-                <SequenceEditorPage />
-              </LazyRoute>
-            }
+            element={<HeroRoute name="sequence-editor" />}
           />
           <Route
             path={AppPath.OneOnOneRunner}
-            element={
-              <LazyRoute>
-                <OneOnOneRunnerPage />
-              </LazyRoute>
-            }
+            element={<HeroRoute name="one-on-one-runner" />}
           />
           <Route
             path={AppPath.MarketingSocialCalendar}
-            element={
-              <LazyRoute>
-                <SocialCalendarPage />
-              </LazyRoute>
-            }
+            element={<HeroRoute name="social-calendar" />}
           />
           <Route
             path={AppPath.A2AStudio}
-            element={
-              <LazyRoute>
-                <A2AStudioPage />
-              </LazyRoute>
-            }
+            element={<HeroRoute name="a2a-studio" />}
           />
           <Route
             path={AppPath.ListingStudio}

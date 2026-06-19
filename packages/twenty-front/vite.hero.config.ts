@@ -49,26 +49,80 @@ const EXTERNAL = [
   '~/config',
 ];
 
-// CSS the host already loads globally (PropelMantineProvider does
-// `import '@mantine/core/styles.css'`, which Vite extracts into the host's global
-// stylesheet). The hero must NOT re-emit it: externalizing a CSS side-effect import
-// leaves a dangling bare `import "@mantine/core/styles.css"` that the page import map
-// has no entry for → the hero fails to load. Instead, STUB host-owned CSS to an empty
-// module so it's dropped cleanly. (Hero-SPECIFIC CSS — e.g. react-big-calendar — is
-// NOT host-owned and bundles normally into the hero.)
-const HOST_OWNED_CSS = ['@mantine/core/styles.css'];
-
-const stubHostOwnedCss = () => ({
-  name: 'propel-stub-host-owned-css',
-  enforce: 'pre' as const,
-  resolveId(id: string) {
-    if (HOST_OWNED_CSS.some((c) => id === c || id.endsWith(c))) {
-      return '\0propel-host-owned-css';
+// ── Inject ALL bundled CSS via JS (no un-loaded sidecar) ───────────────────────
+// CRITICAL (verified on live staging): the host does NOT load @mantine/core/styles.css
+// on a runtime-hero route. PropelMantineProvider imports it, but Vite code-splits that
+// CSS into the lazy in-bundle hero chunks — none of which mount on a HeroRoute. So a
+// runtime hero must ship Mantine's CSS ITSELF, alongside its hero-specific CSS
+// (react-big-calendar, @xyflow/react, react-grid-layout, …). We therefore do NOT stub
+// @mantine/core/styles.css — we let it (and the hero-specific CSS) bundle in.
+//
+// (twenty-ui/style.css is the ONE exception: src/index.tsx loads it globally on the
+// host, so twenty-ui icon/display styles are already present on every route. It is not
+// imported anywhere in the hero subtree, so it never reaches this bundle — nothing to
+// do. Only Mantine + hero-specific CSS ship in the hero.)
+//
+// In lib mode with cssCodeSplit:false, Vite extracts ALL of that CSS into ONE sidecar
+// `style.css` next to index.js. The heroes volume serves only index.js and the page
+// never <link>s that sidecar, so those styles would silently never apply (this is
+// exactly why the first deployed Listing Studio rendered UNSTYLED). Rather than add the
+// vite-plugin-css-injected-by-js dependency (absent from node_modules — and
+// `npm install` is forbidden here), we do the same thing inline: at generateBundle,
+// pull the emitted CSS asset out of the output and prepend a tiny self-executing
+// snippet to index.js that creates a <style data-propel-hero> at runtime.
+const injectHeroCss = (heroName: string) => ({
+  name: 'propel-inject-hero-css',
+  // MUST run AFTER Vite's internal `vite:css-post` plugin, which is the plugin that
+  // actually EMITS the extracted `*.css` asset into the bundle during generateBundle.
+  // Without `order: 'post'`, our hook runs first and the CSS asset isn't in `bundle`
+  // yet → nothing to inject and the sidecar survives. `order: 'post'` guarantees we
+  // see (and can delete) the emitted CSS asset.
+  generateBundle: {
+    order: 'post' as const,
+    handler(_options: unknown, bundle: Record<string, any>) {
+    // Per-hero <style> id so two heroes never collide on the same DOM node (only one
+    // hero route mounts at a time, but distinct ids keep it robust to future overlap).
+    const styleId = `propel-hero-css-${heroName}`;
+    // Find the single extracted CSS asset (cssCodeSplit:false → at most one).
+    const cssKey = Object.keys(bundle).find(
+      (k) => bundle[k]?.type === 'asset' && k.endsWith('.css'),
+    );
+    if (cssKey === undefined) {
+      // No hero-specific CSS — nothing to inject (e.g. marketing/a2a if they ever
+      // drop their CSS deps). Leave index.js untouched.
+      return;
     }
-    return null;
-  },
-  load(id: string) {
-    return id === '\0propel-host-owned-css' ? 'export default {};' : null;
+    const cssAsset = bundle[cssKey];
+    const css =
+      typeof cssAsset.source === 'string'
+        ? cssAsset.source
+        : Buffer.from(cssAsset.source).toString('utf-8');
+
+    // Remove the sidecar so the hero output is ONLY index.js — no un-loaded file.
+    delete bundle[cssKey];
+
+    const indexKey = Object.keys(bundle).find(
+      (k) => bundle[k]?.type === 'chunk' && bundle[k]?.isEntry,
+    );
+    if (indexKey === undefined) {
+      throw new Error('[propel-inject-hero-css] no entry chunk to inject CSS into');
+    }
+
+    // Idempotent runtime injector: insert one <style> the first time the hero
+    // module is evaluated; keyed by id so re-navigating doesn't duplicate it.
+    const snippet =
+      `(function(){try{` +
+      `if(typeof document==='undefined')return;` +
+      `if(document.getElementById(${JSON.stringify(styleId)}))return;` +
+      `var s=document.createElement('style');` +
+      `s.id=${JSON.stringify(styleId)};` +
+      `s.setAttribute('data-propel-hero',${JSON.stringify(heroName)});` +
+      `s.textContent=${JSON.stringify(css)};` +
+      `document.head.appendChild(s);` +
+      `}catch(e){}})();\n`;
+
+    bundle[indexKey].code = snippet + bundle[indexKey].code;
+    },
   },
 });
 
@@ -84,10 +138,13 @@ export default defineConfig(() => {
   return {
     root: __dirname,
     configFile: false,
+    // Don't copy the front's public/ dir (manifest, mockServiceWorker, images, …)
+    // into each hero output — the heroes volume serves only index.js.
+    publicDir: false,
     plugins: [
-      stubHostOwnedCss(),
       react(),
       tsconfigPaths({ root: __dirname, projects: ['tsconfig.json'] }),
+      injectHeroCss(heroName),
     ],
     define: {
       // Hero source may reference these (shared with the app); fix them at build time.
@@ -107,9 +164,9 @@ export default defineConfig(() => {
       rollupOptions: {
         // Keep shared/host specifiers (and their subpaths) external.
         external: (id) => {
-          // CSS is never external: host-owned CSS is stubbed (stubHostOwnedCss),
-          // hero-specific CSS bundles in. Externalizing CSS would leave a dangling
-          // bare import with no import-map entry → the hero would fail to load.
+          // CSS is NEVER external: ALL of it (Mantine + hero-specific) bundles in and
+          // is injected at runtime via injectHeroCss. Externalizing CSS would leave a
+          // dangling bare import with no import-map entry → the hero would fail to load.
           if (id.endsWith('.css')) return false;
           if (EXTERNAL.includes(id)) return true;
           // subpath guard, e.g. `react/jsx-dev-runtime`, `@mantine/hooks/...`
