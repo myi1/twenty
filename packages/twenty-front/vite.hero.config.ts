@@ -49,10 +49,28 @@ const EXTERNAL = [
   '~/config',
 ];
 
-// CSS the host already loads (PropelMantineProvider does `import '@mantine/core/styles.css'`).
-// The hero must NOT re-bundle Mantine's stylesheet — the host owns it. Treat the CSS
-// side-effect import as external so it's dropped from the hero bundle.
-const EXTERNAL_CSS = ['@mantine/core/styles.css'];
+// CSS the host already loads globally (PropelMantineProvider does
+// `import '@mantine/core/styles.css'`, which Vite extracts into the host's global
+// stylesheet). The hero must NOT re-emit it: externalizing a CSS side-effect import
+// leaves a dangling bare `import "@mantine/core/styles.css"` that the page import map
+// has no entry for → the hero fails to load. Instead, STUB host-owned CSS to an empty
+// module so it's dropped cleanly. (Hero-SPECIFIC CSS — e.g. react-big-calendar — is
+// NOT host-owned and bundles normally into the hero.)
+const HOST_OWNED_CSS = ['@mantine/core/styles.css'];
+
+const stubHostOwnedCss = () => ({
+  name: 'propel-stub-host-owned-css',
+  enforce: 'pre' as const,
+  resolveId(id: string) {
+    if (HOST_OWNED_CSS.some((c) => id === c || id.endsWith(c))) {
+      return '\0propel-host-owned-css';
+    }
+    return null;
+  },
+  load(id: string) {
+    return id === '\0propel-host-owned-css' ? 'export default {};' : null;
+  },
+});
 
 export default defineConfig(() => {
   const heroName = process.env.HERO_NAME;
@@ -67,6 +85,7 @@ export default defineConfig(() => {
     root: __dirname,
     configFile: false,
     plugins: [
+      stubHostOwnedCss(),
       react(),
       tsconfigPaths({ root: __dirname, projects: ['tsconfig.json'] }),
     ],
@@ -88,9 +107,12 @@ export default defineConfig(() => {
       rollupOptions: {
         // Keep shared/host specifiers (and their subpaths) external.
         external: (id) => {
+          // CSS is never external: host-owned CSS is stubbed (stubHostOwnedCss),
+          // hero-specific CSS bundles in. Externalizing CSS would leave a dangling
+          // bare import with no import-map entry → the hero would fail to load.
+          if (id.endsWith('.css')) return false;
           if (EXTERNAL.includes(id)) return true;
-          if (EXTERNAL_CSS.includes(id)) return true;
-          // subpath guard, e.g. `react/jsx-dev-runtime`, `@mantine/core/styles.css`
+          // subpath guard, e.g. `react/jsx-dev-runtime`, `@mantine/hooks/...`
           return EXTERNAL.some((e) => id === e || id.startsWith(`${e}/`));
         },
         output: {
