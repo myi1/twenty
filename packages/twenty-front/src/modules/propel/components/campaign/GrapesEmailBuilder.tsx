@@ -68,27 +68,41 @@ import {
 
 import 'grapesjs/dist/css/grapes.min.css';
 
-// ── Brand kit (HARDCODED for the spike) ──────────────────────────────────────
-// Real wiring pulls these from the existing brand-kit backend (the Propel app's
-// `brand-kit-io` / brandKit logic-function route — same source the social
-// "branded card" affordance reads): logo URL, primary + accent colors, font.
-// For the spike they are a RE/MAX-style sample so the branded header looks real.
+// ── Brand kit (INTERIM logo + colors) ────────────────────────────────────────
+// The logo is the REAL RE/MAX Hub brand asset, served from the founder's own site
+// (https://www.remaxhub.ae/assets/Remax_logo.jpeg — 200 image/jpeg, hotlink-safe
+// since it's their domain). It replaces the previous broken sample URL (a wikimedia
+// SVG that 404'd → the broken-image icon the founder saw).
+//
+// TODO(real wiring): pull logo + colors from the brand-kit backend rather than
+// hardcoding. The fork has NO direct brand-kit READ in the front-end — the social
+// "branded card" affordance (lib/socialBrandCard.ts) instead posts to the SERVER
+// route `/marketing/social/brand-card`, which resolves branding server-side and
+// composites an image via the image-service. To expose logo/colors to this editor,
+// either add a small read to the marketing-hub route payload (brandKit: {logoUrl,
+// colorPrimary, colorAccent}) and thread it in as a prop, OR add a dedicated
+// `/marketing/brand-kit` GET. Both are app-side (ship via app:install) — out of
+// scope for this STAGING-only hero iteration. Colors below are RE/MAX brand values.
 const BRAND = {
   name: 'RE/MAX Hub',
-  // A neutral sample logo (RE/MAX wordmark-style). Real wiring → brandKit.logoUrl.
-  logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/2/27/RE-MAX_logo.svg',
+  // Real RE/MAX Hub logo (their own site asset). Real wiring → brandKit.logoUrl.
+  logoUrl: 'https://www.remaxhub.ae/assets/Remax_logo.jpeg',
   primary: '#003DA5', // RE/MAX blue   (real wiring → brandKit.colorPrimary)
   accent: '#DC1C2E', // RE/MAX red    (real wiring → brandKit.colorAccent)
   footerText: 'RE/MAX Hub · Dubai, UAE · {{agentName}}',
 } as const;
 
-// ── Merge tags offered in the toolbar (sample set for the spike) ─────────────
-// Real wiring derives the allowed token set from the campaign's audience schema
-// (the same `composeAllowedKeys` the ManualWizard validates against).
+// ── Merge tags offered in the toolbar ────────────────────────────────────────
+// These MUST be a subset of the email send-drain's DRAIN_POPULATED_FIELDS (the
+// app's marketing-save-email-template-route rejects any other {{token}}), so a
+// template saved from here passes server validation. firstName / agentName /
+// listingTitle are all drain-populatable. Real wiring would derive the full
+// allowed set from the marketing-hub payload (the same vocabulary the manual
+// wizard's `composeAllowedKeys` validates against), incl. workspace custom fields.
 const MERGE_TAGS: { token: string; label: string }[] = [
   { token: '{{firstName}}', label: 'First name' },
   { token: '{{agentName}}', label: 'Agent name' },
-  { token: '{{propertyName}}', label: 'Property name' },
+  { token: '{{listingTitle}}', label: 'Listing title' },
 ];
 
 // The MJML the canvas opens with — a minimal branded skeleton so the editor is
