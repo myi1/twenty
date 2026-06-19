@@ -204,6 +204,21 @@ export const StyledComposerPanel = styled.div`
     justify-content: center;
     text-align: center;
   }
+  /* Large-video B2 upload progress — a thin bar pinned to the tile's bottom edge. */
+  .propel-media-progress {
+    background: color-mix(in srgb, var(--mantine-color-text) 18%, transparent);
+    bottom: 0;
+    height: 4px;
+    left: 0;
+    position: absolute;
+    right: 0;
+  }
+  .propel-media-progress-fill {
+    background: var(--pulse-red);
+    display: block;
+    height: 100%;
+    transition: width 160ms ease-out;
+  }
   .propel-media-tile--error {
     align-items: center;
     border-color: var(--failed-fill);

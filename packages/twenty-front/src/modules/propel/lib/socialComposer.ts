@@ -63,6 +63,9 @@ export type ComposerMedia = {
   status: 'uploading' | 'ready' | 'error';
   /** inline error for this tile (e.g. too large / upload failed) */
   error: string | null;
+  /** 0..1 upload progress for the large-video B2 path; null for instant/base64
+   *  uploads (images) and once the tile is ready. */
+  progress?: number | null;
 };
 
 const VIDEO_TYPE = /^video\//i;
