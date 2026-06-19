@@ -214,6 +214,49 @@ export const MarketingCampaignBuilderPage = () => {
                 )}
               </Stack>
             </Center>
+          ) : hub.tier === 'VIEWER_BLOCKED' ? (
+            // S9 — permission-denied. A non-coordinator (not Manager/Admin) can't
+            // create campaigns; the hub route returns everything empty with this
+            // tier. Show a calm read-only notice instead of an empty builder that
+            // would fail on every save.
+            <Center style={{ flex: 1, minHeight: 320 }}>
+              <Stack gap="md" maw={460} align="center">
+                <Alert
+                  color="gray"
+                  variant="light"
+                  icon={<IconAlertCircle size={16} />}
+                  title="Campaign creation is coordinator-only"
+                  style={{ width: '100%' }}
+                >
+                  <Text size="sm" c="dimmed">
+                    Sending campaigns is restricted to marketing coordinators
+                    (Manager or Admin). Ask a coordinator to build this, or request
+                    the role.
+                  </Text>
+                </Alert>
+                <Button variant="default" onClick={goHome}>
+                  Back to Marketing
+                </Button>
+              </Stack>
+            </Center>
+          ) : !hub.loaded ? (
+            // S9 — the hub couldn't load at all (null payload). Honest retry, not
+            // an empty builder.
+            <Center style={{ flex: 1, minHeight: 320 }}>
+              <Stack gap="md" maw={420} align="center">
+                <Text size="sm" c="dimmed" ta="center">
+                  Couldn&rsquo;t load the campaign builder right now.
+                </Text>
+                <Group gap="sm">
+                  <Button variant="default" onClick={goHome}>
+                    Back to Marketing
+                  </Button>
+                  <Button color="red" onClick={() => void refetch()}>
+                    Retry
+                  </Button>
+                </Group>
+              </Stack>
+            </Center>
           ) : draftState === 'denied' ? (
             <DraftNotice
               tone="denied"

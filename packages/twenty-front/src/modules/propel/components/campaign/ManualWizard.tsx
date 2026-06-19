@@ -188,6 +188,15 @@ export const ManualWizard = ({
     () => listings.find((l) => l.id === listingId) ?? null,
     [listings, listingId],
   );
+  // S9 — compliance block: a listing promo whose Trakheesi permit isn't valid.
+  // Gates "Send now" (the send-request route re-checks it server-side anyway);
+  // saving a draft / scheduling is still allowed (the permit is re-checked at
+  // fire time, and the draft is useful while the permit clears).
+  const permitBlocked =
+    objective === 'LISTING' &&
+    channel === 'EMAIL' &&
+    listing != null &&
+    !listing.permitOk;
 
   const listingFieldsActive =
     objective === 'LISTING' && Boolean(listingId) && channel === 'EMAIL';
@@ -676,6 +685,15 @@ export const ManualWizard = ({
   // previews against the cap buckets as they'll stand then. Honest: a failed /
   // unanswerable preview sets 'error' ("couldn't check") and never zero-fills.
   // Re-runs when the segment, channel, or scheduled instant changes.
+  //
+  // BACKEND TODO(S9-cap-preview): /marketing/segment-preview resolves arbitrary
+  // CRITERIA (it reads body.criteria), NOT a saved segmentId — passing segmentId
+  // here means parseCriteria(undefined) errors, so rulesPreview is never returned
+  // and the GuardrailsCard always lands in its honest "couldn't check" state. To
+  // light up the REAL cap-skip number, segment-preview must accept a segmentId
+  // (load the stored criteria, then run the same rulesPreview cap pass) — mirror
+  // the segmentId branch that save-segment already has. Until then the card stays
+  // truthful (never a fake 0), just less informative.
   const scheduledIso =
     sendMode === 'schedule' ? dubaiLocalToIso(scheduleAt) : null;
   useEffect(() => {
@@ -814,6 +832,7 @@ export const ManualWizard = ({
             scheduleAt={scheduleAt}
             onScheduleAt={setScheduleAt}
             permitWarning={permitWarning}
+            permitBlocked={permitBlocked}
             ab={abActive ? ab : null}
             sendRules={sendRules}
             capPreview={capPreview}
@@ -870,6 +889,12 @@ export const ManualWizard = ({
               <Button
                 color="red"
                 loading={submitting}
+                disabled={permitBlocked}
+                title={
+                  permitBlocked
+                    ? 'Sending is blocked until the listing’s permit is valid'
+                    : undefined
+                }
                 onClick={() => void sendNow()}
               >
                 Send now
@@ -1527,6 +1552,7 @@ const ReviewStep = ({
   scheduleAt,
   onScheduleAt,
   permitWarning,
+  permitBlocked,
   ab,
   sendRules,
   capPreview,
@@ -1544,6 +1570,10 @@ const ReviewStep = ({
   scheduleAt: string;
   onScheduleAt: (v: string) => void;
   permitWarning: string | null;
+  // S9 — compliance block: a listing promo whose Trakheesi permit isn't valid.
+  // The send-request route re-gates this server-side; surfacing it here means the
+  // user understands the block BEFORE launching, as a calm inline gate.
+  permitBlocked: boolean;
   ab: AbConfig | null;
   sendRules: SendRulesPayload | undefined;
   capPreview: CapPreview;
@@ -1592,7 +1622,20 @@ const ReviewStep = ({
       </Stack>
     </Card>
 
-    {permitWarning && (
+    {permitBlocked && (
+      <Alert
+        color="red"
+        variant="light"
+        icon={<IconAlertCircle size={16} />}
+        title="This listing’s permit isn’t valid yet"
+      >
+        A listing promo can&rsquo;t send until its Trakheesi permit is valid. You
+        can save this as a draft now; sending stays blocked until the permit
+        clears (the send is re-checked at launch).
+      </Alert>
+    )}
+
+    {permitWarning && !permitBlocked && (
       <Alert color="yellow" variant="light" icon={<IconAlertCircle size={16} />}>
         {permitWarning}
       </Alert>
