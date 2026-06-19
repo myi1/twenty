@@ -9,6 +9,7 @@ import {
   SegmentedControl,
   Select,
   Stack,
+  Switch,
   Text,
   Textarea,
   TextInput,
@@ -1286,6 +1287,18 @@ const ComposeStep = ({
           <Text size="sm" fw={600} c="var(--mantine-color-text)">
             Email content
           </Text>
+          {/* Compact A/B on/off (founder: the old full-width card was too big — it's
+              just a toggle now). The whole Compose A/B footprint is this switch; when
+              ON, the A | B switcher beside it designs Variant B, and the test
+              mechanics live on the Review step. */}
+          <Switch
+            size="xs"
+            color="red"
+            checked={abOn}
+            onChange={(e) => onAbChange({ enabled: e.currentTarget.checked })}
+            label="A/B test"
+            styles={{ label: { fontSize: 12, fontWeight: 600 } }}
+          />
           {/* A | B switcher — flips the SAME builder canvas between the two
               variant designs (only when A/B is on). */}
           {abOn ? (
@@ -1417,27 +1430,10 @@ const ComposeStep = ({
         />
       </Box>
 
-      {/* A/B on Compose = ONLY the on/off toggle + Variant-B door (the variant
-          designs are in the builder above via the A|B switcher). The test
-          MECHANICS (slice / winner / decide-after / min-events) moved to the Review
-          step (founder Option A) so Compose isn't a scroll-fest — showMechanics
-          false here. */}
-      <AbTestPanel
-        ab={ab}
-        onChange={onAbChange}
-        channel="EMAIL"
-        subjectBRef={subjectBRef}
-        bodyBRef={bodyBRef}
-        mergeFields={mergeFields}
-        customFields={customFields}
-        onInsertTokenB={onInsertTokenB}
-        onFormatB={onFormatB}
-        copyTokensFillableB={copyTokensFillableB}
-        waTemplates={waTemplates}
-        waTemplateAId={null}
-        hideEmailBodyEditor
-        showMechanics={false}
-      />
+      {/* A/B on Compose is now JUST the compact "A/B test" toggle in the header
+          (founder: the old full-width card was too big). When ON, the A|B switcher
+          beside it designs Variant B; the test mechanics (slice / winner /
+          decide-after / min-events) live on the Review step. No card here. */}
     </Stack>
   );
 };
