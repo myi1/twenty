@@ -1,20 +1,26 @@
 import {
   Alert,
+  Anchor,
   Box,
   Button,
+  Collapse,
   Group,
   Modal,
   MultiSelect,
+  NumberInput,
   SegmentedControl,
   Select,
   Stack,
   Table,
   Text,
+  Textarea,
   TextInput,
 } from '@mantine/core';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   IconAlertCircle,
+  IconChevronDown,
+  IconChevronRight,
   IconFileUpload,
   IconFilter,
   IconUpload,
@@ -26,6 +32,8 @@ import {
   fileToBase64,
   LEAD_SOURCE_OPTIONS,
   MEDIA_MAX_DECODED_BYTES,
+  OPP_STAGE_OPTIONS,
+  parsePersonIds,
 } from '@/propel/lib/campaignBuilderConfig';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import {
@@ -89,11 +97,33 @@ export const SegmentCreateModal = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const inFlightRef = useRef(false);
 
-  // Criteria state.
+  // Criteria state — the 2 common axes (always visible) + S5's progressive axes
+  // (behind "More filters").
   const [sources, setSources] = useState<string[]>([]);
   const [coldDays, setColdDays] = useState('');
+  // S5 — progressive axes.
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [oppStages, setOppStages] = useState<string[]>([]);
+  const [budgetMin, setBudgetMin] = useState('');
+  const [budgetMax, setBudgetMax] = useState('');
+  const [personIdsRaw, setPersonIdsRaw] = useState('');
   const [savingCriteria, setSavingCriteria] = useState(false);
   const [criteriaErr, setCriteriaErr] = useState('');
+
+  // Live count of the hand-entered person allow-list (normalized the same way
+  // the payload will be), so the user sees how many distinct ids they pasted.
+  const personIdCount = useMemo(
+    () => parsePersonIds(personIdsRaw).length,
+    [personIdsRaw],
+  );
+  // Any progressive axis carrying a value (drives the validation gate so an
+  // opp-stage-only or person-list-only segment is creatable, not just the 2
+  // common axes).
+  const hasMoreFilters =
+    oppStages.length > 0 ||
+    budgetMin.trim() !== '' ||
+    budgetMax.trim() !== '' ||
+    personIdCount > 0;
 
   const resetAll = useCallback(() => {
     setMode('csv');
@@ -107,6 +137,11 @@ export const SegmentCreateModal = ({
     setColMap(EMPTY_MAP);
     setSources([]);
     setColdDays('');
+    setMoreOpen(false);
+    setOppStages([]);
+    setBudgetMin('');
+    setBudgetMax('');
+    setPersonIdsRaw('');
     setCriteriaErr('');
   }, []);
 
@@ -242,8 +277,19 @@ export const SegmentCreateModal = ({
       setCriteriaErr('Name the segment first.');
       return;
     }
-    if (sources.length === 0 && !coldDays.trim()) {
-      setCriteriaErr('Add at least one filter — a lead source and/or a cold window.');
+    if (sources.length === 0 && !coldDays.trim() && !hasMoreFilters) {
+      setCriteriaErr(
+        'Add at least one filter — a lead source, a cold window, or one under "More filters".',
+      );
+      return;
+    }
+    // Client guard mirrors the route (it rejects budgetMin > budgetMax). Caught
+    // here so the user fixes it without a round-trip.
+    const bMin = Number.parseFloat(budgetMin);
+    const bMax = Number.parseFloat(budgetMax);
+    if (Number.isFinite(bMin) && Number.isFinite(bMax) && bMin > bMax) {
+      setCriteriaErr('Budget min is greater than budget max — swap them.');
+      setMoreOpen(true);
       return;
     }
     setSavingCriteria(true);
@@ -253,7 +299,14 @@ export const SegmentCreateModal = ({
         '/marketing/save-segment',
         {
           name: name.trim(),
-          criteria: buildCriteriaV2({ sources, coldDays }),
+          criteria: buildCriteriaV2({
+            sources,
+            coldDays,
+            oppStages,
+            budgetMin,
+            budgetMax,
+            personIds: personIdsRaw,
+          }),
           channel,
           resolve: true,
         },
@@ -284,6 +337,11 @@ export const SegmentCreateModal = ({
     name,
     sources,
     coldDays,
+    hasMoreFilters,
+    oppStages,
+    budgetMin,
+    budgetMax,
+    personIdsRaw,
     channel,
     onCreated,
     notify,
@@ -490,6 +548,95 @@ export const SegmentCreateModal = ({
               value={coldDays}
               onChange={(e) => setColdDays(e.currentTarget.value)}
             />
+
+            {/* S5 — progressive axes (design D-3). Hidden by default so the
+                common case (source + cold) stays a two-field form; revealed on
+                demand. Every axis here is genuinely wired to the resolver
+                against the current audience source — opp stage + budget come
+                from the secondary pipeline, the person list is an explicit
+                allow-set. (Lane + location are intentionally absent until
+                fetchAudience feeds them — see TODO(S5-backend) below.) */}
+            <Box>
+              <Anchor
+                component="button"
+                type="button"
+                size="sm"
+                c="red"
+                onClick={() => setMoreOpen((o) => !o)}
+              >
+                <Group gap={4} wrap="nowrap" component="span">
+                  {moreOpen ? (
+                    <IconChevronDown size={14} />
+                  ) : (
+                    <IconChevronRight size={14} />
+                  )}
+                  {moreOpen ? 'Fewer filters' : 'More filters'}
+                  {!moreOpen && hasMoreFilters ? ' (active)' : ''}
+                </Group>
+              </Anchor>
+              <Collapse in={moreOpen}>
+                <Stack gap="sm" mt="sm">
+                  <MultiSelect
+                    label="Opportunity stage"
+                    description="Has a secondary-pipeline opportunity in any of these stages."
+                    placeholder="Any stage"
+                    data={OPP_STAGE_OPTIONS}
+                    value={oppStages}
+                    onChange={setOppStages}
+                    clearable
+                  />
+                  <Box>
+                    <Text size="sm" fw={600} mb={6} c="var(--mantine-color-text)">
+                      Budget range (AED)
+                    </Text>
+                    <Group grow align="flex-start">
+                      <NumberInput
+                        placeholder="Min"
+                        min={0}
+                        thousandSeparator=","
+                        allowNegative={false}
+                        value={budgetMin}
+                        onChange={(v) =>
+                          setBudgetMin(v === '' ? '' : String(v))
+                        }
+                      />
+                      <NumberInput
+                        placeholder="Max"
+                        min={0}
+                        thousandSeparator=","
+                        allowNegative={false}
+                        value={budgetMax}
+                        onChange={(v) =>
+                          setBudgetMax(v === '' ? '' : String(v))
+                        }
+                      />
+                    </Group>
+                    <Text size="xs" c="dimmed" mt={4}>
+                      Matches the opportunity&rsquo;s budget (its max, or min when
+                      no max is set).
+                    </Text>
+                  </Box>
+                  <Textarea
+                    label="Specific people"
+                    description="Paste person IDs (comma, space, or newline separated) to restrict to exactly these contacts."
+                    placeholder="id-1, id-2, id-3…"
+                    autosize
+                    minRows={2}
+                    maxRows={5}
+                    value={personIdsRaw}
+                    onChange={(e) => setPersonIdsRaw(e.currentTarget.value)}
+                  />
+                  {personIdCount > 0 && (
+                    <Text size="xs" c="dimmed">
+                      {personIdCount.toLocaleString('en-US')} person ID
+                      {personIdCount === 1 ? '' : 's'} — only these are eligible,
+                      still subject to the other filters and consent.
+                    </Text>
+                  )}
+                </Stack>
+              </Collapse>
+            </Box>
+
             <Text size="xs" c="dimmed">
               Segments resolve live at send time — editing the filters changes the
               audience of every draft pointing at this segment.
