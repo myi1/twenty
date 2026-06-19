@@ -185,6 +185,58 @@ export interface SequenceRow {
   steps: SequenceStepDraft[];
 }
 
+// ── POST /marketing/campaign-detail (single-campaign drill-in) ───────────────
+// Mirrors the SUBSET of the route's CampaignDetailPayload the unified Marketing
+// hero's CampaignDetail surface reads (canonical shape: propel-crm-integration
+// src/shared/marketing-hub-types.ts). The route owns ALL label formatting
+// (Asia/Dubai) and the plain-English problem/action; the UI renders strings and
+// never zero-fills (KPI tiles + funnel are gated on isSent, recipient activity
+// hides when empty).
+export interface RecipientActivityRow {
+  recipientId: string;
+  displayName: string;
+  contactLabel: string; // e164 for WhatsApp, masked email otherwise
+  state: 'OPENED' | 'CLICKED' | 'REPLIED';
+  activityLabel: string;
+  whenLabel: string;
+  personId: string | null;
+  isReplied: boolean;
+}
+
+export interface CampaignDetailPayload {
+  ok: boolean;
+  id: string;
+  name: string;
+  status: string; // DRAFT | SCHEDULED | SEND_REQUESTED | MATERIALIZING | SENDING | SENT | FAILED | CANCELLED
+  statusLine: string; // "Sent — finished 15h ago"
+  channel: RealChannel;
+  audienceLabel: string; // segment or listing name ('' when unset)
+  timeline: { label: string; whenLabel: string }[]; // Created / Scheduled / Started / Finished
+  targetCount: number;
+  sentCount: number;
+  failedCount: number;
+  skippedCount: number;
+  pendingCount: number; // live PENDING+SENDING+HELD recipients
+  openCount: number;
+  clickCount: number;
+  replyCount: number;
+  openRate: number | null;
+  clickRate: number | null;
+  statsSettling: boolean;
+  subject: string | null;
+  bodyPreview: string; // first 600 chars of the template body
+  language: string;
+  ab:
+    | null
+    | { winner: string | null; openA: number; openB: number; replyA: number; replyB: number };
+  problem: string | null; // plain-English what went wrong
+  problemAction: string | null; // plain-English what to do about it
+  techDetail: string | null; // raw errorSummary for whoever wants it
+  recipientActivity: RecipientActivityRow[]; // engaged recipients (empty = none / pruned)
+  recipientActivityTotal: number; // total engaged (for the "+N more" footer)
+  error?: string;
+}
+
 export interface WaTemplateOption {
   id: string;
   name: string;
