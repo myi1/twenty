@@ -62,6 +62,7 @@ import {
   type SendRequestResponse,
   type SendRulesPayload,
   type TestSendResponse,
+  type WaTemplateOption,
 } from '@/propel/types/campaignBuilder';
 
 export const WIZARD_STEPS = ['Setup', 'Compose', 'Audience', 'Review'] as const;
@@ -274,6 +275,7 @@ export const ManualWizard = ({
           initialDraft.abMinEvents >= 0
             ? initialDraft.abMinEvents
             : DEFAULT_AB_CONFIG.minEvents,
+        templateBId: initialDraft.abTemplateBId ?? null,
       });
     }
   }, [initialDraft]);
@@ -359,7 +361,7 @@ export const ManualWizard = ({
       ),
     [subject, bodyText, composeAllowedKeys],
   );
-  // A/B variant B is only validated when the test is ON (EMAIL only). It must be
+  // A/B variant B (EMAIL) is only validated when the test is ON. It must be
   // non-empty and use only fillable merge fields — same contract as variant A.
   const copyTokensFillableB = useMemo(
     () =>
@@ -369,16 +371,21 @@ export const ManualWizard = ({
       ].every((f) => composeAllowedKeys.has(f)),
     [ab.subjectB, ab.bodyB, composeAllowedKeys],
   );
-  // A/B only applies to EMAIL in S2; if the user flips to WhatsApp it is inert.
-  const abActive = channel === 'EMAIL' && ab.enabled;
+  // A/B now applies to BOTH channels. The readiness contract differs:
+  //   • EMAIL — variant B subject + body present and fillable.
+  //   • WHATSAPP — a variant-B template picked that ISN'T the variant-A template
+  //     (two genuinely-different approved templates).
+  const abActive = ab.enabled;
   const abReady =
     !abActive ||
-    Boolean(ab.subjectB.trim() && ab.bodyB.trim() && copyTokensFillableB);
+    (channel === 'WHATSAPP'
+      ? Boolean(ab.templateBId && ab.templateBId !== waTemplateId)
+      : Boolean(ab.subjectB.trim() && ab.bodyB.trim() && copyTokensFillableB));
   const setupReady =
     Boolean(name.trim()) && (objective === 'SEGMENT' || Boolean(listingId));
   const draftReady =
     channel === 'WHATSAPP'
-      ? Boolean(name.trim() && waTemplateId)
+      ? Boolean(name.trim() && waTemplateId && abReady)
       : Boolean(
           name.trim() &&
             subject.trim() &&
@@ -387,23 +394,35 @@ export const ManualWizard = ({
             abReady,
         );
 
-  // The A/B patch sent to save-campaign. When the test is OFF (or channel is
-  // WhatsApp) we still send `abEnabled: false` so toggling it off on an existing
-  // draft clears the flag; the variant copy / settings only ride when enabled.
+  // The A/B patch sent to save-campaign. When the test is OFF we send only
+  // `abEnabled: false` so toggling it off on an existing draft clears the flag.
+  // When ON, the variant payload is channel-specific: EMAIL sends the B
+  // subject/body (and clears any stale B template); WhatsApp sends the B template
+  // id (and clears stale B copy) — so flipping channel on an existing draft can't
+  // leave the wrong variant behind. The shared slice/winner/window ride either way.
   const abSavePatch = useMemo<Record<string, unknown>>(
     () =>
       abActive
         ? {
             abEnabled: true,
-            abSubjectB: ab.subjectB,
-            abBodyB: ab.bodyB,
+            ...(channel === 'WHATSAPP'
+              ? {
+                  abTemplateBId: ab.templateBId ?? '',
+                  abSubjectB: '',
+                  abBodyB: '',
+                }
+              : {
+                  abSubjectB: ab.subjectB,
+                  abBodyB: ab.bodyB,
+                  abTemplateBId: '',
+                }),
             abSlicePct: ab.slicePct,
             abWinnerMetric: ab.winnerMetric,
             abDecideAfterHours: ab.decideAfterHours,
             abMinEvents: ab.minEvents,
           }
         : { abEnabled: false },
-    [abActive, ab],
+    [abActive, channel, ab],
   );
 
   // ── route actions ──────────────────────────────────────────────────────────
@@ -748,6 +767,7 @@ export const ManualWizard = ({
             onInsertTokenB={insertTokenB}
             onFormatB={applyFormatB}
             copyTokensFillableB={copyTokensFillableB}
+            waTemplates={approvedTemplates}
           />
         )}
 
@@ -1063,6 +1083,7 @@ const ComposeStep = ({
   onInsertTokenB,
   onFormatB,
   copyTokensFillableB,
+  waTemplates,
 }: {
   channel: 'EMAIL' | 'WHATSAPP';
   subject: string;
@@ -1094,6 +1115,8 @@ const ComposeStep = ({
   onInsertTokenB: (field: string) => void;
   onFormatB: (action: FormatAction) => void;
   copyTokensFillableB: boolean;
+  // Full approved-template records for the WhatsApp A/B variant-B picker.
+  waTemplates: WaTemplateOption[];
 }) => {
   if (channel === 'WHATSAPP') {
     return (
@@ -1114,6 +1137,21 @@ const ComposeStep = ({
           WhatsApp body comes from the approved template — there&rsquo;s nothing to
           write here.
         </Text>
+
+        <AbTestPanel
+          ab={ab}
+          onChange={onAbChange}
+          channel="WHATSAPP"
+          subjectBRef={subjectBRef}
+          bodyBRef={bodyBRef}
+          mergeFields={mergeFields}
+          customFields={customFields}
+          onInsertTokenB={onInsertTokenB}
+          onFormatB={onFormatB}
+          copyTokensFillableB={copyTokensFillableB}
+          waTemplates={waTemplates}
+          waTemplateAId={waTemplateId}
+        />
       </Stack>
     );
   }
@@ -1224,6 +1262,7 @@ const ComposeStep = ({
           <AbTestPanel
             ab={ab}
             onChange={onAbChange}
+            channel="EMAIL"
             subjectBRef={subjectBRef}
             bodyBRef={bodyBRef}
             mergeFields={mergeFields}
@@ -1231,6 +1270,8 @@ const ComposeStep = ({
             onInsertTokenB={onInsertTokenB}
             onFormatB={onFormatB}
             copyTokensFillableB={copyTokensFillableB}
+            waTemplates={waTemplates}
+            waTemplateAId={null}
           />
         </Stack>
       </Grid.Col>

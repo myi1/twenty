@@ -25,8 +25,12 @@ export type AbWinnerMetric = 'OPENS' | 'REPLIES';
 
 export interface AbConfig {
   enabled: boolean;
-  subjectB: string;
-  bodyB: string;
+  subjectB: string; // EMAIL variant B
+  bodyB: string; // EMAIL variant B
+  // WhatsApp variant B = a second approved template (the WA body IS the
+  // template; there's no free copy). Maps to save-campaign's abTemplateBId,
+  // which the route already accepts. null = no B template chosen yet.
+  templateBId: string | null;
   slicePct: number; // 5–50; the % of the audience the A/B test samples
   winnerMetric: AbWinnerMetric;
   decideAfterHours: number; // > 0
@@ -37,6 +41,7 @@ export const DEFAULT_AB_CONFIG: AbConfig = {
   enabled: false,
   subjectB: '',
   bodyB: '',
+  templateBId: null,
   slicePct: 20,
   winnerMetric: 'OPENS',
   decideAfterHours: 24,
