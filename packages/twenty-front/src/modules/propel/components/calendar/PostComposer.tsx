@@ -32,6 +32,7 @@ import {
 } from 'twenty-ui/display';
 import { AiCopyControls } from '@/propel/components/calendar/AiCopyControls';
 import { AiImageControls } from '@/propel/components/calendar/AiImageControls';
+import { CanvaControls } from '@/propel/components/calendar/CanvaControls';
 import { ComposerPreview } from '@/propel/components/calendar/ComposerPreview';
 import {
   StyledComposerBackdrop,
@@ -429,6 +430,40 @@ const ComposerBody = ({
     setBrandCardBusy(false);
   }, [brandCardBusy, form.listingId, form.media, surfaceAiError]);
 
+  // ── Design in Canva (Canva Connect round-trip) ───────────────────────────────
+  // getSeedImage: the bytes of the FIRST ready photo already on the post, so the
+  // create-design route can seed it as a Canva asset (best-effort; null = blank
+  // design). The tile only retains the (signed) URL, so we re-read the bytes.
+  const getSeedImageForCanva = useCallback(async (): Promise<{ base64: string; contentType: string } | null> => {
+    const sourcePhoto = form.media.find(
+      (m) => m.status === 'ready' && m.kind === 'image' && m.url !== null,
+    );
+    if (!sourcePhoto || sourcePhoto.url === null) return null;
+    return fetchPhotoBytes(sourcePhoto.url);
+  }, [form.media]);
+
+  // attachCanvaImage: the exported (re-hosted) PNG flows back here — attach it as a
+  // NEW ready media tile (alongside any source photo; we never replace). Same media
+  // contract as a file upload / generated image, so Save gating + the strip render
+  // it identically. The export route already stored it to B2, so it's `ready`.
+  const attachCanvaImage = useCallback((url: string) => {
+    setForm((f) => ({
+      ...f,
+      media: [
+        ...f.media,
+        {
+          id: uid(),
+          url,
+          objectUrl: null,
+          kind: mediaKindOf('image/png', url),
+          name: 'Canva design',
+          status: 'ready',
+          error: null,
+        },
+      ],
+    }));
+  }, []);
+
   const onPickFiles = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) addFiles(e.target.files);
     e.target.value = ''; // allow re-selecting the same file
@@ -736,6 +771,18 @@ const ComposerBody = ({
                 only; the route blocks photoreal-property prompts. */}
             <div style={{ marginBottom: 8 }}>
               <AiImageControls onGenerate={generateBrandImage} />
+            </div>
+
+            {/* "Design in Canva" round-trip (Canva Connect API): each agent connects
+                THEIR OWN Canva account → designs in a new tab → the finished PNG is
+                exported, re-hosted, and pulled back onto the post automatically. Shows
+                a disabled state when Canva isn't configured on this environment. */}
+            <div style={{ marginBottom: 8 }}>
+              <CanvaControls
+                getSeedImage={getSeedImageForCanva}
+                onPulledImage={attachCanvaImage}
+                onError={surfaceAiError}
+              />
             </div>
 
             {/* "Make a branded card" (§15): DETERMINISTIC — composites the real
