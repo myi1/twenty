@@ -45,6 +45,11 @@ import {
   makeBrandCard,
 } from '@/propel/lib/socialBrandCard';
 import { parseMediaRefs } from '@/propel/lib/socialPostDetail';
+import {
+  VIDEO_MAX_BYTES,
+  isVideoFile,
+  uploadLargeVideo,
+} from '@/propel/lib/socialPresign';
 import { type SocialImageAspect } from '@/propel/types/socialAiImage';
 import {
   type ComposeMode,
@@ -284,32 +289,105 @@ const ComposerBody = ({
   const canSave = blocking.length === 0 && !saving;
 
   // ── media ──────────────────────────────────────────────────────────────
+  // Patch a single media tile by id (keeps the upload handlers terse).
+  const patchMedia = useCallback(
+    (id: string, p: Partial<ComposerMedia>) =>
+      setForm((f) => ({
+        ...f,
+        media: f.media.map((m) => (m.id === id ? { ...m, ...p } : m)),
+      })),
+    [],
+  );
+
+  // A VIDEO takes the presigned-B2 path: we ask the CRM for a presigned URL, PUT the
+  // raw bytes straight to B2 with a real progress bar, then attach by public URL — no
+  // base64, no 7 MB body cap (videos allowed up to 100 MB). Images keep the instant
+  // base64 /marketing/media/upload route.
+  const uploadVideoFile = useCallback(
+    (id: string, file: File) => {
+      void uploadLargeVideo(file, (fraction) => {
+        patchMedia(id, { progress: fraction });
+      }).then((res) => {
+        patchMedia(
+          id,
+          res.ok
+            ? {
+                url: res.publicUrl,
+                kind: 'video',
+                status: 'ready',
+                error: null,
+                progress: null,
+              }
+            : { status: 'error', error: res.message, progress: null },
+        );
+      });
+    },
+    [patchMedia],
+  );
+
   const addFiles = (files: FileList | File[]) => {
     const list = Array.from(files);
     for (const file of list) {
       const id = uid();
       const objectUrl = URL.createObjectURL(file);
+      const video = isVideoFile(file);
       const kind = mediaKindOf(file.type, file.name);
-      // optimistic uploading tile
+
+      // Reject an over-cap video before even inserting an uploading tile — show the
+      // failure as an error tile so the operator sees why (the base64 image route has
+      // its own 7 MB guard inside uploadMedia).
+      if (video && file.size > VIDEO_MAX_BYTES) {
+        const maxMb = Math.floor(VIDEO_MAX_BYTES / (1024 * 1024));
+        URL.revokeObjectURL(objectUrl);
+        setForm((f) => ({
+          ...f,
+          media: [
+            ...f.media,
+            {
+              id,
+              url: null,
+              objectUrl: null,
+              kind: 'video',
+              name: file.name,
+              status: 'error',
+              error: `That video is too large (max ${maxMb} MB). Trim or compress it.`,
+              progress: null,
+            },
+          ],
+        }));
+        continue;
+      }
+
+      // optimistic uploading tile (videos start a progress bar at 0)
       setForm((f) => ({
         ...f,
         media: [
           ...f.media,
-          { id, url: null, objectUrl, kind, name: file.name, status: 'uploading', error: null },
+          {
+            id,
+            url: null,
+            objectUrl,
+            kind,
+            name: file.name,
+            status: 'uploading',
+            error: null,
+            progress: video ? 0 : null,
+          },
         ],
       }));
-      void uploadMedia(file).then((res) => {
-        setForm((f) => ({
-          ...f,
-          media: f.media.map((m) =>
-            m.id === id
-              ? res.ok
-                ? { ...m, url: res.url, kind: mediaKindOf(res.contentType, res.url), status: 'ready', error: null }
-                : { ...m, status: 'error', error: res.message }
-              : m,
-          ),
-        }));
-      });
+
+      if (video) {
+        uploadVideoFile(id, file);
+      } else {
+        void uploadMedia(file).then((res) => {
+          patchMedia(
+            id,
+            res.ok
+              ? { url: res.url, kind: mediaKindOf(res.contentType, res.url), status: 'ready', error: null }
+              : { status: 'error', error: res.message },
+          );
+        });
+      }
     }
   };
 
@@ -842,7 +920,7 @@ const ComposerBody = ({
               />
             </div>
             <Text size="xs" c="dimmed" mt={6}>
-              Up to 7 MB each. Drag thumbnails to reorder.
+              Images up to 7 MB; videos up to 100 MB. Drag thumbnails to reorder.
             </Text>
           </div>
 
@@ -1033,6 +1111,21 @@ const MediaTile = ({
             ) : (
               <img src={src} alt="" style={{ opacity: 0.55 }} />
             )
+          ) : null}
+          {/* Large-video B2 upload progress bar (images upload instantly, no bar). */}
+          {typeof media.progress === 'number' ? (
+            <div
+              className="propel-media-progress"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(media.progress * 100)}
+            >
+              <span
+                className="propel-media-progress-fill"
+                style={{ width: `${Math.round(media.progress * 100)}%` }}
+              />
+            </div>
           ) : null}
         </div>
       ) : media.status === 'error' ? (
