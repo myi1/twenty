@@ -64,9 +64,19 @@ export const useCampaignBuilderData = () => {
       // undefined (NOT zero-filled) when the route omits it, so the card shows
       // an honest "couldn't load your send rules" note rather than fake caps.
       sendRules: hub?.sendRules,
+      // S9 — the capability tier. The hub route returns tier:'VIEWER_BLOCKED'
+      // (with everything else empty) for a non-coordinator, and 'COORDINATOR' for
+      // a Manager/Admin. The page reads this to show a permission-denied surface
+      // instead of an empty builder that would silently fail on every save.
+      tier: hub?.tier,
     }),
     [hub],
   );
 
-  return { ...data, isLoading, refetch };
+  // S9 — distinguish "load failed entirely" (null payload, not loading) from a
+  // populated empty workspace, so the page can show an honest retry rather than
+  // an empty builder. `loaded` is true once a non-null payload has arrived.
+  const loaded = hub !== null;
+
+  return { ...data, isLoading, loaded, refetch };
 };

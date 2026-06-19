@@ -42,6 +42,11 @@ import {
   type MergeValues,
   parseTemplate,
 } from '@/propel/lib/campaignRenderer';
+import {
+  previewTemplateBody,
+  renderParams,
+  WA_PREVIEW_SAMPLES,
+} from '@/propel/lib/waTemplateRenderer';
 import { AbTestPanel } from '@/propel/components/campaign/AbTestPanel';
 import { ComposeToolbar } from '@/propel/components/campaign/ComposeToolbar';
 import { GuardrailsCard } from '@/propel/components/campaign/GuardrailsCard';
@@ -51,6 +56,7 @@ import {
   type AbConfig,
   type AiPlan,
   type CampaignBuilderHubPayload,
+  type CampaignEditResponse,
   type CapPreview,
   DEFAULT_AB_CONFIG,
   type DraftCopyResponse,
@@ -61,6 +67,7 @@ import {
   type SendRequestResponse,
   type SendRulesPayload,
   type TestSendResponse,
+  type WaTemplateOption,
 } from '@/propel/types/campaignBuilder';
 
 export const WIZARD_STEPS = ['Setup', 'Compose', 'Audience', 'Review'] as const;
@@ -74,11 +81,17 @@ export const WIZARD_STEPS = ['Setup', 'Compose', 'Audience', 'Review'] as const;
 export const ManualWizard = ({
   hub,
   initialPlan,
+  initialDraft,
   onDone,
   onEditRules,
 }: {
   hub: CampaignBuilderHubPayload;
   initialPlan?: AiPlan | null;
+  // S6 — a DRAFT loaded via /marketing/campaign-edit to re-edit in place
+  // (listing-aware: a listing-backed draft re-hydrates the listing + re-runs the
+  // permit gate, rather than routing read-only). Mutually exclusive with
+  // initialPlan in practice (a fresh AI plan vs an existing draft).
+  initialDraft?: CampaignEditResponse | null;
   onDone: () => void;
   // S3 — opens the send-rules editor from the Review guardrails card. Optional
   // so existing callers (and tests) don't break; the card hides "Edit rules"
@@ -115,6 +128,10 @@ export const ManualWizard = ({
     estimate: number;
     description: string;
   } | null>(null);
+  // S7 — when the estimate was last counted (epoch ms), set on a successful
+  // "Refresh estimate". Drives the honest "counted ~Xm ago · recounts at send"
+  // note so the moving number reads as freshness, not a bug.
+  const [previewedAt, setPreviewedAt] = useState<number | null>(null);
   const [previewing, setPreviewing] = useState(false);
   // S3 — the real cap-skip count for the Review guardrails (how many of THIS
   // audience already hit their weekly cap). Resolved by /marketing/segment-preview
@@ -171,6 +188,15 @@ export const ManualWizard = ({
     () => listings.find((l) => l.id === listingId) ?? null,
     [listings, listingId],
   );
+  // S9 — compliance block: a listing promo whose Trakheesi permit isn't valid.
+  // Gates "Send now" (the send-request route re-checks it server-side anyway);
+  // saving a draft / scheduling is still allowed (the permit is re-checked at
+  // fire time, and the draft is useful while the permit clears).
+  const permitBlocked =
+    objective === 'LISTING' &&
+    channel === 'EMAIL' &&
+    listing != null &&
+    !listing.permitOk;
 
   const listingFieldsActive =
     objective === 'LISTING' && Boolean(listingId) && channel === 'EMAIL';
@@ -217,6 +243,60 @@ export const ManualWizard = ({
         : `AI campaign — ${(initialPlan.segmentDescription ?? '').slice(0, 50)}`,
     );
   }, [initialPlan]);
+
+  // ── S6 — hydrate from an existing DRAFT (campaign-edit handoff, once) ───────
+  // Listing-aware: a draft carrying a listingId re-hydrates the listing and sets
+  // objective=LISTING, which makes listingFieldsActive true and re-runs the
+  // permit gate (the derived `listing.permitOk` + the Compose/Review permit
+  // warning) — instead of the old read-only escape hatch. A/B config is restored
+  // too, so reopening a draft never silently drops its test. Every field is
+  // presence-guarded: a draft from the not-yet-widened route (no listingId / no
+  // A/B fields) hydrates as a plain segment draft with A/B off.
+  const draftHydratedRef = useRef(false);
+  useEffect(() => {
+    if (!initialDraft || draftHydratedRef.current) return;
+    draftHydratedRef.current = true;
+    setCampaignId(initialDraft.campaignId ?? null);
+    if (typeof initialDraft.name === 'string') setName(initialDraft.name);
+    setChannel(initialDraft.channel === 'WHATSAPP' ? 'WHATSAPP' : 'EMAIL');
+    setLanguage(initialDraft.language === 'AR' ? 'AR' : 'EN');
+    if (typeof initialDraft.subject === 'string') setSubject(initialDraft.subject);
+    if (typeof initialDraft.body === 'string') setBodyText(initialDraft.body);
+    if (initialDraft.segmentId) setSegmentId(initialDraft.segmentId);
+    if (initialDraft.waTemplateId) setWaTemplateId(initialDraft.waTemplateId);
+    // Listing-aware re-hydration (S6, design D-8). A listing-backed draft is EMAIL
+    // promo: restore objective + listing so the permit gate re-runs.
+    if (initialDraft.listingId) {
+      setObjective('LISTING');
+      setListingId(initialDraft.listingId);
+    }
+    // Restore A/B config when the draft had a test on (EMAIL only); the variant
+    // copy + settings come back exactly as saved.
+    if (initialDraft.abEnabled) {
+      setAb({
+        enabled: true,
+        subjectB: initialDraft.abSubjectB ?? '',
+        bodyB: initialDraft.abBodyB ?? '',
+        slicePct:
+          typeof initialDraft.abSlicePct === 'number'
+            ? initialDraft.abSlicePct
+            : DEFAULT_AB_CONFIG.slicePct,
+        winnerMetric:
+          initialDraft.abWinnerMetric === 'REPLIES' ? 'REPLIES' : 'OPENS',
+        decideAfterHours:
+          typeof initialDraft.abDecideAfterHours === 'number' &&
+          initialDraft.abDecideAfterHours > 0
+            ? initialDraft.abDecideAfterHours
+            : DEFAULT_AB_CONFIG.decideAfterHours,
+        minEvents:
+          typeof initialDraft.abMinEvents === 'number' &&
+          initialDraft.abMinEvents >= 0
+            ? initialDraft.abMinEvents
+            : DEFAULT_AB_CONFIG.minEvents,
+        templateBId: initialDraft.abTemplateBId ?? null,
+      });
+    }
+  }, [initialDraft]);
 
   // ── caret-true merge-field insert / format (real focus/setSelectionRange) ──
   // Generalized over a target (the body textarea, its current value, and the
@@ -299,7 +379,7 @@ export const ManualWizard = ({
       ),
     [subject, bodyText, composeAllowedKeys],
   );
-  // A/B variant B is only validated when the test is ON (EMAIL only). It must be
+  // A/B variant B (EMAIL) is only validated when the test is ON. It must be
   // non-empty and use only fillable merge fields — same contract as variant A.
   const copyTokensFillableB = useMemo(
     () =>
@@ -309,16 +389,21 @@ export const ManualWizard = ({
       ].every((f) => composeAllowedKeys.has(f)),
     [ab.subjectB, ab.bodyB, composeAllowedKeys],
   );
-  // A/B only applies to EMAIL in S2; if the user flips to WhatsApp it is inert.
-  const abActive = channel === 'EMAIL' && ab.enabled;
+  // A/B now applies to BOTH channels. The readiness contract differs:
+  //   • EMAIL — variant B subject + body present and fillable.
+  //   • WHATSAPP — a variant-B template picked that ISN'T the variant-A template
+  //     (two genuinely-different approved templates).
+  const abActive = ab.enabled;
   const abReady =
     !abActive ||
-    Boolean(ab.subjectB.trim() && ab.bodyB.trim() && copyTokensFillableB);
+    (channel === 'WHATSAPP'
+      ? Boolean(ab.templateBId && ab.templateBId !== waTemplateId)
+      : Boolean(ab.subjectB.trim() && ab.bodyB.trim() && copyTokensFillableB));
   const setupReady =
     Boolean(name.trim()) && (objective === 'SEGMENT' || Boolean(listingId));
   const draftReady =
     channel === 'WHATSAPP'
-      ? Boolean(name.trim() && waTemplateId)
+      ? Boolean(name.trim() && waTemplateId && abReady)
       : Boolean(
           name.trim() &&
             subject.trim() &&
@@ -327,23 +412,35 @@ export const ManualWizard = ({
             abReady,
         );
 
-  // The A/B patch sent to save-campaign. When the test is OFF (or channel is
-  // WhatsApp) we still send `abEnabled: false` so toggling it off on an existing
-  // draft clears the flag; the variant copy / settings only ride when enabled.
+  // The A/B patch sent to save-campaign. When the test is OFF we send only
+  // `abEnabled: false` so toggling it off on an existing draft clears the flag.
+  // When ON, the variant payload is channel-specific: EMAIL sends the B
+  // subject/body (and clears any stale B template); WhatsApp sends the B template
+  // id (and clears stale B copy) — so flipping channel on an existing draft can't
+  // leave the wrong variant behind. The shared slice/winner/window ride either way.
   const abSavePatch = useMemo<Record<string, unknown>>(
     () =>
       abActive
         ? {
             abEnabled: true,
-            abSubjectB: ab.subjectB,
-            abBodyB: ab.bodyB,
+            ...(channel === 'WHATSAPP'
+              ? {
+                  abTemplateBId: ab.templateBId ?? '',
+                  abSubjectB: '',
+                  abBodyB: '',
+                }
+              : {
+                  abSubjectB: ab.subjectB,
+                  abBodyB: ab.bodyB,
+                  abTemplateBId: '',
+                }),
             abSlicePct: ab.slicePct,
             abWinnerMetric: ab.winnerMetric,
             abDecideAfterHours: ab.decideAfterHours,
             abMinEvents: ab.minEvents,
           }
         : { abEnabled: false },
-    [abActive, ab],
+    [abActive, channel, ab],
   );
 
   // ── route actions ──────────────────────────────────────────────────────────
@@ -400,6 +497,7 @@ export const ManualWizard = ({
           estimate: res.estimate,
           description: res.description ?? '',
         });
+        setPreviewedAt(Date.now());
       } else {
         // No fresh number → keep the stamped count, never fabricate one.
         notify(
@@ -587,6 +685,15 @@ export const ManualWizard = ({
   // previews against the cap buckets as they'll stand then. Honest: a failed /
   // unanswerable preview sets 'error' ("couldn't check") and never zero-fills.
   // Re-runs when the segment, channel, or scheduled instant changes.
+  //
+  // BACKEND TODO(S9-cap-preview): /marketing/segment-preview resolves arbitrary
+  // CRITERIA (it reads body.criteria), NOT a saved segmentId — passing segmentId
+  // here means parseCriteria(undefined) errors, so rulesPreview is never returned
+  // and the GuardrailsCard always lands in its honest "couldn't check" state. To
+  // light up the REAL cap-skip number, segment-preview must accept a segmentId
+  // (load the stored criteria, then run the same rulesPreview cap pass) — mirror
+  // the segmentId branch that save-segment already has. Until then the card stays
+  // truthful (never a fake 0), just less informative.
   const scheduledIso =
     sendMode === 'schedule' ? dubaiLocalToIso(scheduleAt) : null;
   useEffect(() => {
@@ -688,6 +795,7 @@ export const ManualWizard = ({
             onInsertTokenB={insertTokenB}
             onFormatB={applyFormatB}
             copyTokensFillableB={copyTokensFillableB}
+            waTemplates={approvedTemplates}
           />
         )}
 
@@ -698,9 +806,12 @@ export const ManualWizard = ({
             onSegment={(id) => {
               setSegmentId(id);
               setLivePreview(null);
+              setPreviewedAt(null);
             }}
             estimate={estimate}
             livePreview={livePreview}
+            previewedAt={previewedAt}
+            stampedLabel={segment?.lastResolvedLabel ?? null}
             previewing={previewing}
             onPreview={() => void runSegmentPreview()}
             onOpenSegmentModal={() => setSegmentModalOpen(true)}
@@ -721,6 +832,7 @@ export const ManualWizard = ({
             scheduleAt={scheduleAt}
             onScheduleAt={setScheduleAt}
             permitWarning={permitWarning}
+            permitBlocked={permitBlocked}
             ab={abActive ? ab : null}
             sendRules={sendRules}
             capPreview={capPreview}
@@ -777,6 +889,12 @@ export const ManualWizard = ({
               <Button
                 color="red"
                 loading={submitting}
+                disabled={permitBlocked}
+                title={
+                  permitBlocked
+                    ? 'Sending is blocked until the listing’s permit is valid'
+                    : undefined
+                }
                 onClick={() => void sendNow()}
               >
                 Send now
@@ -1003,6 +1121,7 @@ const ComposeStep = ({
   onInsertTokenB,
   onFormatB,
   copyTokensFillableB,
+  waTemplates,
 }: {
   channel: 'EMAIL' | 'WHATSAPP';
   subject: string;
@@ -1034,6 +1153,8 @@ const ComposeStep = ({
   onInsertTokenB: (field: string) => void;
   onFormatB: (action: FormatAction) => void;
   copyTokensFillableB: boolean;
+  // Full approved-template records for the WhatsApp A/B variant-B picker.
+  waTemplates: WaTemplateOption[];
 }) => {
   if (channel === 'WHATSAPP') {
     return (
@@ -1054,6 +1175,31 @@ const ComposeStep = ({
           WhatsApp body comes from the approved template — there&rsquo;s nothing to
           write here.
         </Text>
+
+        {/* S7 — the FILLED template preview (parity with email's live preview):
+            the exact thing that lands, with the template's {{n}} params resolved
+            against sample values. Until now WhatsApp showed no preview at all. */}
+        {waTemplateId && (
+          <WaTemplatePreview
+            template={waTemplates.find((t) => t.id === waTemplateId) ?? null}
+            language={language}
+          />
+        )}
+
+        <AbTestPanel
+          ab={ab}
+          onChange={onAbChange}
+          channel="WHATSAPP"
+          subjectBRef={subjectBRef}
+          bodyBRef={bodyBRef}
+          mergeFields={mergeFields}
+          customFields={customFields}
+          onInsertTokenB={onInsertTokenB}
+          onFormatB={onFormatB}
+          copyTokensFillableB={copyTokensFillableB}
+          waTemplates={waTemplates}
+          waTemplateAId={waTemplateId}
+        />
       </Stack>
     );
   }
@@ -1164,6 +1310,7 @@ const ComposeStep = ({
           <AbTestPanel
             ab={ab}
             onChange={onAbChange}
+            channel="EMAIL"
             subjectBRef={subjectBRef}
             bodyBRef={bodyBRef}
             mergeFields={mergeFields}
@@ -1171,6 +1318,8 @@ const ComposeStep = ({
             onInsertTokenB={onInsertTokenB}
             onFormatB={onFormatB}
             copyTokensFillableB={copyTokensFillableB}
+            waTemplates={waTemplates}
+            waTemplateAId={null}
           />
         </Stack>
       </Grid.Col>
@@ -1189,11 +1338,102 @@ const ComposeStep = ({
           <Text size="xs" c="dimmed">
             The real branded email, rendered with sample values. Send a test from
             Review to see it in your inbox.
+            {permitNumberSample
+              ? ' The Trakheesi permit number appears in the footer — required on every listing promo.'
+              : ''}
           </Text>
         </Stack>
       </Grid.Col>
     </Grid>
   );
+};
+
+// ── S7: WhatsApp filled-template preview ─────────────────────────────────────
+// Renders the EXACT message body that lands — the approved template with its
+// {{n}} params resolved against sample values — styled as a WhatsApp bubble, the
+// channel parity for email's live preview. Honest: a param the preview can't fill
+// shows as the literal {{n}} (never a silent blank), matching renderParams.
+const WaTemplatePreview = ({
+  template,
+  language,
+}: {
+  template: WaTemplateOption | null;
+  language: 'EN' | 'AR';
+}) => {
+  const filled = useMemo(() => {
+    if (!template) return null;
+    const { params } = renderParams(
+      template.paramMap as MergeField[],
+      WA_PREVIEW_SAMPLES,
+      language,
+    );
+    return previewTemplateBody(template.bodyText, params);
+  }, [template, language]);
+
+  if (!template || filled === null) return null;
+
+  return (
+    <Box>
+      <Text size="sm" fw={600} mb={6} c="var(--mantine-color-text)">
+        Live preview
+      </Text>
+      <Box
+        style={{
+          background: '#e5ddd5',
+          borderRadius: 'var(--mantine-radius-md)',
+          padding: 16,
+          border: '1px solid var(--mantine-color-default-border)',
+        }}
+      >
+        <Box
+          dir={language === 'AR' ? 'rtl' : 'ltr'}
+          style={{
+            background: '#ffffff',
+            borderRadius: 8,
+            padding: '8px 12px',
+            maxWidth: '85%',
+            boxShadow: '0 1px 1px rgba(0,0,0,0.12)',
+            fontSize: 13,
+            lineHeight: 1.5,
+            color: '#111',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+          }}
+        >
+          {filled}
+        </Box>
+      </Box>
+      <Text size="xs" c="dimmed" mt={6}>
+        The approved template, rendered with sample values — the real per-recipient
+        values fill at send time. Any {'{{n}}'} still showing is a param with no
+        sample.
+      </Text>
+    </Box>
+  );
+};
+
+// S7 — the honest age of the shown estimate. A live refresh in this session →
+// "counted just now / Xm ago"; otherwise fall back to the segment's stored stamp
+// ("counted 2h ago"); if neither is known, state the rule plainly. The trailing
+// "· recounts at send" is appended by the caller. NOT a count-up — a real figure.
+const estimateAgeNote = (
+  previewedAt: number | null,
+  stampedLabel: string | null,
+): string => {
+  if (previewedAt != null) {
+    const mins = Math.floor((Date.now() - previewedAt) / 60000);
+    if (mins < 1) return 'Counted just now';
+    if (mins < 60) return `Counted ~${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    return `Counted ~${hours}h ago`;
+  }
+  // The segment label already carries an age, e.g. "~1,234 (2h ago)" — extract
+  // just the parenthetical so we say "Counted 2h ago" without doubling the count.
+  if (stampedLabel) {
+    const m = /\(([^)]+)\)/.exec(stampedLabel);
+    if (m) return `Counted ${m[1]}`;
+  }
+  return 'Estimate — resolved live';
 };
 
 // ── Step 3: Audience ─────────────────────────────────────────────────────────
@@ -1203,6 +1443,8 @@ const AudienceStep = ({
   onSegment,
   estimate,
   livePreview,
+  previewedAt,
+  stampedLabel,
   previewing,
   onPreview,
   onOpenSegmentModal,
@@ -1212,6 +1454,11 @@ const AudienceStep = ({
   onSegment: (id: string | null) => void;
   estimate: number;
   livePreview: { estimate: number; description: string } | null;
+  // S7 — when the count was last refreshed in THIS session (epoch ms), or null
+  // if it's still the stored stamp. stampedLabel is the segment's saved
+  // "(2h ago)"-style label, shown until a live refresh supersedes it.
+  previewedAt: number | null;
+  stampedLabel: string | null;
   previewing: boolean;
   onPreview: () => void;
   onOpenSegmentModal: () => void;
@@ -1262,7 +1509,7 @@ const AudienceStep = ({
               {(livePreview?.estimate ?? estimate).toLocaleString('en-US')}
             </Text>
             <Text size="xs" c="dimmed">
-              Estimate — resolved live at send time; the count moves with the data.
+              {estimateAgeNote(previewedAt, stampedLabel)} · recounts at send.
             </Text>
           </Box>
           <Button
@@ -1305,6 +1552,7 @@ const ReviewStep = ({
   scheduleAt,
   onScheduleAt,
   permitWarning,
+  permitBlocked,
   ab,
   sendRules,
   capPreview,
@@ -1322,6 +1570,10 @@ const ReviewStep = ({
   scheduleAt: string;
   onScheduleAt: (v: string) => void;
   permitWarning: string | null;
+  // S9 — compliance block: a listing promo whose Trakheesi permit isn't valid.
+  // The send-request route re-gates this server-side; surfacing it here means the
+  // user understands the block BEFORE launching, as a calm inline gate.
+  permitBlocked: boolean;
   ab: AbConfig | null;
   sendRules: SendRulesPayload | undefined;
   capPreview: CapPreview;
@@ -1370,7 +1622,20 @@ const ReviewStep = ({
       </Stack>
     </Card>
 
-    {permitWarning && (
+    {permitBlocked && (
+      <Alert
+        color="red"
+        variant="light"
+        icon={<IconAlertCircle size={16} />}
+        title="This listing’s permit isn’t valid yet"
+      >
+        A listing promo can&rsquo;t send until its Trakheesi permit is valid. You
+        can save this as a draft now; sending stays blocked until the permit
+        clears (the send is re-checked at launch).
+      </Alert>
+    )}
+
+    {permitWarning && !permitBlocked && (
       <Alert color="yellow" variant="light" icon={<IconAlertCircle size={16} />}>
         {permitWarning}
       </Alert>

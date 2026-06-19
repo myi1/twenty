@@ -3,6 +3,7 @@ import {
   Group,
   NumberInput,
   SegmentedControl,
+  Select,
   Slider,
   Stack,
   Switch,
@@ -19,20 +20,29 @@ import { type MergeField } from '@/propel/lib/campaignRenderer';
 import {
   type AbConfig,
   type AbWinnerMetric,
+  type WaTemplateOption,
 } from '@/propel/types/campaignBuilder';
 
-// S2 — the A/B "test two versions" front door, rendered inside the email Compose
-// step. A/B exists end-to-end in the backend (marketingCampaign schema +
-// /marketing/save-campaign write + campaign-detail result read) but had NO build
-// UI anywhere — this is the missing door (design decision D-2, founder-locked).
+// S2 — the A/B "test two versions" front door (design decision D-2,
+// founder-locked). A/B exists end-to-end in the backend (marketingCampaign
+// schema + /marketing/save-campaign write + campaign-detail result read) but had
+// NO build UI anywhere — this is the missing door.
 //
-// EMAIL first: variant B is a second subject + body (variant A is the main
-// Compose copy). WhatsApp A/B (abTemplateBId, a second approved template) is a
-// fast-follow — see the TODO in ManualWizard. The panel is presentational; all
-// state lives in the wizard's `ab` slice and is wired into save-campaign there.
+// Now BOTH channels:
+//   • EMAIL — variant B is a second subject + body (variant A = the main Compose
+//     copy), validated against the same fillable-merge-field contract.
+//   • WHATSAPP — variant B is a second approved template (abTemplateBId; the WA
+//     body IS the template, so there's nothing to free-type). The variant-A
+//     template (the one picked in Compose) is excluded from the B picker so the
+//     two variants are genuinely different.
+// The slice / winner-metric / decision-window controls are shared across both.
+// The panel is presentational; all state lives in the wizard's `ab` slice and is
+// wired into save-campaign there (abEnabled, abSubjectB/abBodyB OR abTemplateBId,
+// abSlicePct, abWinnerMetric, abDecideAfterHours, abMinEvents).
 export const AbTestPanel = ({
   ab,
   onChange,
+  channel,
   subjectBRef,
   bodyBRef,
   mergeFields,
@@ -40,9 +50,12 @@ export const AbTestPanel = ({
   onInsertTokenB,
   onFormatB,
   copyTokensFillableB,
+  waTemplates,
+  waTemplateAId,
 }: {
   ab: AbConfig;
   onChange: (patch: Partial<AbConfig>) => void;
+  channel: 'EMAIL' | 'WHATSAPP';
   subjectBRef: React.Ref<HTMLInputElement>;
   bodyBRef: React.Ref<HTMLTextAreaElement>;
   mergeFields: MergeField[];
@@ -50,7 +63,12 @@ export const AbTestPanel = ({
   onInsertTokenB: (field: string) => void;
   onFormatB: (action: FormatAction) => void;
   copyTokensFillableB: boolean;
+  // WhatsApp A/B — the approved templates to pick variant B from, and the
+  // variant-A template id to exclude. Unused for EMAIL.
+  waTemplates: WaTemplateOption[];
+  waTemplateAId: string | null;
 }) => {
+  const isWa = channel === 'WHATSAPP';
   const slice = ab.slicePct;
   // Live split bar: `slice` is sampled (half to A, half to B); the remaining
   // (100 − slice) gets the winning variant after the decision window. The bar
@@ -88,50 +106,59 @@ export const AbTestPanel = ({
 
       {ab.enabled && (
         <Stack gap="md" mt="md">
-          {/* Variant B copy */}
+          {/* Variant B — copy (EMAIL) or a second approved template (WhatsApp) */}
           <Box>
             <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb={6}>
               Variant B
             </Text>
-            <Stack gap="sm">
-              <TextInput
-                ref={subjectBRef}
-                label="Subject (B)"
-                placeholder="A different subject line to test"
-                value={ab.subjectB}
-                onChange={(e) => onChange({ subjectB: e.currentTarget.value })}
+            {isWa ? (
+              <WaVariantB
+                ab={ab}
+                onChange={onChange}
+                waTemplates={waTemplates}
+                waTemplateAId={waTemplateAId}
               />
-              <Box>
-                <Text size="sm" fw={600} mb={6} c="var(--mantine-color-text)">
-                  Body (B)
-                </Text>
-                <ComposeToolbar
-                  mergeFields={mergeFields}
-                  customFields={customFields}
-                  onFormat={onFormatB}
-                  onInsertToken={onInsertTokenB}
+            ) : (
+              <Stack gap="sm">
+                <TextInput
+                  ref={subjectBRef}
+                  label="Subject (B)"
+                  placeholder="A different subject line to test"
+                  value={ab.subjectB}
+                  onChange={(e) => onChange({ subjectB: e.currentTarget.value })}
                 />
-                <Textarea
-                  ref={bodyBRef}
-                  mt={8}
-                  autosize
-                  minRows={6}
-                  maxRows={14}
-                  placeholder="The alternate message to test against version A."
-                  value={ab.bodyB}
-                  onChange={(e) => onChange({ bodyB: e.currentTarget.value })}
-                />
-              </Box>
-              {!copyTokensFillableB && (
-                <Group gap={6} wrap="nowrap" c="red">
-                  <IconAlertCircle size={14} />
-                  <Text size="xs" c="red">
-                    Variant B uses a merge field this campaign can&rsquo;t fill —
-                    it would send blank.
+                <Box>
+                  <Text size="sm" fw={600} mb={6} c="var(--mantine-color-text)">
+                    Body (B)
                   </Text>
-                </Group>
-              )}
-            </Stack>
+                  <ComposeToolbar
+                    mergeFields={mergeFields}
+                    customFields={customFields}
+                    onFormat={onFormatB}
+                    onInsertToken={onInsertTokenB}
+                  />
+                  <Textarea
+                    ref={bodyBRef}
+                    mt={8}
+                    autosize
+                    minRows={6}
+                    maxRows={14}
+                    placeholder="The alternate message to test against version A."
+                    value={ab.bodyB}
+                    onChange={(e) => onChange({ bodyB: e.currentTarget.value })}
+                  />
+                </Box>
+                {!copyTokensFillableB && (
+                  <Group gap={6} wrap="nowrap" c="red">
+                    <IconAlertCircle size={14} />
+                    <Text size="xs" c="red">
+                      Variant B uses a merge field this campaign can&rsquo;t fill —
+                      it would send blank.
+                    </Text>
+                  </Group>
+                )}
+              </Stack>
+            )}
           </Box>
 
           {/* Test slice + live split bar */}
@@ -218,6 +245,69 @@ export const AbTestPanel = ({
         </Stack>
       )}
     </Box>
+  );
+};
+
+// WhatsApp variant B — a second approved template (the WA body is the template,
+// so there's no free copy to write). The variant-A template (picked in Compose)
+// is excluded so the two variants genuinely differ; if there's only one approved
+// template, B can't be formed and we say so plainly rather than offering a list
+// of one (which would let A === B).
+const WaVariantB = ({
+  ab,
+  onChange,
+  waTemplates,
+  waTemplateAId,
+}: {
+  ab: AbConfig;
+  onChange: (patch: Partial<AbConfig>) => void;
+  waTemplates: WaTemplateOption[];
+  waTemplateAId: string | null;
+}) => {
+  const options = waTemplates.filter((t) => t.id !== waTemplateAId);
+
+  if (options.length === 0) {
+    return (
+      <Group gap={6} wrap="nowrap" align="flex-start">
+        <IconAlertCircle
+          size={14}
+          style={{ color: 'var(--mantine-color-yellow-7)', flex: 'none', marginTop: 2 }}
+        />
+        <Text size="xs" c="dimmed">
+          You need a second approved WhatsApp template to test against — there
+          {waTemplateAId
+            ? ' isn’t another approved template besides the one you picked.'
+            : ' aren’t two approved templates to compare.'}{' '}
+          Create one on the Templates tab, then turn A/B back on.
+        </Text>
+      </Group>
+    );
+  }
+
+  return (
+    <Stack gap="sm">
+      <Select
+        label="Template (B)"
+        description="A different approved template to test against version A."
+        placeholder="Pick the variant-B template"
+        value={ab.templateBId}
+        onChange={(v) => onChange({ templateBId: v })}
+        data={options.map((t) => ({
+          value: t.id,
+          label: `${t.name} (${t.languageCode})`,
+        }))}
+        nothingFoundMessage="No other approved templates"
+      />
+      {!ab.templateBId && (
+        <Group gap={6} wrap="nowrap" c="dimmed">
+          <IconAlertCircle size={14} />
+          <Text size="xs" c="dimmed">
+            Pick a second template — without one there&rsquo;s nothing to test
+            against.
+          </Text>
+        </Group>
+      )}
+    </Stack>
   );
 };
 

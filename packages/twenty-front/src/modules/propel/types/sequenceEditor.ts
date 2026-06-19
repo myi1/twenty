@@ -131,3 +131,53 @@ export interface SequenceTestSendResponse extends RouteEnvelopeError {
     espError?: string;
   };
 }
+
+// ── /marketing/sequence-enrollments (S4 — read surface) ──────────────────────
+// Who is enrolled in a RUNNING/PAUSED sequence, at which step, what's next, and
+// whether they're stuck. The data all lives on the `sequenceEnrollment` object
+// (status, currentStep, nextActionAt, stepEnteredAt, capRetries + the person
+// relation), but NO route currently exposes the per-enrollment ROWS — the
+// /marketing/hub route only returns aggregate enrolledCount/activeCount totals.
+// S4 therefore defines the UI against this typed shape and reads from a thin
+// route that must be added server-side. See TODO(S4-backend) in EnrollmentList.
+//
+// enrollment status mirrors the object enum: ACTIVE · DONE · EXITED_REPLY ·
+// EXITED_OPTOUT · EXITED_MANUAL · EXITED_COLD · EXITED_THROTTLED · BLOCKED_CONFIG.
+export type EnrollmentStatus =
+  | 'ACTIVE'
+  | 'DONE'
+  | 'EXITED_REPLY'
+  | 'EXITED_OPTOUT'
+  | 'EXITED_MANUAL'
+  | 'EXITED_COLD'
+  | 'EXITED_THROTTLED'
+  | 'BLOCKED_CONFIG';
+
+export interface EnrollmentRow {
+  id: string;
+  status: EnrollmentStatus;
+  // Person identity for the row + a deep-link to the record. name may be blank
+  // (phone-only lead) — the UI falls back to the id then.
+  personId: string | null;
+  personName: string;
+  // The current step's human label + 1-based position, when the enrollment is
+  // sitting on a step (absent once it has DONE/EXITED).
+  currentStepName: string | null;
+  currentStepOrder: number | null;
+  // ISO instants. nextActionAt drives the "next: …" / "overdue" read; absent for
+  // terminal enrollments. stepEnteredAt anchors the "waiting since" read.
+  nextActionAt: string | null;
+  stepEnteredAt: string | null;
+  // How many times a SEND step was held by the weekly cap. > 0 = stuck-on-cap
+  // (the object exits at 3 → EXITED_THROTTLED), surfaced as the "stuck" flag.
+  capRetries: number;
+}
+
+export interface SequenceEnrollmentsResponse extends RouteEnvelopeError {
+  ok?: boolean;
+  enrollments?: EnrollmentRow[];
+  // True aggregate counts (the route may page the rows); the panel shows these
+  // even when the row list is capped, so the header total stays honest.
+  activeCount?: number;
+  enrolledCount?: number;
+}
