@@ -42,6 +42,11 @@ import {
   type MergeValues,
   parseTemplate,
 } from '@/propel/lib/campaignRenderer';
+import {
+  previewTemplateBody,
+  renderParams,
+  WA_PREVIEW_SAMPLES,
+} from '@/propel/lib/waTemplateRenderer';
 import { AbTestPanel } from '@/propel/components/campaign/AbTestPanel';
 import { ComposeToolbar } from '@/propel/components/campaign/ComposeToolbar';
 import { GuardrailsCard } from '@/propel/components/campaign/GuardrailsCard';
@@ -123,6 +128,10 @@ export const ManualWizard = ({
     estimate: number;
     description: string;
   } | null>(null);
+  // S7 — when the estimate was last counted (epoch ms), set on a successful
+  // "Refresh estimate". Drives the honest "counted ~Xm ago · recounts at send"
+  // note so the moving number reads as freshness, not a bug.
+  const [previewedAt, setPreviewedAt] = useState<number | null>(null);
   const [previewing, setPreviewing] = useState(false);
   // S3 — the real cap-skip count for the Review guardrails (how many of THIS
   // audience already hit their weekly cap). Resolved by /marketing/segment-preview
@@ -479,6 +488,7 @@ export const ManualWizard = ({
           estimate: res.estimate,
           description: res.description ?? '',
         });
+        setPreviewedAt(Date.now());
       } else {
         // No fresh number → keep the stamped count, never fabricate one.
         notify(
@@ -778,9 +788,12 @@ export const ManualWizard = ({
             onSegment={(id) => {
               setSegmentId(id);
               setLivePreview(null);
+              setPreviewedAt(null);
             }}
             estimate={estimate}
             livePreview={livePreview}
+            previewedAt={previewedAt}
+            stampedLabel={segment?.lastResolvedLabel ?? null}
             previewing={previewing}
             onPreview={() => void runSegmentPreview()}
             onOpenSegmentModal={() => setSegmentModalOpen(true)}
@@ -1138,6 +1151,16 @@ const ComposeStep = ({
           write here.
         </Text>
 
+        {/* S7 — the FILLED template preview (parity with email's live preview):
+            the exact thing that lands, with the template's {{n}} params resolved
+            against sample values. Until now WhatsApp showed no preview at all. */}
+        {waTemplateId && (
+          <WaTemplatePreview
+            template={waTemplates.find((t) => t.id === waTemplateId) ?? null}
+            language={language}
+          />
+        )}
+
         <AbTestPanel
           ab={ab}
           onChange={onAbChange}
@@ -1290,11 +1313,102 @@ const ComposeStep = ({
           <Text size="xs" c="dimmed">
             The real branded email, rendered with sample values. Send a test from
             Review to see it in your inbox.
+            {permitNumberSample
+              ? ' The Trakheesi permit number appears in the footer — required on every listing promo.'
+              : ''}
           </Text>
         </Stack>
       </Grid.Col>
     </Grid>
   );
+};
+
+// ── S7: WhatsApp filled-template preview ─────────────────────────────────────
+// Renders the EXACT message body that lands — the approved template with its
+// {{n}} params resolved against sample values — styled as a WhatsApp bubble, the
+// channel parity for email's live preview. Honest: a param the preview can't fill
+// shows as the literal {{n}} (never a silent blank), matching renderParams.
+const WaTemplatePreview = ({
+  template,
+  language,
+}: {
+  template: WaTemplateOption | null;
+  language: 'EN' | 'AR';
+}) => {
+  const filled = useMemo(() => {
+    if (!template) return null;
+    const { params } = renderParams(
+      template.paramMap as MergeField[],
+      WA_PREVIEW_SAMPLES,
+      language,
+    );
+    return previewTemplateBody(template.bodyText, params);
+  }, [template, language]);
+
+  if (!template || filled === null) return null;
+
+  return (
+    <Box>
+      <Text size="sm" fw={600} mb={6} c="var(--mantine-color-text)">
+        Live preview
+      </Text>
+      <Box
+        style={{
+          background: '#e5ddd5',
+          borderRadius: 'var(--mantine-radius-md)',
+          padding: 16,
+          border: '1px solid var(--mantine-color-default-border)',
+        }}
+      >
+        <Box
+          dir={language === 'AR' ? 'rtl' : 'ltr'}
+          style={{
+            background: '#ffffff',
+            borderRadius: 8,
+            padding: '8px 12px',
+            maxWidth: '85%',
+            boxShadow: '0 1px 1px rgba(0,0,0,0.12)',
+            fontSize: 13,
+            lineHeight: 1.5,
+            color: '#111',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+          }}
+        >
+          {filled}
+        </Box>
+      </Box>
+      <Text size="xs" c="dimmed" mt={6}>
+        The approved template, rendered with sample values — the real per-recipient
+        values fill at send time. Any {'{{n}}'} still showing is a param with no
+        sample.
+      </Text>
+    </Box>
+  );
+};
+
+// S7 — the honest age of the shown estimate. A live refresh in this session →
+// "counted just now / Xm ago"; otherwise fall back to the segment's stored stamp
+// ("counted 2h ago"); if neither is known, state the rule plainly. The trailing
+// "· recounts at send" is appended by the caller. NOT a count-up — a real figure.
+const estimateAgeNote = (
+  previewedAt: number | null,
+  stampedLabel: string | null,
+): string => {
+  if (previewedAt != null) {
+    const mins = Math.floor((Date.now() - previewedAt) / 60000);
+    if (mins < 1) return 'Counted just now';
+    if (mins < 60) return `Counted ~${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    return `Counted ~${hours}h ago`;
+  }
+  // The segment label already carries an age, e.g. "~1,234 (2h ago)" — extract
+  // just the parenthetical so we say "Counted 2h ago" without doubling the count.
+  if (stampedLabel) {
+    const m = /\(([^)]+)\)/.exec(stampedLabel);
+    if (m) return `Counted ${m[1]}`;
+  }
+  return 'Estimate — resolved live';
 };
 
 // ── Step 3: Audience ─────────────────────────────────────────────────────────
@@ -1304,6 +1418,8 @@ const AudienceStep = ({
   onSegment,
   estimate,
   livePreview,
+  previewedAt,
+  stampedLabel,
   previewing,
   onPreview,
   onOpenSegmentModal,
@@ -1313,6 +1429,11 @@ const AudienceStep = ({
   onSegment: (id: string | null) => void;
   estimate: number;
   livePreview: { estimate: number; description: string } | null;
+  // S7 — when the count was last refreshed in THIS session (epoch ms), or null
+  // if it's still the stored stamp. stampedLabel is the segment's saved
+  // "(2h ago)"-style label, shown until a live refresh supersedes it.
+  previewedAt: number | null;
+  stampedLabel: string | null;
   previewing: boolean;
   onPreview: () => void;
   onOpenSegmentModal: () => void;
@@ -1363,7 +1484,7 @@ const AudienceStep = ({
               {(livePreview?.estimate ?? estimate).toLocaleString('en-US')}
             </Text>
             <Text size="xs" c="dimmed">
-              Estimate — resolved live at send time; the count moves with the data.
+              {estimateAgeNote(previewedAt, stampedLabel)} · recounts at send.
             </Text>
           </Box>
           <Button
