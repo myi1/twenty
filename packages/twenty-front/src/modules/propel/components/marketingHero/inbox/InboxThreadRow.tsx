@@ -1,9 +1,34 @@
-import { Box, Group, Text, UnstyledButton } from '@mantine/core';
-import { type InboxThreadRow as InboxThreadRowData } from '@/propel/types/inbox';
+import { Badge, Box, Group, Text, UnstyledButton } from '@mantine/core';
+import {
+  type InboxThreadRow as InboxThreadRowData,
+  type InboxTriageClass,
+} from '@/propel/types/inbox';
 import {
   ChannelBadge,
   SurfaceBadge,
 } from '@/propel/components/marketingHero/inbox/InboxBits';
+
+// Triage class → a small neutral data tag (red reserved for opportunity = "act").
+const ROW_CLASS_META: Record<
+  InboxTriageClass,
+  { label: string; color: string }
+> = {
+  OPPORTUNITY: { label: 'opportunity', color: 'red' },
+  LEAD: { label: 'lead', color: 'yellow' },
+  BROWSER: { label: 'browser', color: 'gray' },
+  SPAM: { label: 'spam', color: 'gray' },
+  UNKNOWN: { label: '', color: 'gray' }, // unclassified → no badge (degrade quietly)
+};
+
+const rowSlaLabel = (ageMs: number | null): string => {
+  if (ageMs == null) return '';
+  const m = Math.floor(ageMs / 60_000);
+  if (m < 1) return 'now';
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
+};
 
 // One row in the thread list: channel mark, contact name + surface badge + time,
 // last-message preview, and an unread count pill. The whole row is a button that
@@ -52,6 +77,54 @@ export const InboxThreadRow = ({
           </Text>
         ) : null}
       </Group>
+      {/* triage enrichment row — class badge · owner/suggested · SLA heat. Each
+          token renders only when the row actually carries that signal. */}
+      {row.triageClass !== 'UNKNOWN' ||
+      row.assignedAgentName ||
+      row.suggestedAgentName ||
+      row.slaBreached ||
+      row.ageMs != null ? (
+        <Group gap={5} wrap="nowrap" mt={3} style={{ overflow: 'hidden' }}>
+          {ROW_CLASS_META[row.triageClass].label ? (
+            <Badge
+              size="xs"
+              variant="light"
+              color={ROW_CLASS_META[row.triageClass].color}
+              style={{ flex: 'none' }}
+            >
+              {ROW_CLASS_META[row.triageClass].label}
+            </Badge>
+          ) : null}
+          {row.assignedAgentName ? (
+            <Text size="xs" c="dimmed" truncate style={{ minWidth: 0 }}>
+              {row.assignedAgentName}
+            </Text>
+          ) : row.suggestedAgentName ? (
+            <Text size="xs" c="dimmed" truncate style={{ minWidth: 0 }}>
+              → {row.suggestedAgentName}
+            </Text>
+          ) : null}
+          {row.slaBreached ? (
+            <Badge
+              size="xs"
+              variant="filled"
+              color="red"
+              style={{ flex: 'none', marginLeft: 'auto' }}
+            >
+              SLA {rowSlaLabel(row.ageMs)}
+            </Badge>
+          ) : row.ageMs != null ? (
+            <Text
+              size="xs"
+              fw={700}
+              style={{ flex: 'none', marginLeft: 'auto' }}
+              c={row.ageMs > 8 * 60_000 ? 'yellow.7' : 'dimmed'}
+            >
+              {rowSlaLabel(row.ageMs)}
+            </Text>
+          ) : null}
+        </Group>
+      ) : null}
       <Group gap={6} wrap="nowrap" mt={2}>
         <Text
           size="sm"

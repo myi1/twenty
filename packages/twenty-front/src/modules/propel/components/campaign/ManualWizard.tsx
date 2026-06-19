@@ -774,7 +774,17 @@ export const ManualWizard = ({
     <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
       <PropelStepper active={activeStep} />
 
-      <Box style={{ flex: 1, minHeight: 0 }}>
+      {/* Flex COLUMN so a step that returns a flex:1 Stack (the EMAIL Compose
+          builder) fills the remaining vertical space instead of collapsing to
+          content height — founder: "use more of the vertical space available." */}
+      <Box
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
         {activeStep === 0 && (
           <SetupStep
             name={name}
@@ -1195,6 +1205,9 @@ const ComposeStep = ({
   // Grounding context for the embedded builder's AI co-pilot (EMAIL only).
   aiContext: GrapesEmailAiContext;
 }) => {
+  // Which A/B variant the single email builder is currently editing (EMAIL only).
+  const [composeVariant, setComposeVariant] = useState<'A' | 'B'>('A');
+
   if (channel === 'WHATSAPP') {
     return (
       <Stack gap="md" maw={560}>
@@ -1243,6 +1256,20 @@ const ComposeStep = ({
     );
   }
 
+  // EMAIL — when A/B is ON, ONE GrapesJS canvas flips between Variant A and B via a
+  // switcher (NOT two builder instances). The active variant routes the Subject +
+  // the builder's seed/sync: A → subject/bodyText, B → ab.subjectB/ab.bodyB. The
+  // builder remounts on switch (its `key` changes) so it re-seeds the right design;
+  // design-syncs-to-body stays intact per variant.
+  const abOn = ab.enabled;
+  const isB = abOn && composeVariant === 'B';
+  const variantSubject = isB ? ab.subjectB : subject;
+  const setVariantSubject = (v: string) =>
+    isB ? onAbChange({ subjectB: v }) : onSubject(v);
+  const variantBody = isB ? ab.bodyB : bodyText;
+  const setVariantBody = (v: string) =>
+    isB ? onAbChange({ bodyB: v }) : onBody(v);
+
   return (
     // EMAIL Compose = the embedded GrapesJS builder IS the surface (founder UX:
     // "compose should just be the GrapesJS builder"). Subject sits above the
@@ -1251,9 +1278,24 @@ const ComposeStep = ({
     // markdown textarea, no "Design in builder" button, no HTML-into-a-textfield.
     <Stack gap="sm" style={{ flex: 1, minHeight: 0 }}>
       <Group justify="space-between" align="flex-end">
-        <Text size="sm" fw={600} c="var(--mantine-color-text)">
-          Email content
-        </Text>
+        <Group gap="sm" align="center">
+          <Text size="sm" fw={600} c="var(--mantine-color-text)">
+            Email content
+          </Text>
+          {/* A | B switcher — flips the SAME builder canvas between the two
+              variant designs (only when A/B is on). */}
+          {abOn ? (
+            <SegmentedControl
+              size="xs"
+              value={composeVariant}
+              onChange={(v) => setComposeVariant(v as 'A' | 'B')}
+              data={[
+                { label: 'Variant A', value: 'A' },
+                { label: 'Variant B', value: 'B' },
+              ]}
+            />
+          ) : null}
+        </Group>
         {/* "Draft with AI" stays — it pre-fills the builder's text. */}
         <Popover width={300} position="bottom-end" withArrow shadow="md">
           <Popover.Target>
@@ -1300,11 +1342,11 @@ const ComposeStep = ({
       </Group>
 
       <TextInput
-        ref={subjectRef}
-        label="Subject"
+        ref={isB ? undefined : subjectRef}
+        label={isB ? 'Subject (Variant B)' : 'Subject'}
         placeholder="Subject line"
-        value={subject}
-        onChange={(e) => onSubject(e.currentTarget.value)}
+        value={variantSubject}
+        onChange={(e) => setVariantSubject(e.currentTarget.value)}
       />
 
       {/* The send-path-gap notice (kept per #58): the design syncs to the body,
@@ -1349,21 +1391,32 @@ const ComposeStep = ({
       )}
 
       {/* THE compose surface — the embedded GrapesJS email builder. It seeds from
-          the current body (so AI-drafted copy / a re-edited draft carry in), syncs
-          the compiled HTML back to bodyText live, and its trimmed toolbar offers
-          merge-tag insert + MJML view + Save-as-template. */}
-      <Box style={{ flex: 1, minHeight: 460, display: 'flex' }}>
+          the active variant's body (A or B; AI-drafted copy / a re-edited draft
+          carry in), syncs the compiled HTML back live, and its trimmed toolbar
+          offers merge-tag insert + MJML view + Save-as-template. `flex: 1` makes it
+          fill the remaining vertical height (founder: use more vertical space). The
+          `key` remounts it on a variant switch so it re-seeds the right design. */}
+      <Box style={{ flex: 1, minHeight: 280, display: 'flex' }}>
         <GrapesEmailBuilder
+          key={isB ? 'variant-B' : 'variant-A'}
           mode="campaign"
           customFields={customFields}
           hideToolbar
-          initial={{ subject, bodyText, languageCode: language }}
-          onHtmlChange={onBody}
+          initial={{
+            subject: variantSubject,
+            bodyText: variantBody,
+            languageCode: language,
+          }}
+          onHtmlChange={setVariantBody}
           aiContext={aiContext}
-          onSubjectSuggested={onSubject}
+          onSubjectSuggested={setVariantSubject}
         />
       </Box>
 
+      {/* A/B config — the test toggle + slice/winner settings. Variant B's email
+          BODY is now designed in the builder above (via the A|B switcher), so the
+          panel no longer renders a markdown editor for it; it shows only the test
+          mechanics (and, for WhatsApp, the variant-B template picker). */}
       <AbTestPanel
         ab={ab}
         onChange={onAbChange}
@@ -1377,6 +1430,7 @@ const ComposeStep = ({
         copyTokensFillableB={copyTokensFillableB}
         waTemplates={waTemplates}
         waTemplateAId={null}
+        hideEmailBodyEditor
       />
     </Stack>
   );

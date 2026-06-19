@@ -13,6 +13,8 @@ import {
   type InboxChannel,
   type InboxMediaKind,
   type InboxThreadPayload,
+  type InboxThreadRow,
+  type InboxViewerRole,
 } from '@/propel/types/inbox';
 import {
   type PendingMessage,
@@ -43,10 +45,19 @@ export const InboxThreadPane = ({
   id,
   channel,
   reloadToken,
+  row,
+  viewerRole,
+  onActed,
 }: {
   id: string;
   channel: InboxChannel;
   reloadToken: number;
+  // The enriched queue row for this thread (triage fields) — the rail's triage card
+  // + actions read it; null when the row isn't in the current list slice.
+  row: InboxThreadRow | null;
+  viewerRole: InboxViewerRole;
+  // Refresh the list after a triage action (assign/create-opp/ping) lands.
+  onActed: () => void;
 }) => {
   const navigate = useNavigate();
   const notify = usePropelToast();
@@ -102,14 +113,16 @@ export const InboxThreadPane = ({
             return;
           }
           const newest = latestInboundId(res.messages);
-          const inboundChanged = newest !== '' && newest !== lastInboundRef.current;
+          const inboundChanged =
+            newest !== '' && newest !== lastInboundRef.current;
           lastInboundRef.current = newest;
           if (isSwitch || nearBottomRef.current) {
             stickRef.current = true;
             setHasNewBelow(false);
           } else {
             stickRef.current = false;
-            if (inboundChanged && historyLoadedRef.current) setHasNewBelow(true);
+            if (inboundChanged && historyLoadedRef.current)
+              setHasNewBelow(true);
           }
           setThread(res);
           // Reconcile optimistic temps the server now reflects — run the PURE
@@ -120,7 +133,8 @@ export const InboxThreadPane = ({
             res.messages,
             claimedRowIdsRef.current,
           );
-          for (const rowId of r.newlyClaimed) claimedRowIdsRef.current.add(rowId);
+          for (const rowId of r.newlyClaimed)
+            claimedRowIdsRef.current.add(rowId);
           if (r.kept !== pendingRef.current) {
             pendingRef.current = r.kept;
             setPending(r.kept);
@@ -171,7 +185,8 @@ export const InboxThreadPane = ({
     };
     const timer = setInterval(tick, THREAD_POLL_MS);
     const onVis = () => {
-      if (typeof document !== 'undefined' && !document.hidden) loadThread('refresh');
+      if (typeof document !== 'undefined' && !document.hidden)
+        loadThread('refresh');
     };
     if (typeof document !== 'undefined')
       document.addEventListener('visibilitychange', onVis);
@@ -264,7 +279,10 @@ export const InboxThreadPane = ({
 
   // Optimistic-send wiring handed to the composer.
   const pushPending = useCallback(
-    (body: string, media?: { url: string; kind: InboxMediaKind } | null): string => {
+    (
+      body: string,
+      media?: { url: string; kind: InboxMediaKind } | null,
+    ): string => {
       const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       stickRef.current = true;
       nearBottomRef.current = true;
@@ -289,19 +307,25 @@ export const InboxThreadPane = ({
     );
   }, []);
   const markPendingSent = useCallback((tempId: string) => {
-    setPending((ts) => ts.map((t) => (t.id === tempId ? { ...t, sent: true } : t)));
+    setPending((ts) =>
+      ts.map((t) => (t.id === tempId ? { ...t, sent: true } : t)),
+    );
   }, []);
 
   if (phase === 'loading') {
     return (
-      <Box style={{ flex: 1, display: 'grid', placeItems: 'center', minWidth: 0 }}>
+      <Box
+        style={{ flex: 1, display: 'grid', placeItems: 'center', minWidth: 0 }}
+      >
         <Loader color="red" />
       </Box>
     );
   }
   if (phase === 'error' || !thread) {
     return (
-      <Box style={{ flex: 1, display: 'grid', placeItems: 'center', minWidth: 0 }}>
+      <Box
+        style={{ flex: 1, display: 'grid', placeItems: 'center', minWidth: 0 }}
+      >
         <Text size="sm" c="dimmed">
           Couldn’t load this conversation.
         </Text>
@@ -398,7 +422,14 @@ export const InboxThreadPane = ({
         </Group>
 
         {/* messages region — relative so the "↓ new messages" pill anchors here */}
-        <Box style={{ flex: 1, position: 'relative', display: 'flex', minHeight: 0 }}>
+        <Box
+          style={{
+            flex: 1,
+            position: 'relative',
+            display: 'flex',
+            minHeight: 0,
+          }}
+        >
           <Box
             ref={scrollRef}
             onScroll={onScroll}
@@ -476,14 +507,20 @@ export const InboxThreadPane = ({
             <Group gap={7} wrap="nowrap">
               <IconReload size={14} color="var(--mantine-color-dimmed)" />
               <Text size="sm" c="dimmed">
-                {thread.replyHint || 'Replying isn’t available for this thread.'}
+                {thread.replyHint ||
+                  'Replying isn’t available for this thread.'}
               </Text>
             </Group>
           </Box>
         )}
       </Box>
 
-      <InboxContextRail thread={thread} />
+      <InboxContextRail
+        thread={thread}
+        row={row}
+        viewerRole={viewerRole}
+        onActed={onActed}
+      />
     </Box>
   );
 };

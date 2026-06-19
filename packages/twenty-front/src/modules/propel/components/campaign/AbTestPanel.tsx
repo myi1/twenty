@@ -13,9 +13,7 @@ import {
 } from '@mantine/core';
 import { IconAlertCircle } from 'twenty-ui/display';
 import { ComposeToolbar } from '@/propel/components/campaign/ComposeToolbar';
-import {
-  type FormatAction,
-} from '@/propel/lib/campaignBuilderConfig';
+import { type FormatAction } from '@/propel/lib/campaignBuilderConfig';
 import { type MergeField } from '@/propel/lib/campaignRenderer';
 import {
   type AbConfig,
@@ -52,6 +50,7 @@ export const AbTestPanel = ({
   copyTokensFillableB,
   waTemplates,
   waTemplateAId,
+  hideEmailBodyEditor = false,
 }: {
   ab: AbConfig;
   onChange: (patch: Partial<AbConfig>) => void;
@@ -67,6 +66,10 @@ export const AbTestPanel = ({
   // variant-A template id to exclude. Unused for EMAIL.
   waTemplates: WaTemplateOption[];
   waTemplateAId: string | null;
+  // EMAIL only: when true, Variant B's subject + body are authored in the shared
+  // GrapesJS builder (via the A|B switcher above), so this panel shows only the
+  // test mechanics — no markdown editor for B. (WhatsApp ignores this.)
+  hideEmailBodyEditor?: boolean;
 }) => {
   const isWa = channel === 'WHATSAPP';
   const slice = ab.slicePct;
@@ -106,7 +109,9 @@ export const AbTestPanel = ({
 
       {ab.enabled && (
         <Stack gap="md" mt="md">
-          {/* Variant B — copy (EMAIL) or a second approved template (WhatsApp) */}
+          {/* Variant B — copy (EMAIL) or a second approved template (WhatsApp).
+              For EMAIL with hideEmailBodyEditor, B's subject + body live in the
+              GrapesJS builder (A|B switcher above) — here we only confirm that. */}
           <Box>
             <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb={6}>
               Variant B
@@ -118,6 +123,17 @@ export const AbTestPanel = ({
                 waTemplates={waTemplates}
                 waTemplateAId={waTemplateAId}
               />
+            ) : hideEmailBodyEditor ? (
+              <Text size="xs" c="dimmed">
+                Design Variant B in the builder above — switch to{' '}
+                <Text span fw={700} c="var(--mantine-color-text)">
+                  Variant B
+                </Text>{' '}
+                with the A | B toggle, then design its email like Variant A.
+                {!copyTokensFillableB
+                  ? ' ⚠ Variant B currently uses a merge field this campaign can’t fill.'
+                  : ''}
+              </Text>
             ) : (
               <Stack gap="sm">
                 <TextInput
@@ -125,7 +141,9 @@ export const AbTestPanel = ({
                   label="Subject (B)"
                   placeholder="A different subject line to test"
                   value={ab.subjectB}
-                  onChange={(e) => onChange({ subjectB: e.currentTarget.value })}
+                  onChange={(e) =>
+                    onChange({ subjectB: e.currentTarget.value })
+                  }
                 />
                 <Box>
                   <Text size="sm" fw={600} mb={6} c="var(--mantine-color-text)">
@@ -152,8 +170,8 @@ export const AbTestPanel = ({
                   <Group gap={6} wrap="nowrap" c="red">
                     <IconAlertCircle size={14} />
                     <Text size="xs" c="red">
-                      Variant B uses a merge field this campaign can&rsquo;t fill —
-                      it would send blank.
+                      Variant B uses a merge field this campaign can&rsquo;t
+                      fill — it would send blank.
                     </Text>
                   </Group>
                 )}
@@ -185,14 +203,10 @@ export const AbTestPanel = ({
                 { value: 50, label: '50%' },
               ]}
             />
-            <SplitBar
-              aPct={halfSlice}
-              bPct={halfSlice}
-              winnerPct={remainder}
-            />
+            <SplitBar aPct={halfSlice} bPct={halfSlice} winnerPct={remainder} />
             <Text size="xs" c="dimmed" mt={6}>
-              {halfSlice}% gets A, {halfSlice}% gets B, the remaining {remainder}%
-              gets the winner.
+              {halfSlice}% gets A, {halfSlice}% gets B, the remaining{' '}
+              {remainder}% gets the winner.
             </Text>
           </Box>
 
@@ -271,7 +285,11 @@ const WaVariantB = ({
       <Group gap={6} wrap="nowrap" align="flex-start">
         <IconAlertCircle
           size={14}
-          style={{ color: 'var(--mantine-color-yellow-7)', flex: 'none', marginTop: 2 }}
+          style={{
+            color: 'var(--mantine-color-yellow-7)',
+            flex: 'none',
+            marginTop: 2,
+          }}
         />
         <Text size="xs" c="dimmed">
           You need a second approved WhatsApp template to test against — there
@@ -329,8 +347,16 @@ const SplitBar = ({
     wrap="nowrap"
     style={{ height: 14, borderRadius: 7, overflow: 'hidden' }}
   >
-    <Segment pct={aPct} color="var(--mantine-color-red-6)" title={`A · ${aPct}%`} />
-    <Segment pct={bPct} color="var(--mantine-color-red-3)" title={`B · ${bPct}%`} />
+    <Segment
+      pct={aPct}
+      color="var(--mantine-color-red-6)"
+      title={`A · ${aPct}%`}
+    />
+    <Segment
+      pct={bPct}
+      color="var(--mantine-color-red-3)"
+      title={`B · ${bPct}%`}
+    />
     <Segment
       pct={winnerPct}
       color="var(--mantine-color-default-border)"

@@ -8,12 +8,17 @@
 // (COMPLIANCE_BLOCK, 24h-window, ENV_MISSING) is preserved, and a transport failure
 // is a single `null` the callers map to a clean error state.
 
+import { getTokenPair } from '@/apollo/utils/getTokenPair';
+import { REACT_APP_SERVER_BASE_URL } from '~/config';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import {
+  type InboxAgentOption,
   type InboxChannel,
   type InboxPayload,
   type InboxThreadPayload,
   type InboxAiResponse,
+  type LeadAssignResponse,
+  type LeadCreateOpportunityResponse,
   type OutboundMediaKind,
   type QuickRepliesPayload,
   type QuickReply,
@@ -80,6 +85,115 @@ export const saveInboxMedia = (
 export const fetchQuickReplies = async (): Promise<QuickReply[]> => {
   const res = await callPropelRoute<QuickRepliesPayload>('/inbox/quick-replies', {});
   return Array.isArray(res?.quickReplies) ? res.quickReplies : [];
+};
+
+// ── Lead-triage quick actions (Lead Engine S1) ───────────────────────────────
+// GATED routes — the component NEVER mutates a record directly; the route enforces
+// policy (manager/admin), performs the write, and emits the leadEvent. Flat body
+// (event.body), same convention as the other inbox routes.
+
+// POST /lead/assign — set the lead's owner (person.assignedAgentId) to an agent.
+// Starts the SLA clock + first-response task server-side. mode:'noop' when already
+// assigned to that agent.
+export const assignLead = (args: {
+  personId: string;
+  agentWorkspaceMemberId: string;
+}): Promise<LeadAssignResponse | null> =>
+  callPropelRoute<LeadAssignResponse>('/lead/assign', {
+    personId: args.personId,
+    agentWorkspaceMemberId: args.agentWorkspaceMemberId,
+  });
+
+// POST /lead/create-opportunity — create the lane opportunity for this contact and
+// emit OPPORTUNITY_CREATED. lane ∈ {secondary, sell, offplan, institutional, rcbi}.
+export const createLeadOpportunity = (args: {
+  lane: string;
+  contactId: string;
+  name: string;
+}): Promise<LeadCreateOpportunityResponse | null> =>
+  callPropelRoute<LeadCreateOpportunityResponse>('/lead/create-opportunity', {
+    lane: args.lane,
+    contactId: args.contactId,
+    name: args.name,
+  });
+
+// Follow-up ping — a deterministic nudge (NOT the substantive reply, NOT the
+// on-arrival auto-ack): re-send a short "an agent is on it" line via the existing
+// reply route. Labelled distinctly so it's never confused with composing a reply.
+export const FOLLOW_UP_PING_TEXT =
+  'Just following up — an agent will be with you shortly. Thanks for your patience!';
+
+export const sendFollowUpPing = (
+  id: string,
+  channel: InboxChannel,
+): Promise<ReplySendEnvelope | null> =>
+  callPropelRoute<ReplySendEnvelope>('/marketing/inbox-reply', {
+    id,
+    channel,
+    body: FOLLOW_UP_PING_TEXT,
+  });
+
+// ── Agent directory (for the assign picker) ──────────────────────────────────
+// Read every workspace member (id, display name, availability) over the core
+// GraphQL endpoint with the acting member's OWN session token — same thin-fetch
+// escape hatch oneOnOneCrm/dialerCrmBridge use (these reads respect propel-rls).
+// Returns [] on any failure so the picker shows an honest "no agents" state.
+const coreGraphql = async <T>(
+  query: string,
+  variables: Record<string, unknown>,
+): Promise<T | null> => {
+  const token = getTokenPair()?.accessOrWorkspaceAgnosticToken?.token;
+  if (token === undefined || token === '') return null;
+  try {
+    const response = await fetch(`${REACT_APP_SERVER_BASE_URL}/graphql`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ query, variables }),
+    });
+    if (!response.ok) return null;
+    const json = (await response.json()) as { data?: T };
+    return json.data ?? null;
+  } catch {
+    return null;
+  }
+};
+
+type AgentDirectoryConnection = {
+  workspaceMembers?: {
+    edges?: {
+      node: {
+        id: string;
+        name?: { firstName?: string | null; lastName?: string | null };
+        agentAvailability?: string | null;
+      };
+    }[];
+  };
+};
+
+export const listInboxAgents = async (): Promise<InboxAgentOption[]> => {
+  const data = await coreGraphql<AgentDirectoryConnection>(
+    `query InboxAgentDirectory {
+       workspaceMembers(first: 500, orderBy: [{ name: { firstName: AscNullsLast } }]) {
+         edges { node { id name { firstName lastName } agentAvailability } }
+       }
+     }`,
+    {},
+  );
+  const edges = data?.workspaceMembers?.edges ?? [];
+  return edges
+    .map((e) => ({
+      id: e.node.id,
+      name:
+        [e.node.name?.firstName, e.node.name?.lastName]
+          .filter(Boolean)
+          .join(' ')
+          .trim() || 'Unnamed',
+      available: (e.node.agentAvailability ?? 'AVAILABLE') === 'AVAILABLE',
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 };
 
 // ── Keyboard-send decision ───────────────────────────────────────────────────

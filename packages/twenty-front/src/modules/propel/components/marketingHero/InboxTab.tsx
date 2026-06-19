@@ -45,10 +45,17 @@ export const InboxTab = () => {
   const [payload, setPayload] = useState<InboxPayload | null>(null);
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading');
   const [filter, setFilter] = useState<'all' | InboxChannel>('all');
+  // Lead Engine S1 — triage segmentation. 'needs' = unowned + wants-a-human (the
+  // pool to work); 'all' = everything. (A "Mine" segment would need the viewer's
+  // member id; an AGENT's list is already owner-scoped server-side, so Needs/All is
+  // the clean, host-decoupled split. Shown only to MANAGER/ADMIN, who triage the
+  // pool — an agent only sees their own threads, so the segment would be moot.)
+  const [triage, setTriage] = useState<'all' | 'needs'>('all');
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<{ id: string; channel: InboxChannel } | null>(
-    null,
-  );
+  const [selected, setSelected] = useState<{
+    id: string;
+    channel: InboxChannel;
+  } | null>(null);
   // Bumped on each successful (re)load so the open thread pane re-fetches its body
   // in lockstep with the list — not just the list rows.
   const [reloadToken, setReloadToken] = useState(0);
@@ -120,10 +127,21 @@ export const InboxTab = () => {
     return chips;
   }, [payload]);
 
+  // Count of threads that want a human (unowned + real-intent/unclassified) — the
+  // "Needs triage" segment size, shown as a badge on the chip.
+  const needsCount = useMemo(
+    () => (payload?.threads ?? []).filter((t) => t.needsTriage).length,
+    [payload],
+  );
+
   const shown = useMemo(() => {
     const all = payload?.threads ?? [];
+    const byTriage =
+      triage === 'needs' ? all.filter((t) => t.needsTriage) : all;
     const byChannel =
-      filter === 'all' ? all : all.filter((t) => t.channel === filter);
+      filter === 'all'
+        ? byTriage
+        : byTriage.filter((t) => t.channel === filter);
     const q = search.trim().toLowerCase();
     if (!q) return byChannel;
     // Client-side search over the contact name + last-message preview — the only
@@ -134,7 +152,7 @@ export const InboxTab = () => {
         t.contactName.toLowerCase().includes(q) ||
         t.preview.toLowerCase().includes(q),
     );
-  }, [payload, filter, search]);
+  }, [payload, filter, triage, search]);
 
   if (phase === 'loading') {
     return (
@@ -232,6 +250,43 @@ export const InboxTab = () => {
             leftSection={<IconSearch size={14} />}
             aria-label="Search conversations"
           />
+          {/* Triage segmentation (MANAGER/ADMIN only — agents only see their own
+              threads). Needs-triage = the unowned pool that wants a human. */}
+          {payload.viewerRole === 'MANAGER' ||
+          payload.viewerRole === 'ADMIN' ? (
+            <Group gap={6} mb={6} style={{ flexWrap: 'wrap' }}>
+              <Button
+                size="compact-xs"
+                radius="xl"
+                variant={triage === 'needs' ? 'filled' : 'default'}
+                color="red"
+                rightSection={
+                  needsCount > 0 ? (
+                    <Badge
+                      size="xs"
+                      circle
+                      variant={triage === 'needs' ? 'white' : 'filled'}
+                      color="red"
+                    >
+                      {needsCount}
+                    </Badge>
+                  ) : undefined
+                }
+                onClick={() => setTriage('needs')}
+              >
+                Needs triage
+              </Button>
+              <Button
+                size="compact-xs"
+                radius="xl"
+                variant={triage === 'all' ? 'filled' : 'default'}
+                color="red"
+                onClick={() => setTriage('all')}
+              >
+                All
+              </Button>
+            </Group>
+          ) : null}
           <Group gap={6} style={{ flexWrap: 'wrap' }}>
             {channelChips.map((ch) => (
               <Button
@@ -243,11 +298,7 @@ export const InboxTab = () => {
                 onClick={() => {
                   setFilter(ch.id);
                   // drop the open thread if the new filter hides it
-                  if (
-                    ch.id !== 'all' &&
-                    selected &&
-                    selected.channel !== ch.id
-                  )
+                  if (ch.id !== 'all' && selected && selected.channel !== ch.id)
                     setSelected(null);
                 }}
               >
@@ -283,6 +334,13 @@ export const InboxTab = () => {
           id={selected.id}
           channel={selected.channel}
           reloadToken={reloadToken}
+          row={
+            payload.threads.find(
+              (t) => t.id === selected.id && t.channel === selected.channel,
+            ) ?? null
+          }
+          viewerRole={payload.viewerRole ?? 'AGENT'}
+          onActed={() => load(true)}
         />
       ) : (
         <Center style={{ flex: 1, minWidth: 0 }}>

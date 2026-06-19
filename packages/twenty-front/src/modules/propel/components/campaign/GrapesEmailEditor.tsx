@@ -485,9 +485,45 @@ export const GrapesEmailEditor = ({
   );
 
   // Insert a merge tag into the selected text component (or a new text block).
+  // Insert a merge tag. PREFERS the caret: when a text block is actively being
+  // edited (its contenteditable RTE is open — editor.getEditing() is truthy), the
+  // token drops at the current caret inside the canvas iframe via execCommand, then
+  // we sync the component so the body export stays correct. Falls back to appending
+  // to the selected mj-text (or a new text block) when nothing is being edited.
   const insertMergeTag = useCallback((token: string) => {
     const editor = editorRef.current;
     if (!editor) return;
+
+    // 1) Caret insertion — only when a component is in active RTE edit mode AND the
+    //    canvas selection is collapsed/placed inside it.
+    const editing = editor.getEditing();
+    if (editing) {
+      const doc = editor.Canvas.getDocument();
+      const sel = doc?.getSelection?.();
+      if (doc && sel && sel.rangeCount > 0) {
+        // execCommand('insertText') respects the caret and the browser's undo
+        // stack; it's the simplest faithful "type at cursor" for a contenteditable.
+        const ok = doc.execCommand('insertText', false, token);
+        if (!ok) {
+          // Fallback for engines that no-op execCommand: manual range insert.
+          const range = sel.getRangeAt(0);
+          range.deleteContents();
+          range.insertNode(doc.createTextNode(token));
+          range.collapse(false);
+        }
+        // Push the edited DOM back into the component model so the MJML/HTML export
+        // reflects the inserted token (otherwise it lives only in the live DOM).
+        // syncContent lives on the text component's VIEW (not the base Component
+        // type), so reach it defensively — and the RTE also syncs on blur anyway.
+        const view = (editing as { getView?: () => unknown }).getView?.();
+        const sync = (view as { syncContent?: () => Promise<void> } | undefined)
+          ?.syncContent;
+        if (typeof sync === 'function') void sync.call(view);
+        return;
+      }
+    }
+
+    // 2) No active edit — append to the selected text block, or drop a new one.
     const selected = editor.getSelected();
     if (selected && selected.is('mj-text')) {
       selected.append(` ${token}`);

@@ -16,6 +16,20 @@ export type InboxChannel = 'FACEBOOK' | 'INSTAGRAM' | 'WHATSAPP';
 // reply: comment-reply Graph call vs Messenger Send API).
 export type InboxSurface = 'COMMENT' | 'DM';
 
+// Lead Engine S1 — the channel-agnostic triage class the inbox route normalizes
+// every thread to (from whatsAppConversation.senderType etc.). UNKNOWN = no triage
+// signal yet (FB/IG carry no triage columns), shown as "needs a human look".
+export type InboxTriageClass =
+  | 'OPPORTUNITY'
+  | 'LEAD'
+  | 'BROWSER'
+  | 'SPAM'
+  | 'UNKNOWN';
+
+// The acting member's capability role (from /marketing/inbox). AGENT → own threads
+// only, no pool-assignment controls; MANAGER/ADMIN → triage the whole intake pool.
+export type InboxViewerRole = 'ADMIN' | 'MANAGER' | 'AGENT';
+
 export interface InboxThreadRow {
   id: string;
   channel: InboxChannel;
@@ -28,6 +42,22 @@ export interface InboxThreadRow {
   status: string; // NEW | OPEN | WAITING | RESOLVED
   personId: string | null; // deep-link to the matched Person ('' → unmatched)
   contactName: string; // matched person name ('' if unmatched)
+
+  // ── Lead Engine S1: triage-queue enrichment (from /marketing/inbox) ──────────
+  // Operational metadata only — all degrade-safe: a row with no triage data shows
+  // fewer signals, never a fabricated one. Lockstepped with marketing-inbox-route.
+  triageClass: InboxTriageClass; // normalized class (UNKNOWN when no triage data)
+  triageReason: string; // short why-string from triage ('' when none)
+  assignedAgentId: string | null; // lead owner ('' / null → unowned)
+  assignedAgentName: string; // resolved agent name ('' when unowned)
+  leadSource: string | null; // META | PROPERTY_FINDER | CAMPAIGN | …
+  contactType: string | null; // LEAD | CLIENT | …
+  needsTriage: boolean; // unowned + real-intent/unclassified → wants a human
+  ageMs: number | null; // ms since first enquiry (null when unknown) — SLA heat
+  slaBreached: boolean; // source SLA window lapsed without a first response
+  suggestedAgentId: string | null; // deterministic suggestion (null when none)
+  suggestedAgentName: string; // resolved suggested-agent name ('' when none)
+  suggestedReason: string; // why this agent ('' when none)
 }
 
 export interface InboxPresence {
@@ -42,6 +72,36 @@ export interface InboxPayload {
   presence: InboxPresence;
   threads: InboxThreadRow[]; // unioned, recency-desc, capped; empty → list hides
   totalUnread: number;
+  // Lead Engine S1 — the acting member's role, so the UI shows pool-triage controls
+  // (assign / create-opp) to MANAGER/ADMIN only. Optional for back-compat with an
+  // older route response (treated as 'AGENT' when absent).
+  viewerRole?: InboxViewerRole;
+}
+
+// ── Lead quick-action route envelopes (POST /lead/*) ──────────────────────────
+// Gated, event-emitting routes — the component NEVER mutates directly. Flat
+// event.body (callPropelRoute flat payload), same as the other inbox routes.
+export interface LeadAssignResponse {
+  ok?: boolean;
+  personId?: string;
+  agentId?: string;
+  mode?: string; // 'noop' when already assigned to that agent
+  error?: string;
+  operatorAction?: string;
+}
+
+export interface LeadCreateOpportunityResponse {
+  ok?: boolean;
+  opportunityId?: string;
+  error?: string;
+  operatorAction?: string;
+}
+
+// An agent option for the assign picker (from the workspaceMembers directory).
+export interface InboxAgentOption {
+  id: string;
+  name: string;
+  available: boolean;
 }
 
 // Inbound/outbound media kind, mirroring the whatsAppMessage `mediaKind` SELECT
