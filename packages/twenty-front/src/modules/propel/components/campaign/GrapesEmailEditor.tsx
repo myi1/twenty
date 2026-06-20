@@ -834,16 +834,13 @@ export const GrapesEmailEditor = ({
   }, [onApplyHtml, notify]);
 
   // SAVE AS TEMPLATE — compile the design to HTML and persist via the existing
-  // marketing-save-email-template-route. We store the exported HTML in the
-  // template's `bodyText` field (it's a TEXT field; HTML is text), so the saved
-  // template is immediately reusable by a campaign.
-  //
-  // KNOWN LIMITATION (flagged, not silently dropped): the marketingEmailTemplate
-  // object has NO field for the GrapesJS project JSON, and adding one requires an
-  // app:install schema change (out of scope: STAGING-only, no app:install). So a
-  // saved template round-trips its HTML, but re-opening it in GrapesJS starts from
-  // the starter skeleton rather than the exact node graph. The re-editable path
-  // needs a `designProjectJson` RAW_JSON field on the object (a gated deploy).
+  // marketing-save-email-template-route. We store TWO things: the exported
+  // cross-client HTML in `bodyText` (a TEXT field; what sends actually render),
+  // and the GrapesJS project JSON in `designProjectJson` (RAW_JSON) so re-opening
+  // the template restores the EXACT node graph — incl. AI-generated layouts (#59)
+  // — instead of the starter skeleton. The project JSON is best-effort: if
+  // serialization throws we omit it and the HTML still saves (re-open just falls
+  // back to the starter, as it did before the field existed).
   const doSaveTemplate = useCallback(async () => {
     const editor = editorRef.current;
     if (!editor || saving) return;
@@ -857,6 +854,15 @@ export const GrapesEmailEditor = ({
       notify(`Saved with MJML warnings: ${errors[0]}`, 'info');
     }
     setSaving(true);
+    // Capture the GrapesJS project JSON for exact re-editability (#59). Best-effort:
+    // serialization failures omit it but never block the HTML save. The server
+    // route JSON.parses this string into the RAW_JSON column.
+    let designProjectJson: string | undefined;
+    try {
+      designProjectJson = JSON.stringify(editor.getProjectData());
+    } catch {
+      designProjectJson = undefined;
+    }
     const res = await callPropelRoute<{
       ok?: boolean;
       emailTemplateId?: string;
@@ -870,6 +876,7 @@ export const GrapesEmailEditor = ({
       // stay as {{token}} for the send-time personalizer.
       bodyText: html,
       languageCode: initial?.languageCode ?? 'EN',
+      ...(designProjectJson !== undefined ? { designProjectJson } : {}),
     });
     setSaving(false);
     if (

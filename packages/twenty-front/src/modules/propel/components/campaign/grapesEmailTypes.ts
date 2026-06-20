@@ -8,10 +8,12 @@ import { type CustomFieldOption } from '@/propel/types/marketingHome';
 // The template a session seeds from / saves back to. `id` present ⇒ editing an
 // existing template (save = update); absent ⇒ a fresh design (save = create).
 //
-// `designProjectJson` is the GrapesJS project JSON for EXACT re-editability. It is
-// FORWARD-COMPAT: the marketingEmailTemplate object has no field to persist it yet
-// (adding one is an app:install schema change, out of scope for the staging hero
-// iteration), so today it is always undefined on load and we round-trip HTML only.
+// `designProjectJson` is the stringified GrapesJS project JSON for EXACT
+// re-editability. It is persisted on the marketingEmailTemplate object's
+// `designProjectJson` RAW_JSON field (#59): the template editor sends it on save
+// and the hub read seeds it back, so a saved design round-trips its exact node
+// graph. Undefined only for templates saved HTML-only before the field existed —
+// those re-open from the starter skeleton, same as before.
 export type GrapesEmailTemplateSeed = {
   id?: string;
   name?: string;
