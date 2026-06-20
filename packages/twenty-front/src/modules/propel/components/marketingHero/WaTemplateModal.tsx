@@ -1,3 +1,8 @@
+/* oxlint-disable twenty/no-hardcoded-colors -- the WaBubblePreview renders the
+   well-known WhatsApp chat look (wallpaper #efeae2, white received bubble, CTA
+   link-blue #027eb5, read-tick blue) so the operator sees the message as the
+   recipient will. These are WhatsApp brand chrome by design and deliberately do
+   NOT track the CRM theme — same precedent as the social ComposerPreview. */
 import {
   Alert,
   Box,
@@ -12,7 +17,12 @@ import {
   TextInput,
 } from '@mantine/core';
 import { useEffect, useMemo, useState } from 'react';
-import { IconTrash } from 'twenty-ui/display';
+import {
+  IconArrowBackUp,
+  IconExternalLink,
+  IconPhone,
+  IconTrash,
+} from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import {
@@ -109,6 +119,245 @@ const newButton = (type: EditorButton['type']): EditorButton =>
       ? { type: 'PHONE_NUMBER', text: '', phoneNumber: '' }
       : { type: 'QUICK_REPLY', text: '' };
 
+// ── live WhatsApp chat-bubble PREVIEW ──────────────────────────────────────────
+// Styles the well-known WhatsApp light-mode look ourselves (no asset deps): the
+// wallpaper, a received-message white card with a tail, and WhatsApp's button
+// conventions — call-to-action (URL/phone) buttons sit INSIDE the bubble below a
+// divider in link-blue with an icon; quick-reply buttons render as SEPARATE full-
+// width pills under the bubble (exactly how Meta renders them on a phone). This is
+// cosmetic: a faithful render of header + filled-body + footer + buttons, updating
+// live as the operator edits, so they see what the recipient will see BEFORE Meta
+// review. It is NOT the wire format (the route owns assembleComponents).
+
+const WA = {
+  wallpaper: '#efeae2',
+  bubble: '#ffffff',
+  bodyText: '#111b21',
+  metaText: '#667781', // footer + timestamp grey
+  link: '#027eb5', // WhatsApp CTA-button blue
+  divider: '#e9edef',
+  tick: '#53bdeb',
+} as const;
+
+const HEADER_MEDIA_LABEL: Record<'IMAGE' | 'VIDEO' | 'DOCUMENT', string> = {
+  IMAGE: '🖼  Image',
+  VIDEO: '🎬  Video',
+  DOCUMENT: '📄  Document',
+};
+
+type PreviewHeader =
+  | { kind: 'TEXT'; text: string }
+  | { kind: 'MEDIA'; format: 'IMAGE' | 'VIDEO' | 'DOCUMENT' }
+  | null;
+
+type PreviewButton =
+  | { type: 'QUICK_REPLY'; label: string }
+  | { type: 'URL'; label: string }
+  | { type: 'PHONE_NUMBER'; label: string };
+
+const WaBubblePreview = ({
+  header,
+  body,
+  footer,
+  buttons,
+  rtl,
+}: {
+  header: PreviewHeader;
+  body: string;
+  footer: string;
+  buttons: PreviewButton[];
+  rtl: boolean;
+}) => {
+  // CTA buttons (URL / call) render inside the bubble; quick replies render as
+  // separate pills under the bubble — WhatsApp's actual phone layout.
+  const ctaButtons = buttons.filter((b) => b.type !== 'QUICK_REPLY');
+  const quickReplies = buttons.filter((b) => b.type === 'QUICK_REPLY');
+  const dir = rtl ? 'rtl' : 'ltr';
+  const sent = '12:30';
+
+  return (
+    <Box
+      style={{
+        background: WA.wallpaper,
+        // subtle WhatsApp-style doodle texture via layered radial dots
+        backgroundImage:
+          'radial-gradient(rgba(0,0,0,0.035) 1px, transparent 1px)',
+        backgroundSize: '18px 18px',
+        borderRadius: 12,
+        padding: '20px 14px',
+        minHeight: 140,
+      }}
+    >
+      <Box style={{ maxWidth: 320 }}>
+        {/* received bubble (white, left-aligned, with tail) */}
+        <Box
+          style={{
+            position: 'relative',
+            background: WA.bubble,
+            borderRadius: 8,
+            borderTopLeftRadius: 0,
+            boxShadow: '0 1px 0.5px rgba(11,20,26,0.13)',
+            padding: '6px 9px 8px',
+            direction: dir,
+            textAlign: rtl ? 'right' : 'left',
+          }}
+        >
+          {/* tail (top-left wedge) */}
+          <Box
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: -8,
+              width: 0,
+              height: 0,
+              borderStyle: 'solid',
+              borderWidth: '0 8px 8px 0',
+              borderColor: `transparent ${WA.bubble} transparent transparent`,
+            }}
+          />
+
+          {/* HEADER */}
+          {header?.kind === 'MEDIA' ? (
+            <Box
+              style={{
+                background: '#f0f2f5',
+                borderRadius: 6,
+                height: 132,
+                marginBottom: 6,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: WA.metaText,
+                fontSize: 13,
+                fontWeight: 500,
+              }}
+            >
+              {HEADER_MEDIA_LABEL[header.format]}
+            </Box>
+          ) : header?.kind === 'TEXT' && header.text.trim() !== '' ? (
+            <Text
+              style={{
+                color: WA.bodyText,
+                fontWeight: 700,
+                fontSize: 14.5,
+                lineHeight: 1.35,
+                marginBottom: 4,
+                wordBreak: 'break-word',
+              }}
+            >
+              {header.text}
+            </Text>
+          ) : null}
+
+          {/* BODY (with sample values filled in) */}
+          <Text
+            style={{
+              color: WA.bodyText,
+              fontSize: 14.2,
+              lineHeight: 1.4,
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+            }}
+          >
+            {body.trim() !== '' ? body : 'Your message preview appears here…'}
+          </Text>
+
+          {/* FOOTER */}
+          {footer.trim() !== '' ? (
+            <Text
+              style={{
+                color: WA.metaText,
+                fontSize: 12.5,
+                lineHeight: 1.35,
+                marginTop: 5,
+                wordBreak: 'break-word',
+              }}
+            >
+              {footer}
+            </Text>
+          ) : null}
+
+          {/* timestamp + read tick (cosmetic) */}
+          <Box
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              alignItems: 'center',
+              gap: 3,
+              marginTop: 2,
+            }}
+          >
+            <Text style={{ color: WA.metaText, fontSize: 11 }}>{sent}</Text>
+            <span style={{ color: WA.tick, fontSize: 13, lineHeight: 1 }}>
+              ✓✓
+            </span>
+          </Box>
+
+          {/* CTA buttons inside the bubble (URL / call), divided + link-blue */}
+          {ctaButtons.length > 0 ? (
+            <Box style={{ marginTop: 6 }}>
+              {ctaButtons.map((b, i) => (
+                <Box
+                  key={i}
+                  style={{
+                    borderTop: `1px solid ${WA.divider}`,
+                    padding: '9px 0 3px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 7,
+                    color: WA.link,
+                    fontSize: 14,
+                    fontWeight: 500,
+                  }}
+                >
+                  {b.type === 'URL' ? (
+                    <IconExternalLink size={17} />
+                  ) : (
+                    <IconPhone size={17} />
+                  )}
+                  <span style={{ wordBreak: 'break-word' }}>
+                    {b.label.trim() !== '' ? b.label : 'Button'}
+                  </span>
+                </Box>
+              ))}
+            </Box>
+          ) : null}
+        </Box>
+
+        {/* quick-reply buttons — separate full-width pills under the bubble */}
+        {quickReplies.length > 0 ? (
+          <Stack gap={6} mt={6}>
+            {quickReplies.map((b, i) => (
+              <Box
+                key={i}
+                style={{
+                  background: WA.bubble,
+                  borderRadius: 8,
+                  boxShadow: '0 1px 0.5px rgba(11,20,26,0.13)',
+                  padding: '9px 0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 7,
+                  color: WA.link,
+                  fontSize: 14,
+                  fontWeight: 500,
+                }}
+              >
+                <IconArrowBackUp size={17} />
+                <span style={{ wordBreak: 'break-word' }}>
+                  {b.label.trim() !== '' ? b.label : 'Quick reply'}
+                </span>
+              </Box>
+            ))}
+          </Stack>
+        ) : null}
+      </Box>
+    </Box>
+  );
+};
+
 export const WaTemplateModal = ({
   initial,
   onClose,
@@ -147,7 +396,8 @@ export const WaTemplateModal = ({
   // Append-only binding: the chip adds {{n}} at the end and pushes its field.
   const appendParam = (key: WaMergeField) => {
     setBodyText(
-      (b) => `${b}${b && !b.endsWith(' ') ? ' ' : ''}{{${paramMap.length + 1}}}`,
+      (b) =>
+        `${b}${b && !b.endsWith(' ') ? ' ' : ''}{{${paramMap.length + 1}}}`,
     );
     setParamMap((m) => [...m, key]);
   };
@@ -182,6 +432,40 @@ export const WaTemplateModal = ({
     [bodyText, paramMap, languageCode],
   );
 
+  // Header rendered in the bubble: a TEXT header is shown with its own {{1}}
+  // example substituted; a media header shows a placeholder card.
+  const previewHeader = useMemo<PreviewHeader>(() => {
+    if (headerFormat === 'TEXT') {
+      const text = previewTemplateBody(
+        headerText,
+        headerExample.trim() ? [headerExample.trim()] : [],
+      );
+      return { kind: 'TEXT', text };
+    }
+    if (
+      headerFormat === 'IMAGE' ||
+      headerFormat === 'VIDEO' ||
+      headerFormat === 'DOCUMENT'
+    ) {
+      return { kind: 'MEDIA', format: headerFormat };
+    }
+    return null;
+  }, [headerFormat, headerText, headerExample]);
+
+  // Buttons rendered in the bubble (labels only — links/numbers aren't shown on a
+  // received message). Blank-label buttons still render so the layout is live.
+  const previewButtons = useMemo<PreviewButton[]>(
+    () =>
+      buttons.map((b) =>
+        b.type === 'URL'
+          ? { type: 'URL', label: b.text }
+          : b.type === 'PHONE_NUMBER'
+            ? { type: 'PHONE_NUMBER', label: b.text }
+            : { type: 'QUICK_REPLY', label: b.text },
+      ),
+    [buttons],
+  );
+
   // Editing a reviewed template: any Meta-reviewed field changing invalidates the
   // prior verdict, so a reviewed status must drop to DRAFT.
   const reviewedDirty =
@@ -206,8 +490,7 @@ export const WaTemplateModal = ({
   // resubmittable from here — mirrors the server's editTemplateId gate.
   const alreadyInMeta = Boolean(
     initial &&
-      (initial.metaTemplateId ||
-        (initial.status && initial.status !== 'DRAFT')),
+    (initial.metaTemplateId || (initial.status && initial.status !== 'DRAFT')),
   );
 
   // Assemble the typed create-input from editor state (mirrors the route's parse).
@@ -382,7 +665,9 @@ export const WaTemplateModal = ({
           }
           placeholder="listing_launch_en"
           styles={{ input: { fontFamily: 'monospace' } }}
-          error={name.trim() !== '' && !nameOk ? 'Invalid name format' : undefined}
+          error={
+            name.trim() !== '' && !nameOk ? 'Invalid name format' : undefined
+          }
         />
 
         <Group gap="xl" wrap="wrap">
@@ -483,26 +768,25 @@ export const WaTemplateModal = ({
           ) : null}
         </Box>
 
-        {/* Drain-aware FILLED preview */}
-        {bodyText.trim() !== '' ? (
-          <Box>
-            <Text size="sm" fw={600} mb={6}>
-              Preview
+        {/* Live WhatsApp chat-bubble preview — header + filled body + footer +
+            buttons, rendered as the recipient sees it on a phone. */}
+        <Box>
+          <Group justify="space-between" align="center" mb={6}>
+            <Text size="sm" fw={600}>
+              WhatsApp preview
             </Text>
-            <Box
-              style={{
-                border: '1px solid var(--mantine-color-default-border)',
-                borderRadius: 8,
-                padding: 14,
-                direction: rtl ? 'rtl' : 'ltr',
-                whiteSpace: 'pre-wrap',
-                lineHeight: 1.5,
-              }}
-            >
-              <Text size="sm">{previewBody}</Text>
-            </Box>
-          </Box>
-        ) : null}
+            <Text size="xs" c="dimmed">
+              sample values · live
+            </Text>
+          </Group>
+          <WaBubblePreview
+            header={previewHeader}
+            body={previewBody}
+            footer={footer}
+            buttons={previewButtons}
+            rtl={rtl}
+          />
+        </Box>
 
         {/* Sample values — Meta needs one per {{n}} to review */}
         {bodyParams.ok && bodyParams.count > 0 ? (
@@ -560,8 +844,8 @@ export const WaTemplateModal = ({
                 maxLength={60}
               />
               <Text size="xs" c="dimmed">
-                Up to 60 characters; a static line shown above the message. A text
-                header may use at most one variable, written {'{{1}}'}.
+                Up to 60 characters; a static line shown above the message. A
+                text header may use at most one variable, written {'{{1}}'}.
               </Text>
               {/\{\{\s*1\s*\}\}/.test(headerText) ? (
                 <TextInput
@@ -765,15 +1049,17 @@ export const WaTemplateModal = ({
             })}
           </Group>
           {reviewedDirty &&
-          (initial?.status === 'APPROVED' || initial?.status === 'SUBMITTED') ? (
+          (initial?.status === 'APPROVED' ||
+            initial?.status === 'SUBMITTED') ? (
             <Text size="xs" c="orange" mt={6}>
               You edited a Meta-reviewed field — this template must be
-              re-submitted to Meta, so it can’t stay {titleCase(initial.status)}.
+              re-submitted to Meta, so it can’t stay {titleCase(initial.status)}
+              .
             </Text>
           ) : status === 'APPROVED' ? (
             <Text size="xs" c="orange" mt={6}>
-              APPROVED makes this template sendable — flip it only after WhatsApp
-              Manager shows Approved for this exact body.
+              APPROVED makes this template sendable — flip it only after
+              WhatsApp Manager shows Approved for this exact body.
             </Text>
           ) : null}
           {initial?.rejectionReason ? (
