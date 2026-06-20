@@ -20,6 +20,7 @@ export enum AppPath {
   Index = '/',
   TasksPage = '/objects/tasks',
   OpportunitiesPage = '/objects/opportunities',
+  Inbox = '/inbox',
   MarketingHub = '/marketing',
   MarketingCampaignBuilder = '/marketing/campaign/new',
   MarketingSequenceEditor = '/marketing/sequences',

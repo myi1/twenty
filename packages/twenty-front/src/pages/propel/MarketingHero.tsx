@@ -1,19 +1,18 @@
 import { Tabs } from '@mantine/core';
-import { useCallback, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { AppPath } from 'twenty-shared/types';
 import {
   IconArrowsSplit2,
   IconBroadcast,
   IconCalendarEvent,
   IconFileText,
-  IconInbox,
   IconPhone,
   IconSend,
 } from 'twenty-ui/display';
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { CampaignsTab } from '@/propel/components/marketingHero/CampaignsTab';
-import { InboxTab } from '@/propel/components/marketingHero/InboxTab';
 import { LeadRoutingTab } from '@/propel/components/marketingHero/LeadRoutingTab';
 import { MarketingHomeTab } from '@/propel/components/marketingHero/MarketingHomeTab';
 import { NumbersTab } from '@/propel/components/marketingHero/NumbersTab';
@@ -30,15 +29,14 @@ import { isManagerRole, useViewerRole } from '@/propel/hooks/useViewerRole';
 // header (title + tab strip) and the active tab body, wrapped in its own Mantine
 // scope (PropelMantineProvider).
 //
-// Tab order matches the "Pulse" 4-tab + ops design: Home · Campaigns · Inbox ·
-// Templates · Social · Numbers · Lead Routing. The active tab is URL-synced via
-// ?tab= so a tab is linkable / survives reload / back-forward navigates between tabs.
+// Tab order: Home · Campaigns · Templates · Social · Numbers · Lead Routing. The
+// active tab is URL-synced via ?tab= so a tab is linkable / survives reload /
+// back-forward navigates between tabs. (Inbox graduated OUT of this hero to its own
+// top-level /inbox route — see InboxPage; ?tab=inbox redirects there for old links.)
 //
 // Tab status:
 //   • Home         — full (the graduated dashboard, formerly MarketingHomePage)
 //   • Campaigns    — list only (detail drill-in deferred; see CampaignsTab)
-//   • Inbox        — full (the real-time unified inbox: list + conversation +
-//                    composer + AI insights + media; Mantine port of legacy InboxView)
 //   • Templates    — full catalog + editor modals (merge-tags sub-tab deferred)
 //   • Social       — full (the social calendar, formerly SocialCalendarPage)
 //   • Numbers      — full (the telephony number hub)
@@ -53,7 +51,6 @@ import { isManagerRole, useViewerRole } from '@/propel/hooks/useViewerRole';
 type HeroTab =
   | 'home'
   | 'campaigns'
-  | 'inbox'
   | 'templates'
   | 'social'
   | 'numbers'
@@ -62,7 +59,6 @@ type HeroTab =
 const TAB_VALUES: HeroTab[] = [
   'home',
   'campaigns',
-  'inbox',
   'templates',
   'social',
   'numbers',
@@ -74,7 +70,17 @@ const isHeroTab = (v: string | null): v is HeroTab =>
 
 export const MarketingHero = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const rawTab = searchParams.get('tab');
+
+  // Inbox graduated out of this hero to its own top-level /inbox route. Old links
+  // (?tab=inbox, e.g. saved bookmarks or pre-graduation notifications) redirect there
+  // so they keep landing on the Inbox rather than silently falling back to Home.
+  useEffect(() => {
+    if (rawTab === 'inbox') {
+      navigate(AppPath.Inbox, { replace: true });
+    }
+  }, [rawTab, navigate]);
 
   // Lead Routing is MANAGER/ADMIN only — hidden for agents. The role is the same
   // server-authoritative signal the Inbox triage trusts (viewerRole from
@@ -127,9 +133,6 @@ export const MarketingHero = () => {
             />
           ) : null}
         </Tabs.Panel>
-        <Tabs.Panel value="inbox">
-          {activeTab === 'inbox' ? <InboxTab /> : null}
-        </Tabs.Panel>
         <Tabs.Panel value="templates">
           {activeTab === 'templates' ? (
             <TemplatesTab
@@ -172,9 +175,6 @@ export const MarketingHero = () => {
             </Tabs.Tab>
             <Tabs.Tab value="campaigns" leftSection={<IconSend size={15} />}>
               Campaigns
-            </Tabs.Tab>
-            <Tabs.Tab value="inbox" leftSection={<IconInbox size={15} />}>
-              Inbox
             </Tabs.Tab>
             <Tabs.Tab value="templates" leftSection={<IconFileText size={15} />}>
               Templates

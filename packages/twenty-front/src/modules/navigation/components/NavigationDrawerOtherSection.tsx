@@ -4,6 +4,7 @@ import {
   IconBroadcast,
   IconBuildingSkyscraper,
   IconHelpCircle,
+  IconInbox,
   IconSettings,
   IconUsers,
 } from 'twenty-ui/display';
@@ -68,6 +69,17 @@ export const NavigationDrawerOtherSection = () => {
             macro renders the hashed message id at runtime ("vo2a+a" / "4T6rI4")
             instead of the text. The CRM is English-only, so a literal is correct
             and catalog-independent. Do not "restore" the t`` macro. */}
+        {/* Propel: the unified Inbox graduated from a tab inside the Marketing hero
+            to its OWN top-level nav entry (founder-directed), placed ABOVE Marketing.
+            Same gate as Marketing (REACT_APP_PROPEL_MARKETING_HUB); the /inbox route
+            registers unconditionally and serves the runtime-loaded `inbox` hero. */}
+        {PROPEL_MARKETING_HUB_ENABLED && (
+          <NavigationDrawerItem
+            label="Inbox"
+            to={AppPath.Inbox}
+            Icon={IconInbox}
+          />
+        )}
         {PROPEL_MARKETING_HUB_ENABLED && (
           <NavigationDrawerItem
             label="Marketing"

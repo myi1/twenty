@@ -235,6 +235,10 @@ export const useCreateAppRouter = (
             }
           />
           <Route
+            path={AppPath.Inbox}
+            element={<HeroRoute name="inbox" />}
+          />
+          <Route
             path={AppPath.MarketingHub}
             element={<HeroRoute name="marketing-hub" />}
           />

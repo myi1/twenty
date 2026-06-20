@@ -12,6 +12,7 @@
 // ported, swap its route to <HeroRoute name="…"/> and it joins the runtime path.
 
 export type HeroName =
+  | 'inbox'
   | 'listing-studio'
   | 'marketing-hub'
   | 'campaign-builder'
@@ -25,6 +26,7 @@ export type HeroDescriptor = {
 };
 
 export const HERO_REGISTRY: Record<HeroName, HeroDescriptor> = {
+  inbox: { displayName: 'Inbox' },
   'listing-studio': { displayName: 'Listing Studio' },
   'marketing-hub': { displayName: 'Marketing' },
   'campaign-builder': { displayName: 'Campaign Builder' },
