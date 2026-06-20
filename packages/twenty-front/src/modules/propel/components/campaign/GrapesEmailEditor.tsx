@@ -51,6 +51,7 @@ import {
   Modal,
   Paper,
   ScrollArea,
+  SegmentedControl,
   Stack,
   Text,
   Textarea,
@@ -329,13 +330,18 @@ export const GrapesEmailEditor = ({
   const [tplSubject, setTplSubject] = useState(initial?.subject ?? '');
   const [saving, setSaving] = useState(false);
 
-  // ── AI co-pilot (#57) ──────────────────────────────────────────────────────
+  // ── AI co-pilot (#57 copy + #59 layout) ────────────────────────────────────
   // Shown only when aiContext is provided (the campaign builder). A chat-style
-  // panel where the user asks the AI to write/refine the email; each request is
-  // grounded against the real campaign + the CURRENT copy and applies the result
-  // to the canvas (rewrites the flagged content column). Backed by the EXISTING
-  // /marketing/draft-copy route (copy in/out) — see the gap note in the panel.
+  // panel with TWO modes:
+  //   • 'copy' (#57): write/refine the email's WORDS — grounded against the real
+  //     campaign + the CURRENT copy, rewrites the flagged content column. Backed by
+  //     /marketing/draft-copy action=COPY.
+  //   • 'design' (#59): generate a WHOLE branded email DESIGN from a freeform
+  //     prompt — backed by /marketing/draft-copy action=GENERATE_LAYOUT, which
+  //     returns validated MJML we load into the canvas (replacing the current
+  //     design, but reversibly: GrapesJS undo/history captures the replace).
   const [aiOpen, setAiOpen] = useState(true);
+  const [aiMode, setAiMode] = useState<'copy' | 'design'>('copy');
   const [aiInput, setAiInput] = useState('');
   const [aiBusy, setAiBusy] = useState(false);
   const [aiLog, setAiLog] = useState<{ role: 'you' | 'ai'; text: string }[]>(
@@ -666,6 +672,141 @@ export const GrapesEmailEditor = ({
     [aiBusy, readCurrentBody, applyAiCopy, notify],
   );
 
+  // ── AI design generation (#59) ─────────────────────────────────────────────
+  // Load a full MJML document into the canvas, REPLACING the current design but
+  // REVERSIBLY: grapesjs-mjml's setComponents parses the MJML and swaps the
+  // component tree; GrapesJS's UndoManager records the add/remove so Ctrl-Z (or
+  // the editor's undo button) restores the prior design. We clear the wrapper's
+  // raw content first (the plugin's documented import recipe) so stale nodes don't
+  // linger, then setComponents. Returns true on a successful parse.
+  const loadMjmlDesign = useCallback(
+    (mjml: string): boolean => {
+      const editor = editorRef.current;
+      if (!editor) return false;
+      try {
+        // Documented grapesjs-mjml programmatic-import recipe: clear then set.
+        editor.Components.getWrapper()?.set('content', '');
+        editor.setComponents(mjml.trim());
+        // Re-pick the contrast-aware brand logo for the new design's banners.
+        queueMicrotask(() => {
+          const wrapper = editor.getWrapper();
+          if (!wrapper) return;
+          for (const logo of wrapper.find(`[${LOGO_FLAG_ATTR}]`)) {
+            let node: ReturnType<typeof logo.parent> = logo.parent();
+            let bg: string | undefined;
+            while (node) {
+              const candidate = node.getAttributes()['background-color'];
+              if (typeof candidate === 'string' && candidate !== '') {
+                bg = candidate;
+                break;
+              }
+              node = node.parent();
+            }
+            const wanted = logoForBackground(bg);
+            if (logo.getAttributes().src !== wanted) {
+              logo.addAttributes({ src: wanted }, { avoidStore: true });
+            }
+          }
+        });
+        emitHtml(editor);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [emitHtml],
+  );
+
+  // Ask the AI to GENERATE a whole email design from a freeform prompt. Calls the
+  // EXTENDED /marketing/draft-copy route (action=GENERATE_LAYOUT) — same backend
+  // as the copy co-pilot, now returning validated, sanitized MJML. The brand
+  // context (logo URL + colors) is passed so the design is on-brand and the
+  // exported email references a reachable host (absolute logo URL).
+  const generateDesign = useCallback(
+    async (request: string) => {
+      const ctx = aiCtxRef.current;
+      const text = request.trim();
+      if (!ctx || aiBusy || text === '') return;
+      setAiBusy(true);
+      setAiLog((l) => [...l, { role: 'you', text: `Design: ${text}` }]);
+      setAiInput('');
+      try {
+        const res = await callPropelRoute<{
+          ok?: boolean;
+          mjml?: string;
+          subject?: string;
+          error?: string;
+          operatorAction?: string;
+          permitWarning?: string;
+        }>('/marketing/draft-copy', {
+          action: 'GENERATE_LAYOUT',
+          prompt: text,
+          objective: ctx.objective,
+          language: ctx.language,
+          ...(ctx.listingId ? { listingId: ctx.listingId } : {}),
+          // Brand context (absolute logo URL + RE/MAX colors). The server drops
+          // anything unsafe; absolute URL keeps the exported email host-correct.
+          brandName: BRAND.name,
+          logoUrl: BRAND.logoWhiteUrl,
+          colorPrimary: BRAND.primary,
+          colorAccent: BRAND.accent,
+        });
+        // callPropelRoute returns null on a non-2xx (incl. 404 when the extended
+        // route isn't deployed yet) or a network error — surface a friendly note,
+        // never a crash. The drag-and-drop builder + copy co-pilot still work.
+        if (res === null) {
+          const msg =
+            'Design generation isn’t available yet (the AI layout route needs to be deployed). You can still build with blocks or use the copy co-pilot.';
+          setAiLog((l) => [...l, { role: 'ai', text: msg }]);
+          notify(msg, 'info');
+          return;
+        }
+        if (
+          (res.error !== undefined && res.error !== '') ||
+          typeof res.mjml !== 'string' ||
+          res.mjml === ''
+        ) {
+          const msg =
+            res.operatorAction ||
+            res.error ||
+            'The AI couldn’t design that — try a simpler brief, or use blocks.';
+          setAiLog((l) => [...l, { role: 'ai', text: msg }]);
+          notify(msg, 'error');
+          return;
+        }
+        const loaded = loadMjmlDesign(res.mjml);
+        if (!loaded) {
+          const msg = 'The generated design could not be loaded — try again.';
+          setAiLog((l) => [...l, { role: 'ai', text: msg }]);
+          notify(msg, 'error');
+          return;
+        }
+        if (typeof res.subject === 'string' && res.subject !== '') {
+          onSubjectRef.current?.(res.subject);
+        }
+        setAiLog((l) => [
+          ...l,
+          {
+            role: 'ai',
+            text: `Generated a new email design${
+              res.subject ? ` and set the subject to “${res.subject}”` : ''
+            }. Undo (Ctrl-Z) to revert, or refine it with the copy co-pilot.${
+              res.permitWarning ? ` ${res.permitWarning}` : ''
+            }`,
+          },
+        ]);
+      } catch {
+        setAiLog((l) => [
+          ...l,
+          { role: 'ai', text: 'The design request failed — check your connection.' },
+        ]);
+      } finally {
+        setAiBusy(false);
+      }
+    },
+    [aiBusy, loadMjmlDesign, notify],
+  );
+
   // EXPORT — show the real compiled cross-client HTML.
   const exportProductionHtml = useCallback(() => {
     const editor = editorRef.current;
@@ -900,8 +1041,12 @@ export const GrapesEmailEditor = ({
             log={aiLog}
             input={aiInput}
             busy={aiBusy}
+            mode={aiMode}
+            onModeChange={setAiMode}
             onInput={setAiInput}
-            onSend={sendAiRequest}
+            onSend={(req) =>
+              aiMode === 'design' ? void generateDesign(req) : sendAiRequest(req)
+            }
             onClose={() => setAiOpen(false)}
           />
         )}
@@ -1023,31 +1168,38 @@ export const GrapesEmailEditor = ({
   );
 };
 
-// ── AI co-pilot panel (#57) ──────────────────────────────────────────────────
-// The in-builder chat/assist surface. The founder types a request ("make a luxury
-// new-listing email", "punch up the headline", "make it warmer") and the co-pilot
-// applies the result to the canvas. Each request sees the CURRENT copy, so it's
-// iterative ("build and improve on it").
-//
-// HONEST CAPABILITY (the #57 gap, flagged in-panel — no dead button): this runs on
-// the EXISTING /marketing/draft-copy route, which returns COPY (subject + body
-// text), not full layout/design (blocks, sections, colors). So the co-pilot writes
-// and refines the email's WORDS inside the branded template — it does NOT yet
-// generate whole layouts or add styled sections (e.g. "add a payment-plan section"
-// yields copy, not a new block). Full design generation needs an MJML-returning
-// route (an app-side change / app:install) — out of scope for this staging hero
-// iteration. The drag-and-drop builder remains for layout; the AI handles the copy.
-const AI_QUICK_ACTIONS = [
+// ── AI co-pilot panel (#57 copy + #59 design) ────────────────────────────────
+// The in-builder chat/assist surface, now with TWO modes (a header toggle):
+//   • "Write copy" (#57) — the founder asks the AI to write/refine the email's
+//     WORDS ("punch up the headline", "make it warmer"); each request sees the
+//     CURRENT copy, so it's iterative, and only the flagged content column changes.
+//     Backed by /marketing/draft-copy action=COPY.
+//   • "Generate design" (#59) — the founder describes a whole email ("a luxury
+//     new-listing email for a 3-bed villa in Dubai Hills") and the AI generates a
+//     complete branded MJML design that REPLACES the canvas (reversibly — Ctrl-Z
+//     restores the prior design). Backed by /marketing/draft-copy
+//     action=GENERATE_LAYOUT. NOTE: that route ships via a gated app:install — until
+//     the coordinator deploys it, "Generate design" returns a friendly "not
+//     available yet" message (never a crash); copy mode + the blocks keep working.
+const AI_COPY_QUICK_ACTIONS = [
   'Make it warmer',
   'Make it shorter',
   'Punch up the headline',
   'More professional',
 ] as const;
 
+const AI_DESIGN_QUICK_ACTIONS = [
+  'Luxury new-listing email',
+  'Clean, minimal re-engagement',
+  'Bold promo with a big CTA',
+] as const;
+
 const AiCopilotPanel = ({
   log,
   input,
   busy,
+  mode,
+  onModeChange,
   onInput,
   onSend,
   onClose,
@@ -1055,6 +1207,8 @@ const AiCopilotPanel = ({
   log: { role: 'you' | 'ai'; text: string }[];
   input: string;
   busy: boolean;
+  mode: 'copy' | 'design';
+  onModeChange: (m: 'copy' | 'design') => void;
   onInput: (v: string) => void;
   onSend: (request: string) => void;
   onClose: () => void;
@@ -1089,18 +1243,49 @@ const AiCopilotPanel = ({
       </ActionIcon>
     </Group>
 
+    {/* Mode toggle — Write copy (refine words) vs Generate design (whole email). */}
+    <Box px="sm" pt={8}>
+      <SegmentedControl
+        fullWidth
+        size="xs"
+        color="red"
+        value={mode}
+        disabled={busy}
+        onChange={(v) => onModeChange(v === 'design' ? 'design' : 'copy')}
+        data={[
+          { value: 'copy', label: 'Write copy' },
+          { value: 'design', label: 'Generate design' },
+        ]}
+      />
+    </Box>
+
     <ScrollArea style={{ flex: 1, minHeight: 0 }} px="sm" py="xs">
       <Stack gap="xs">
         {log.length === 0 ? (
           <Stack gap="xs">
-            <Text size="xs" c="dimmed">
-              Describe the email you want, or how to change it. The AI writes
-              and refines the copy on the canvas — drag blocks for layout.
-            </Text>
-            <Text size="xs" c="dimmed" fs="italic">
-              e.g. “Make a luxury new-listing email for a 3-bed villa in Dubai
-              Hills.”
-            </Text>
+            {mode === 'design' ? (
+              <>
+                <Text size="xs" c="dimmed">
+                  Describe a whole email and the AI designs it — branded header,
+                  sections, and a call-to-action. It replaces the canvas; undo
+                  (Ctrl-Z) reverts.
+                </Text>
+                <Text size="xs" c="dimmed" fs="italic">
+                  e.g. “A luxury new-listing email for a 3-bed villa in Dubai
+                  Hills, with a payment-plan section.”
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text size="xs" c="dimmed">
+                  Describe the email you want, or how to change it. The AI writes
+                  and refines the copy on the canvas — drag blocks for layout.
+                </Text>
+                <Text size="xs" c="dimmed" fs="italic">
+                  e.g. “Make the headline punchier and the tone warmer.”
+                </Text>
+              </>
+            )}
           </Stack>
         ) : (
           log.map((m, i) => (
@@ -1127,7 +1312,7 @@ const AiCopilotPanel = ({
           <Group gap={6} px={2}>
             <Loader size="xs" color="red" />
             <Text size="xs" c="dimmed">
-              Drafting…
+              {mode === 'design' ? 'Designing…' : 'Drafting…'}
             </Text>
           </Group>
         )}
@@ -1136,7 +1321,10 @@ const AiCopilotPanel = ({
 
     <Box px="sm" pt={6} pb={4}>
       <Group gap={6} mb={6} wrap="wrap">
-        {AI_QUICK_ACTIONS.map((q) => (
+        {(mode === 'design'
+          ? AI_DESIGN_QUICK_ACTIONS
+          : AI_COPY_QUICK_ACTIONS
+        ).map((q) => (
           <Button
             key={q}
             size="compact-xs"
@@ -1155,7 +1343,11 @@ const AiCopilotPanel = ({
           minRows={1}
           maxRows={4}
           style={{ flex: 1 }}
-          placeholder="Ask the AI to write or change the email…"
+          placeholder={
+            mode === 'design'
+              ? 'Describe the email to design…'
+              : 'Ask the AI to write or change the copy…'
+          }
           value={input}
           disabled={busy}
           onChange={(e) => onInput(e.currentTarget.value)}
@@ -1177,8 +1369,9 @@ const AiCopilotPanel = ({
         </ActionIcon>
       </Group>
       <Text size="9px" c="dimmed" mt={4} lh={1.3}>
-        v1 writes the email COPY. Full layout/section generation is coming — for
-        now, use blocks for design.
+        {mode === 'design'
+          ? 'Generates a whole branded design from your brief. Undo (Ctrl-Z) reverts; refine the words in “Write copy”.'
+          : 'Writes & refines the email’s words. Switch to “Generate design” for a whole new layout.'}
       </Text>
     </Box>
   </Paper>
