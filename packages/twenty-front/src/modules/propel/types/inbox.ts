@@ -76,6 +76,13 @@ export interface InboxPayload {
   // (assign / create-opp) to MANAGER/ADMIN only. Optional for back-compat with an
   // older route response (treated as 'AGENT' when absent).
   viewerRole?: InboxViewerRole;
+  // The acting member's own workspaceMember id (from /marketing/inbox). Used by the
+  // "Mine" segment to show only threads assigned to me (assignedAgentId === this).
+  // Optional for back-compat with an older route response.
+  viewerWorkspaceMemberId?: string;
+  // Pre-derived count of needs-triage threads in the capped slice (server-side).
+  // Optional; the client also derives it locally as a fallback.
+  needsTriageCount?: number;
 }
 
 // ── Lead quick-action route envelopes (POST /lead/*) ──────────────────────────
@@ -102,6 +109,47 @@ export interface InboxAgentOption {
   id: string;
   name: string;
   available: boolean;
+}
+
+// ── Lead events (POST /lead/events) ──────────────────────────────────────────
+// One row of the append-only leadEvent log for a subject (Person / opportunity /
+// deal / conversation). Operational metadata ONLY (no PII / message content) — the
+// object is broadly readable, so the route gates the UI, not confidentiality.
+// Lockstepped with lead-events-route.ts (and the leadEvent object's SELECT enums).
+export type LeadEventType =
+  | 'LEAD_CREATED'
+  | 'LEAD_ASSIGNED'
+  | 'LEAD_REASSIGNED'
+  | 'LEAD_RESPONDED'
+  | 'OPPORTUNITY_CREATED'
+  | 'STAGE_CHANGED'
+  | 'DEAL_WON'
+  | 'DEAL_LOST'
+  | 'LEAD_SLA_BREACHED'
+  | 'LEAD_CLASSIFIED'
+  | 'AGENT_SUGGESTED'
+  | 'HUMAN_OVERRODE'
+  | 'REPLY_DRAFTED';
+
+export type LeadEventActorKind = 'USER' | 'SYSTEM' | 'CRON' | 'CONNECTOR';
+
+export interface LeadEventNode {
+  id: string;
+  eventType: LeadEventType | string;
+  occurredAt: string | null; // ISO; null when unset
+  actorKind: LeadEventActorKind | string | null;
+  actorWorkspaceMemberId: string | null; // real id only from gated routes
+  payload: unknown; // operational metadata blob (object | string | null)
+}
+
+export interface LeadEventsResponse {
+  ok?: boolean;
+  subjectObjectType?: string;
+  subjectRecordId?: string;
+  count?: number;
+  events?: LeadEventNode[];
+  error?: string;
+  operatorAction?: string;
 }
 
 // Inbound/outbound media kind, mirroring the whatsAppMessage `mediaKind` SELECT

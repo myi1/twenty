@@ -3,6 +3,7 @@ import {
   type InboxThreadRow as InboxThreadRowData,
   type InboxTriageClass,
 } from '@/propel/types/inbox';
+import { effectiveTriage } from '@/propel/lib/inboxTriage';
 import {
   ChannelBadge,
   SurfaceBadge,
@@ -41,7 +42,12 @@ export const InboxThreadRow = ({
   row: InboxThreadRowData;
   active: boolean;
   onClick: () => void;
-}) => (
+}) => {
+  // Effective class folds in the fork-side FB/IG derivation (DM→opportunity,
+  // comment→browser) when the server left a social row UNKNOWN. WhatsApp + already-
+  // classified rows pass through unchanged.
+  const klass = effectiveTriage(row).triageClass;
+  return (
   <UnstyledButton
     onClick={onClick}
     style={{
@@ -79,20 +85,20 @@ export const InboxThreadRow = ({
       </Group>
       {/* triage enrichment row — class badge · owner/suggested · SLA heat. Each
           token renders only when the row actually carries that signal. */}
-      {row.triageClass !== 'UNKNOWN' ||
+      {klass !== 'UNKNOWN' ||
       row.assignedAgentName ||
       row.suggestedAgentName ||
       row.slaBreached ||
       row.ageMs != null ? (
         <Group gap={5} wrap="nowrap" mt={3} style={{ overflow: 'hidden' }}>
-          {ROW_CLASS_META[row.triageClass].label ? (
+          {ROW_CLASS_META[klass].label ? (
             <Badge
               size="xs"
               variant="light"
-              color={ROW_CLASS_META[row.triageClass].color}
+              color={ROW_CLASS_META[klass].color}
               style={{ flex: 'none' }}
             >
-              {ROW_CLASS_META[row.triageClass].label}
+              {ROW_CLASS_META[klass].label}
             </Badge>
           ) : null}
           {row.assignedAgentName ? (
@@ -160,4 +166,5 @@ export const InboxThreadRow = ({
       </Group>
     </Box>
   </UnstyledButton>
-);
+  );
+};

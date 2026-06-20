@@ -19,6 +19,7 @@ import {
   type InboxAiResponse,
   type LeadAssignResponse,
   type LeadCreateOpportunityResponse,
+  type LeadEventsResponse,
   type OutboundMediaKind,
   type QuickRepliesPayload,
   type QuickReply,
@@ -115,6 +116,23 @@ export const createLeadOpportunity = (args: {
     lane: args.lane,
     contactId: args.contactId,
     name: args.name,
+  });
+
+// POST /lead/events — Manager/Admin-gated read of the leadEvent timeline for ONE
+// subject (the lead's Person). Returns the append-only history (assigned, responded,
+// SLA-breached, opportunity-created, stage-changed, won/lost …), recency-desc. Flat
+// body, same convention as the other routes. The route returns NOT_FOUND for an
+// AGENT viewer (UI gate, not a confidentiality boundary), so callers gate on role
+// before fetching to avoid a guaranteed-empty round-trip.
+export const fetchLeadEvents = (args: {
+  subjectObjectType: string;
+  subjectRecordId: string;
+  limit?: number;
+}): Promise<LeadEventsResponse | null> =>
+  callPropelRoute<LeadEventsResponse>('/lead/events', {
+    subjectObjectType: args.subjectObjectType,
+    subjectRecordId: args.subjectRecordId,
+    ...(typeof args.limit === 'number' ? { limit: args.limit } : {}),
   });
 
 // Follow-up ping — a deterministic nudge (NOT the substantive reply, NOT the

@@ -8,6 +8,7 @@ import {
   Loader,
   Stack,
   Text,
+  Timeline,
 } from '@mantine/core';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -15,6 +16,7 @@ import {
   IconBolt,
   IconBuildingSkyscraper,
   IconCheck,
+  IconHistory,
   IconMail,
   IconPhone,
   IconPlus,
@@ -35,9 +37,17 @@ import {
   assignLead,
   createLeadOpportunity,
   fetchInboxAi,
+  fetchLeadEvents,
   listInboxAgents,
   sendFollowUpPing,
 } from '@/propel/lib/inboxApi';
+import { effectiveTriage } from '@/propel/lib/inboxTriage';
+import {
+  type LeadEventRow,
+  leadEventDescriptor,
+  leadEventDetail,
+  relativeTimeLabel,
+} from '@/propel/lib/leadEvents';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import {
   channelLabel,
@@ -87,9 +97,15 @@ const OPP_LANES: { key: string; label: string }[] = [
 // The triage card: class · SLA · owner · suggested agent. Read-only summary of the
 // enriched queue row — the confirm actions live in the action panel below it.
 const TriageRailCard = ({ row }: { row: InboxThreadRow }) => {
-  const meta = TRIAGE_CLASS_META[row.triageClass] ?? TRIAGE_CLASS_META.UNKNOWN;
+  // Effective class folds in the fork-side FB/IG derivation when the server left a
+  // social row UNKNOWN; `derived` + `derivedReason` let the card show the heuristic
+  // why-string when the server carried none.
+  const eff = effectiveTriage(row);
+  const meta = TRIAGE_CLASS_META[eff.triageClass] ?? TRIAGE_CLASS_META.UNKNOWN;
   const owned = Boolean(row.assignedAgentId);
   const ageLabel = slaAgeLabel(row.ageMs);
+  // Prefer a server-provided reason; fall back to the derived FB/IG why-string.
+  const reasonText = row.triageReason || eff.derivedReason;
   return (
     <Box
       p="md"
@@ -136,7 +152,7 @@ const TriageRailCard = ({ row }: { row: InboxThreadRow }) => {
             {meta.label}
           </Badge>
         </Group>
-        {row.triageReason ? (
+        {reasonText ? (
           <Text
             size="xs"
             c="dimmed"
@@ -147,7 +163,7 @@ const TriageRailCard = ({ row }: { row: InboxThreadRow }) => {
               margin: '7px 0',
             }}
           >
-            {row.triageReason}
+            {reasonText}
           </Text>
         ) : null}
         {row.leadSource ? (
@@ -439,6 +455,115 @@ const TriageActions = ({
           </Text>
         ) : null}
       </Stack>
+    </Box>
+  );
+};
+
+// ── Lead-events timeline (Lead Engine #62, surface 1) ────────────────────────
+// The selected lead's leadEvent history (assigned, first-response, SLA-breach,
+// opportunity-created, stage-changed, won/lost …) as a compact timeline. Reads the
+// MANAGER/ADMIN-gated /lead/events route keyed on the matched Person — so it's shown
+// ONLY to MANAGER/ADMIN (an AGENT gets NOT_FOUND; gating client-side avoids a
+// guaranteed-empty round-trip). Keyed on personId so switching threads refetches.
+const LeadEventsTimeline = ({ personId }: { personId: string }) => {
+  const [phase, setPhase] = useState<'loading' | 'ready' | 'empty'>('loading');
+  const [events, setEvents] = useState<LeadEventRow[]>([]);
+  const [reason, setReason] = useState('');
+
+  useEffect(() => {
+    let live = true;
+    setPhase('loading');
+    setEvents([]);
+    setReason('');
+    fetchLeadEvents({ subjectObjectType: 'PERSON', subjectRecordId: personId, limit: 30 })
+      .then((res) => {
+        if (!live) return;
+        const list = Array.isArray(res?.events) ? res!.events! : [];
+        if (res?.ok && list.length > 0) {
+          setEvents(list);
+          setPhase('ready');
+        } else {
+          setReason(
+            res?.operatorAction ||
+              res?.error ||
+              'No lead activity recorded yet.',
+          );
+          setPhase('empty');
+        }
+      })
+      .catch(() => {
+        if (!live) return;
+        setReason('Couldn’t load the lead activity.');
+        setPhase('empty');
+      });
+    return () => {
+      live = false;
+    };
+  }, [personId]);
+
+  return (
+    <Box
+      p="md"
+      style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}
+    >
+      <Group gap={6} mb="sm">
+        <IconHistory size={13} color="var(--mantine-color-red-6)" />
+        <Text size="xs" tt="uppercase" fw={700} c="dimmed">
+          Lead activity
+        </Text>
+      </Group>
+      {phase === 'loading' ? (
+        <Group gap={7}>
+          <Loader size="xs" color="red" />
+          <Text size="xs" c="dimmed">
+            Loading activity…
+          </Text>
+        </Group>
+      ) : phase === 'ready' ? (
+        <Timeline
+          active={-1}
+          bulletSize={20}
+          lineWidth={2}
+          color="red"
+          styles={{ itemBody: { paddingBottom: 4 } }}
+        >
+          {events.map((ev) => {
+            const d = leadEventDescriptor(ev.eventType);
+            const when = relativeTimeLabel(ev.occurredAt);
+            const detail = leadEventDetail(ev.payload);
+            const Icon = d.Icon;
+            return (
+              <Timeline.Item
+                key={ev.id}
+                bullet={<Icon size={11} />}
+                color={d.color}
+                title={
+                  <Group gap={6} wrap="nowrap" justify="space-between">
+                    <Text size="xs" fw={600}>
+                      {d.label}
+                    </Text>
+                    {when ? (
+                      <Text size="xs" c="dimmed" style={{ flex: 'none' }}>
+                        {when}
+                      </Text>
+                    ) : null}
+                  </Group>
+                }
+              >
+                {detail ? (
+                  <Text size="xs" c="dimmed" mt={1}>
+                    {detail}
+                  </Text>
+                ) : null}
+              </Timeline.Item>
+            );
+          })}
+        </Timeline>
+      ) : (
+        <Text size="xs" c="dimmed">
+          {reason || 'No lead activity recorded yet.'}
+        </Text>
+      )}
     </Box>
   );
 };
@@ -783,6 +908,14 @@ export const InboxContextRail = ({
         channel={thread.channel}
         hasMessages={thread.messages.length > 0}
       />
+
+      {/* Lead-events timeline — the matched lead's lifecycle history. Manager/Admin
+          only (the /lead/events route is role-gated; an agent would get NOT_FOUND).
+          Needs a matched Person to key on. */}
+      {thread.personId &&
+      (viewerRole === 'MANAGER' || viewerRole === 'ADMIN') ? (
+        <LeadEventsTimeline personId={thread.personId} />
+      ) : null}
 
       {/* a footnote so the channel context is always visible at the rail bottom */}
       <Box px="md" pb="md">

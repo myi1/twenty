@@ -15,6 +15,7 @@ import {
 import { IconInbox, IconRefresh, IconSearch } from 'twenty-ui/display';
 import { type InboxChannel, type InboxPayload } from '@/propel/types/inbox';
 import { fetchInbox } from '@/propel/lib/inboxApi';
+import { effectiveNeedsTriage } from '@/propel/lib/inboxTriage';
 import { channelLabel } from '@/propel/components/marketingHero/inbox/InboxBits';
 import { InboxThreadRow } from '@/propel/components/marketingHero/inbox/InboxThreadRow';
 import { InboxThreadPane } from '@/propel/components/marketingHero/inbox/InboxThreadPane';
@@ -45,12 +46,12 @@ export const InboxTab = () => {
   const [payload, setPayload] = useState<InboxPayload | null>(null);
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading');
   const [filter, setFilter] = useState<'all' | InboxChannel>('all');
-  // Lead Engine S1 — triage segmentation. 'needs' = unowned + wants-a-human (the
-  // pool to work); 'all' = everything. (A "Mine" segment would need the viewer's
-  // member id; an AGENT's list is already owner-scoped server-side, so Needs/All is
-  // the clean, host-decoupled split. Shown only to MANAGER/ADMIN, who triage the
-  // pool — an agent only sees their own threads, so the segment would be moot.)
-  const [triage, setTriage] = useState<'all' | 'needs'>('all');
+  // Lead Engine S1 / #62 — triage segmentation for MANAGER/ADMIN (who see the whole
+  // intake pool): 'needs' = unowned + wants-a-human; 'mine' = assigned to me; 'all' =
+  // everything. The viewer's own member id comes from the route payload
+  // (viewerWorkspaceMemberId). An AGENT's list is already owner-scoped server-side,
+  // so the segment is hidden for agents (every row is already theirs).
+  const [triage, setTriage] = useState<'all' | 'needs' | 'mine'>('all');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<{
     id: string;
@@ -127,17 +128,38 @@ export const InboxTab = () => {
     return chips;
   }, [payload]);
 
+  // The viewer's own member id — drives the "Mine" segment. Absent on an older route
+  // response (then "Mine" simply matches nothing, and the segment is hidden anyway
+  // for the non-manager case).
+  const viewerMemberId = payload?.viewerWorkspaceMemberId ?? '';
+
   // Count of threads that want a human (unowned + real-intent/unclassified) — the
-  // "Needs triage" segment size, shown as a badge on the chip.
+  // "Needs triage" segment size, shown as a badge on the chip. Uses the EFFECTIVE
+  // needs-triage so the fork-derived FB/IG classification is reflected.
   const needsCount = useMemo(
-    () => (payload?.threads ?? []).filter((t) => t.needsTriage).length,
+    () => (payload?.threads ?? []).filter((t) => effectiveNeedsTriage(t)).length,
     [payload],
+  );
+
+  // Count of threads assigned to the current viewer — the "Mine" segment badge.
+  const mineCount = useMemo(
+    () =>
+      viewerMemberId
+        ? (payload?.threads ?? []).filter(
+            (t) => t.assignedAgentId === viewerMemberId,
+          ).length
+        : 0,
+    [payload, viewerMemberId],
   );
 
   const shown = useMemo(() => {
     const all = payload?.threads ?? [];
     const byTriage =
-      triage === 'needs' ? all.filter((t) => t.needsTriage) : all;
+      triage === 'needs'
+        ? all.filter((t) => effectiveNeedsTriage(t))
+        : triage === 'mine'
+          ? all.filter((t) => t.assignedAgentId === viewerMemberId)
+          : all;
     const byChannel =
       filter === 'all'
         ? byTriage
@@ -152,7 +174,7 @@ export const InboxTab = () => {
         t.contactName.toLowerCase().includes(q) ||
         t.preview.toLowerCase().includes(q),
     );
-  }, [payload, filter, triage, search]);
+  }, [payload, filter, triage, search, viewerMemberId]);
 
   if (phase === 'loading') {
     return (
@@ -250,8 +272,9 @@ export const InboxTab = () => {
             leftSection={<IconSearch size={14} />}
             aria-label="Search conversations"
           />
-          {/* Triage segmentation (MANAGER/ADMIN only — agents only see their own
-              threads). Needs-triage = the unowned pool that wants a human. */}
+          {/* Triage segmentation (MANAGER/ADMIN only — agents already see only their
+              own threads). Needs-triage = the unowned pool that wants a human; Mine =
+              threads assigned to me; All = the whole pool. */}
           {payload.viewerRole === 'MANAGER' ||
           payload.viewerRole === 'ADMIN' ? (
             <Group gap={6} mb={6} style={{ flexWrap: 'wrap' }}>
@@ -276,6 +299,30 @@ export const InboxTab = () => {
               >
                 Needs triage
               </Button>
+              {/* "Mine" — only when the route reported the viewer's member id. */}
+              {viewerMemberId ? (
+                <Button
+                  size="compact-xs"
+                  radius="xl"
+                  variant={triage === 'mine' ? 'filled' : 'default'}
+                  color="red"
+                  rightSection={
+                    mineCount > 0 ? (
+                      <Badge
+                        size="xs"
+                        circle
+                        variant={triage === 'mine' ? 'white' : 'filled'}
+                        color="red"
+                      >
+                        {mineCount}
+                      </Badge>
+                    ) : undefined
+                  }
+                  onClick={() => setTriage('mine')}
+                >
+                  Mine
+                </Button>
+              ) : null}
               <Button
                 size="compact-xs"
                 radius="xl"
@@ -312,7 +359,11 @@ export const InboxTab = () => {
             <Text size="sm" c="dimmed" p="md">
               {search.trim()
                 ? 'No conversations match your search.'
-                : 'No conversations in this channel.'}
+                : triage === 'mine'
+                  ? 'No conversations assigned to you.'
+                  : triage === 'needs'
+                    ? 'Nothing needs triage right now.'
+                    : 'No conversations in this channel.'}
             </Text>
           ) : (
             shown.map((t) => (
