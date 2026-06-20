@@ -170,7 +170,17 @@ export const LeadRoutingTab = () => {
   };
 
   return (
-    <Box p="md">
+    // The tab body is its OWN vertical scroll region. The hero chain
+    // (PagePanel height:100%/overflow-y:hidden → PageContainer → Tabs → Panel) does
+    // NOT bound this panel's height, so a long table just overflows PagePanel and is
+    // CLIPPED with no way to reach the rows below the fold. Anchor the scroll box to
+    // the viewport minus the chrome above the tab body (top bar + page header + tab
+    // strip ≈ 168px), exactly like InboxTab's INBOX_HEIGHT — then overflowY:auto
+    // gives a real scrollbar regardless of row count.
+    <Box
+      p="md"
+      style={{ height: 'calc(100vh - 168px)', overflowY: 'auto' }}
+    >
       <Group justify="space-between" align="flex-start" mb="md" wrap="nowrap">
         <Box>
           <Group gap={8} align="center">
