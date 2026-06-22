@@ -4,8 +4,8 @@ import { isDefined } from 'twenty-shared/utils';
 
 import { type WorkspaceAuthContext } from 'src/engine/core-modules/auth/types/workspace-auth-context.type';
 import { RoleService } from 'src/engine/metadata-modules/role/role.service';
+import { UserRoleService } from 'src/engine/metadata-modules/user-role/user-role.service';
 import { STANDARD_ROLE } from 'src/engine/workspace-manager/twenty-standard-application/constants/standard-role.constant';
-import { getWorkspaceContext } from 'src/engine/twenty-orm/storage/orm-workspace-context.storage';
 import { type TierFilterOptions } from 'src/modules/propel-rls/build-tier-filter.util';
 
 // ── Propel clean-room RLS — tier resolution from Twenty ROLE ─────────────────
@@ -51,7 +51,10 @@ export const PROPEL_ROLE_LABEL_TIER_MAP: Record<string, PropelTier> = {
 export class PropelTierService {
   private readonly logger = new Logger(PropelTierService.name);
 
-  constructor(private readonly roleService: RoleService) {}
+  constructor(
+    private readonly roleService: RoleService,
+    private readonly userRoleService: UserRoleService,
+  ) {}
 
   // Resolves the propel tier for a user auth context. ALWAYS returns a concrete
   // tier; never throws. Non-user contexts should not reach here (callers short
@@ -64,14 +67,19 @@ export class PropelTierService {
 
     try {
       const workspaceId = authContext.workspace.id;
-      const { userWorkspaceRoleMap } = getWorkspaceContext();
 
-      const roleId = userWorkspaceRoleMap[authContext.userWorkspaceId];
-
-      if (!isDefined(roleId)) {
-        // No role assigned / empty map → fail closed.
-        return 'AGENT';
-      }
+      // Resolve the role from the workspace metadata CACHE (keyed by an explicit
+      // workspaceId), NOT from getWorkspaceContext()'s ORM AsyncLocalStorage. The
+      // RLS read-path pre-query hooks run OUTSIDE an established workspace ORM
+      // context, so getWorkspaceContext() throws "Workspace context not set" and
+      // (caught below) fail-closes EVERY user — including Admin/Manager — to AGENT,
+      // hiding all rows they don't personally own. getRoleIdForUserWorkspace reads
+      // the same userWorkspaceRoleMap from the cache and works context-free; it
+      // throws when the userWorkspace has no role assigned → caught below → AGENT.
+      const roleId = await this.userRoleService.getRoleIdForUserWorkspace({
+        workspaceId,
+        userWorkspaceId: authContext.userWorkspaceId,
+      });
 
       const role = await this.roleService.getRoleById(roleId, workspaceId);
 

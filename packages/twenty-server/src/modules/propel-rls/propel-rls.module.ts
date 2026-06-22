@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { RoleModule } from 'src/engine/metadata-modules/role/role.module';
+import { UserRoleModule } from 'src/engine/metadata-modules/user-role/user-role.module';
 import { PropelTierService } from 'src/modules/propel-rls/propel-tier.service';
 import { SecondaryOpportunityRlsPreQueryHook } from 'src/modules/propel-rls/secondary-opportunity-rls.pre-query.hook';
 import { SecondaryOpportunityFindOneRlsPreQueryHook } from 'src/modules/propel-rls/secondary-opportunity-find-one-rls.pre-query.hook';
@@ -60,7 +61,7 @@ import { DealStageGatePreQueryHook } from 'src/modules/propel-rls/deal-stage-gat
 //    read-path hooks (buildTierFilter) and the stage gate (gateBypasses).
 // None derived from @license Enterprise code.
 @Module({
-  imports: [RoleModule],
+  imports: [RoleModule, UserRoleModule],
   providers: [
     PropelTierService,
     SecondaryOpportunityRlsPreQueryHook,
