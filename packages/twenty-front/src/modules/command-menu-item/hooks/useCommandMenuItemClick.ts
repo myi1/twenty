@@ -89,8 +89,10 @@ export const useCommandMenuItemClick = ({
     if (isFrontComponent && isDefined(item.frontComponentId)) {
       const { selectedRecords, objectMetadataItem } = commandMenuContextApi;
 
-      const recordId =
-        selectedRecords.length === 1 ? selectedRecords[0].id : undefined;
+      // Forward the FULL selection so RECORD_SELECTION (bulk) front-components
+      // receive every selected id, not just a single record. Single-record
+      // actions carry a 1-element array, so useRecordId() still resolves.
+      const selectedRecordIds = selectedRecords.map((record) => record.id);
 
       const objectNameSingular = objectMetadataItem.nameSingular as
         | string
@@ -103,8 +105,8 @@ export const useCommandMenuItemClick = ({
         pageTitle: label,
         pageIcon: Icon,
         recordContext:
-          isDefined(recordId) && isDefined(objectNameSingular)
-            ? { recordId, objectNameSingular }
+          selectedRecordIds.length > 0 && isDefined(objectNameSingular)
+            ? { selectedRecordIds, objectNameSingular }
             : undefined,
       });
     }
