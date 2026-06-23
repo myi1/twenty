@@ -3,6 +3,7 @@ import { useMountCommand } from '@/command-menu-item/engine-command/hooks/useMou
 import { isEngineCommandMountedFamilySelector } from '@/command-menu-item/engine-command/selectors/isEngineCommandMountedFamilySelector';
 import { useCloseCommandMenu } from '@/command-menu-item/hooks/useCloseCommandMenu';
 import { commandMenuItemProgressFamilyState } from '@/command-menu-item/states/commandMenuItemProgressFamilyState';
+import { useLazyResolveContextStoreSelectedRecordIds } from '@/context-store/hooks/useLazyResolveContextStoreSelectedRecordIds';
 import { ContextStoreComponentInstanceContext } from '@/context-store/states/contexts/ContextStoreComponentInstanceContext';
 import { useOpenFrontComponentInSidePanel } from '@/side-panel/hooks/useOpenFrontComponentInSidePanel';
 import { useAvailableComponentInstanceIdOrThrow } from '@/ui/utilities/state/component-state/hooks/useAvailableComponentInstanceIdOrThrow';
@@ -29,6 +30,11 @@ export const useCommandMenuItemClick = ({
   const contextStoreInstanceId = useAvailableComponentInstanceIdOrThrow(
     ContextStoreComponentInstanceContext,
   );
+
+  const { resolveSelectedRecordIds } =
+    useLazyResolveContextStoreSelectedRecordIds({
+      instanceId: contextStoreInstanceId,
+    });
 
   const isMounted = useAtomFamilySelectorValue(
     isEngineCommandMountedFamilySelector,
@@ -87,18 +93,21 @@ export const useCommandMenuItemClick = ({
     }
 
     if (isFrontComponent && isDefined(item.frontComponentId)) {
-      const { selectedRecords, objectMetadataItem } = commandMenuContextApi;
-
-      // Forward the FULL selection so RECORD_SELECTION (bulk) front-components
-      // receive every selected id, not just a single record. Single-record
-      // actions carry a 1-element array, so useRecordId() still resolves.
-      const selectedRecordIds = selectedRecords.map((record) => record.id);
+      const { objectMetadataItem } = commandMenuContextApi;
 
       const objectNameSingular = objectMetadataItem.nameSingular as
         | string
         | undefined;
 
       closeCommandMenu();
+
+      // Forward the FULL selection so RECORD_SELECTION (bulk) front-components
+      // receive every selected id. resolveSelectedRecordIds returns the raw ids
+      // in 'selection' mode (not just the rows loaded into the store) and the
+      // server-fetched ids in 'exclusion'/select-all mode (where the old
+      // selectedRecords path resolved to 0). Single-record actions still carry a
+      // 1-element array, so useRecordId() resolves. Route caps at 100.
+      const selectedRecordIds = await resolveSelectedRecordIds();
 
       openFrontComponentInSidePanel({
         frontComponentId: item.frontComponentId,
