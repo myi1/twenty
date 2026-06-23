@@ -21,6 +21,10 @@ on:
         description: 'Target arch: amd64 (prod Coolify) or arm64 (m4 staging)'
         required: false
         default: 'amd64'
+      no_cache:
+        description: 'Force a full no-cache rebuild (bust a stale frontend layer)'
+        required: false
+        default: 'false'
 
 permissions:
   contents: read
@@ -70,6 +74,7 @@ jobs:
           labels: org.opencontainers.image.source=https://github.com/myi1/twenty
           build-args: |
             APP_VERSION=${{ github.event.inputs.app_version }}
+          no-cache: ${{ github.event.inputs.no_cache == 'true' }}
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-${{ github.event.inputs.platform }}
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-${{ github.event.inputs.platform }},mode=max
 
