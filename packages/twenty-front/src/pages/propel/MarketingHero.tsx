@@ -160,14 +160,34 @@ export const MarketingHero = () => {
 
   return (
     <PropelMantineProvider>
-      <PageContainer>
+      {/* SHARED SCROLL FIX (all marketing tabs): the hero mounts inside Twenty's
+          DefaultLayout, where StyledMainContainer is `overflow: hidden` under a
+          `height: 100dvh` shell. PageContainer (flex column, NO height bound) just
+          grows to content height and is CLIPPED there with no scrollbar — that's
+          why Home + Campaigns (and any long tab) couldn't reach their bottom.
+          Fix: make PageContainer claim the full available height (flex:1), let the
+          fixed-height PageHeader + tab strip sit at natural height, and make the
+          Tabs.Panel area the ONE vertical scroll region (flex:1 / minHeight:0 /
+          overflowY:auto). Replaces the per-tab `calc(100vh - 168px)` hacks so every
+          tab scrolls regardless of content length, with exactly one scrollbar. */}
+      <PageContainer style={{ flex: 1, minHeight: 0 }}>
         <PageHeader title="Marketing" Icon={IconBroadcast} />
         <Tabs
           value={activeTab}
           onChange={setTab}
           color="red"
           keepMounted={false}
-          styles={{ root: { display: 'flex', flexDirection: 'column', minHeight: 0 } }}
+          styles={{
+            root: {
+              display: 'flex',
+              flexDirection: 'column',
+              flex: 1,
+              minHeight: 0,
+            },
+            // The active panel is the single scroll region. Inactive panels are
+            // display:none (Mantine default), so only the live tab scrolls.
+            panel: { flex: 1, minHeight: 0, overflowY: 'auto' },
+          }}
         >
           <Tabs.List px="md">
             <Tabs.Tab value="home" leftSection={<IconBroadcast size={15} />}>

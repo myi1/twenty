@@ -38,7 +38,9 @@ export const SequenceEditorPage = () => {
 
   return (
     <PropelMantineProvider>
-      <PageContainer>
+      {/* Shared hero scroll fix: PageContainer claims full height + the body is the
+          vertical scroll region (see MarketingHero for the root cause). */}
+      <PageContainer style={{ flex: 1, minHeight: 0 }}>
         <PageHeader title="Sequences" Icon={IconArrowsSplit2}>
           <Button
             size="xs"
@@ -50,7 +52,14 @@ export const SequenceEditorPage = () => {
           </Button>
         </PageHeader>
 
-        <div style={{ padding: '0 16px 24px', minHeight: 0 }}>
+        <div
+          style={{
+            padding: '0 16px 24px',
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+          }}
+        >
           {isLoading && !loaded ? (
             <Center h={320}>
               <Loader color="red" />

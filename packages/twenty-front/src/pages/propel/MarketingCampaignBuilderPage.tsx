@@ -174,7 +174,10 @@ export const MarketingCampaignBuilderPage = () => {
 
   return (
     <PropelMantineProvider>
-      <PageContainer>
+      {/* Shared hero scroll fix: PageContainer claims full height + the body is the
+          vertical scroll region (overflowY:auto) so the multi-step wizard's long
+          forms are reachable instead of clipped. See MarketingHero for the root. */}
+      <PageContainer style={{ flex: 1, minHeight: 0 }}>
         <PageHeader title="Create" Icon={IconBroadcast}>
           {stage === 'entry' ? (
             <Button
@@ -204,6 +207,7 @@ export const MarketingCampaignBuilderPage = () => {
             flex: 1,
             display: 'flex',
             flexDirection: 'column',
+            overflowY: 'auto',
           }}
         >
           {isLoading || draftState === 'loading' ? (

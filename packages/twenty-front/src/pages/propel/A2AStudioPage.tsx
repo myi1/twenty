@@ -59,10 +59,20 @@ export const A2AStudioPage = () => {
 
   return (
     <PropelMantineProvider>
-      <PageContainer>
+      {/* Shared hero scroll fix: PageContainer claims full height + the body Box is
+          the vertical scroll region (see MarketingHero for the root cause). The A2A
+          body is a vertical Stack of form sections, so it scrolls as one column. */}
+      <PageContainer style={{ flex: 1, minHeight: 0 }}>
         <PageHeader title="A2A Studio" Icon={IconFileText} />
 
-        <Box style={{ padding: '8px 16px 24px', flex: 1, minHeight: 0 }}>
+        <Box
+          style={{
+            padding: '8px 16px 24px',
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+          }}
+        >
           {noOpportunity ? (
             <Center h={320}>
               <Stack gap="sm" align="center" maw={420}>

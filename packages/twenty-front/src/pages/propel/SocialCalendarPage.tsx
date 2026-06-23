@@ -354,7 +354,11 @@ export const SocialCalendarPage = () => {
 
   return (
     <PropelMantineProvider>
-      <PageContainer>
+      {/* Shared hero scroll fix: PageContainer claims full height so the flex:1 body
+          chain fills correctly, and the body is the vertical scroll region
+          (overflowY:auto) so the List view (which grows with posts) is reachable
+          while the fixed Month grid still fits. See MarketingHero for the root. */}
+      <PageContainer style={{ flex: 1, minHeight: 0 }}>
         <PageHeader title="Social Calendar" Icon={IconCalendarEvent}>
           <Group gap="sm" wrap="nowrap">
             {/* S3: the top Compose entry point. Enabled once there's at least one
@@ -378,6 +382,7 @@ export const SocialCalendarPage = () => {
             display: 'flex',
             flexDirection: 'column',
             flex: 1,
+            overflowY: 'auto',
           }}
         >
           {renderBody()}

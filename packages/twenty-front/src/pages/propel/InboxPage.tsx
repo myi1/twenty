@@ -20,7 +20,12 @@ import { PropelMantineProvider } from '@/propel/components/PropelMantineProvider
 export const InboxPage = () => {
   return (
     <PropelMantineProvider>
-      <PageContainer>
+      {/* Bound the container to the full available height so InboxTab's
+          viewport-anchored fixed frame (its own calc(100vh - 168px) two-pane scroll
+          regions) sits correctly under DefaultLayout's overflow:hidden shell. The
+          Inbox is a deliberate fixed-frame app (panes scroll internally), so it does
+          NOT page-scroll — only the height bound is needed here. */}
+      <PageContainer style={{ flex: 1, minHeight: 0 }}>
         <PageHeader title="Inbox" Icon={IconInbox} />
         <InboxTab />
       </PageContainer>

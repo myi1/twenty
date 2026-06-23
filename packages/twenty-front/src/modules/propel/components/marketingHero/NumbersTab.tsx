@@ -316,8 +316,11 @@ export const NumbersTab = () => {
     );
   }
 
+  // Vertical scroll is owned by the shared hero shell (MarketingHero's
+  // Tabs.Panel); this body just flows. The bare `overflowY:auto` here was a
+  // no-op (no bounded height) and is dropped to avoid a redundant nested box.
   return (
-    <Box p="md" style={{ overflowY: 'auto' }}>
+    <Box p="md">
       <Stack gap={2} mb="md">
         <Title order={4}>Phone numbers</Title>
         <Text size="sm" c="dimmed" maw={620}>
