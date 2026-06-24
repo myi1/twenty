@@ -10,27 +10,42 @@ import { type LaneGateConfig } from 'src/modules/propel-rls/stage-gate.util';
 // titles on develop (v0.5.41). The old NEW_LEAD/PARTNER_ENGAGEMENT/CONVERSION_REVENUE
 // keys never matched after the lead-system rename, so the gate could not find the
 // current stage's task. See propel-rls/rcbi-compliance.util.ts RCBI_STAGE_ORDER.
+//
+// 2026-06-24 (follow-up): secondaryOpportunity, sellOpportunity and offPlanOpportunity
+// ALSO synced to the lead-system stage sets + their on-<lane>-stage-entered.ts
+// NEXT_TASK_BY_STAGE titles (main == develop). The lead-system "Status≠Stage" split
+// REMOVED PARKED/LOST from these `stage` enums and re-homed the off-ramp onto a
+// separate `status` field (ACTIVE/ON_HOLD/LOST) — so `stage` is now pure progression
+// and terminalStages reflects the status off-ramp (never a `stage` value, kept for
+// intent + parity with rcbi). Until this sync the old QUALIFY/MATCH_VIEW/… keys
+// never matched the live enum, so §8.3 silently did not gate these lanes.
+// institutionalOpportunity, listing and deal were NOT reworked and already match.
 export const STAGE_GATE_CONFIGS: Record<string, { stageField: string; cfg: LaneGateConfig }> = {
   "secondaryOpportunity": {
     "stageField": "stage",
     "cfg": {
       "orderedStages": [
-        "QUALIFY",
-        "MATCH_VIEW",
+        "NEW",
+        "CONTACTED",
+        "QUALIFIED",
+        "VIEWING",
         "OFFER",
+        "NEGOTIATION",
         "AGREED"
       ],
       "terminalStages": [
-        "PARKED",
+        "ON_HOLD",
         "LOST"
       ],
       "taskTargetField": "targetSecondaryOpportunityId",
       "stageTaskTitleByStage": {
-        "QUALIFY": "Qualify the lead — pin budget, intent, timeline",
-        "MATCH_VIEW": "Shortlist 3–5 permitted units and book viewings",
+        "NEW": "Start first outreach to the buyer lead (call or personal WhatsApp)",
+        "CONTACTED": "Qualify the lead — pin budget, areas, intent, timeline",
+        "QUALIFIED": "Shortlist 3–5 permitted units and book viewings",
+        "VIEWING": "Run the viewings and capture feedback; refine the shortlist",
         "OFFER": "Submit a comp-backed offer and manage counters",
-        "AGREED": "Verify funds/KYC and sign MOU — then convert to Deal",
-        "PARKED": "Schedule the next nurture touch"
+        "NEGOTIATION": "Drive the negotiation to terms — align price, deposit, dates",
+        "AGREED": "Verify funds/KYC and sign MOU — then convert to Deal"
       }
     }
   },
@@ -38,24 +53,31 @@ export const STAGE_GATE_CONFIGS: Record<string, { stageField: string; cfg: LaneG
     "stageField": "stage",
     "cfg": {
       "orderedStages": [
-        "QUALIFY",
-        "PITCH_PRICE",
-        "MANDATE",
-        "MARKET_LIVE",
-        "OFFER_DECISION"
+        "NEW",
+        "CONTACTED",
+        "QUALIFIED",
+        "VALUATION",
+        "LISTING_SIGNED",
+        "LIVE",
+        "OFFER",
+        "NEGOTIATION",
+        "SOLD"
       ],
       "terminalStages": [
-        "PARKED",
+        "ON_HOLD",
         "LOST"
       ],
       "taskTargetField": "targetSellOpportunityId",
       "stageTaskTitleByStage": {
-        "QUALIFY": "Confirm owner is real, motivated, sellable — set timeline",
-        "PITCH_PRICE": "Prepare and present the CMA; win the right to list",
-        "MANDATE": "Capture a signed compliant mandate; get T3 approval",
-        "MARKET_LIVE": "Create the listing and get the asset in front of buyers",
-        "OFFER_DECISION": "Walk the owner to yes on price + terms",
-        "PARKED": "Schedule the next owner nurture touch"
+        "NEW": "Start first outreach to the seller lead (call or personal WhatsApp)",
+        "CONTACTED": "Qualify the owner — confirm ownership, motivation, timeline, price expectation",
+        "QUALIFIED": "Prepare and book the valuation / CMA appointment",
+        "VALUATION": "Present the CMA and win the listing — agree price + agreement type",
+        "LISTING_SIGNED": "Capture the signed compliant mandate; get T3 approval and prep the listing",
+        "LIVE": "Publish the listing and get the asset in front of buyers",
+        "OFFER": "Present incoming offers to the owner; manage counters",
+        "NEGOTIATION": "Walk the owner to yes on price + terms",
+        "SOLD": "Verify funds/MOU and sign — then convert to Deal"
       }
     }
   },
@@ -63,26 +85,27 @@ export const STAGE_GATE_CONFIGS: Record<string, { stageField: string; cfg: LaneG
     "stageField": "stage",
     "cfg": {
       "orderedStages": [
-        "QUALIFY",
-        "EOI",
-        "BOOKING",
-        "SPA_DOWNPAYMENT",
-        "OQOOD",
-        "PAYMENT_PLAN",
-        "HANDOVER"
+        "NEW",
+        "CONTACTED",
+        "QUALIFIED",
+        "SHORTLISTED",
+        "RESERVED",
+        "SPA_SIGNED",
+        "BOOKED"
       ],
       "terminalStages": [
+        "ON_HOLD",
         "LOST"
       ],
       "taskTargetField": "targetOffPlanOpportunityId",
       "stageTaskTitleByStage": {
-        "QUALIFY": "Qualify end-use vs invest + payment-plan appetite; match a project",
-        "EOI": "Collect EOI + refundable deposit; register in developer queue",
-        "BOOKING": "Win the unit at launch; convert EOI to a signed booking",
-        "SPA_DOWNPAYMENT": "Get SPA executed and confirm funds hit RERA escrow",
-        "OQOOD": "Register the sale on Oqood; raise the developer commission claim",
-        "PAYMENT_PLAN": "Set up milestone reminders and relay construction updates",
-        "HANDOVER": "Coordinate snagging and final transfer to title deed"
+        "NEW": "Start first outreach to the off-plan lead (call or personal WhatsApp)",
+        "CONTACTED": "Qualify end-use vs invest, budget + payment-plan appetite, timeline",
+        "QUALIFIED": "Match projects + share a shortlist (pitch pack); book a presentation",
+        "SHORTLISTED": "Drive to a reservation — collect EOI/token + register in developer queue",
+        "RESERVED": "Convert the reservation to a signed SPA; confirm funds + KYC",
+        "SPA_SIGNED": "Confirm down-payment hit RERA escrow; finalise the booking",
+        "BOOKED": "Verify the booking + raise the developer commission — then convert to Deal"
       }
     }
   },
