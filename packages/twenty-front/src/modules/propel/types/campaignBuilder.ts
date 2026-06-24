@@ -246,6 +246,59 @@ export interface SaveSegmentResponse extends RouteEnvelopeError {
   channel?: RealChannel;
 }
 
+// ── /marketing/pool-segments (Pools ↔ Marketing Cloud audience picker) ────────
+// The lead/nurture/lane POOLS become live dynamic segments the audience picker
+// can select. Backend = marketing-pool-segments-route.ts (CRM repo, branch
+// feat/pools-marketing-segments). Two modes:
+//   • { mode: 'catalog' } → the selectable pools (no DB row; a pool is a named
+//     criteria recipe).
+//   • { mode: 'resolve', poolKey, channel?, includeActive? } → that pool's LIVE
+//     membership resolved to a recipient estimate + exclusion breakdown + the
+//     criteria (+ membership filter) the campaign-builder must PERSIST onto the
+//     campaign's segment so send-start re-resolves the SAME live audience.
+export type PoolKind = 'LEAD_POOL' | 'NURTURE' | 'LANE';
+
+export interface PoolCatalogEntry {
+  key: string;
+  kind: PoolKind;
+  label: string;
+  description: string;
+  // When true the "include locked/owned/active" override defaults OFF (broad-blast
+  // suppression ON) — i.e. a LANE pool. Lead/nurture pools are already unowned, so
+  // this is false there and the toggle is a no-op (we hide it).
+  broadBlastDefault: boolean;
+}
+
+export interface PoolCatalogResponse extends RouteEnvelopeError {
+  ok?: boolean;
+  pools?: PoolCatalogEntry[];
+}
+
+// The membership filter a pool needs ON TOP of its criteria. The resolver has no
+// positive POOL/nurture axis, so the route applies it; LANE pools fold membership
+// into criteria.lanes[] and return null here. Mirrors pool-segments.MembershipFilter.
+export type PoolMembershipFilter =
+  | { kind: 'POOL' }
+  | { kind: 'NURTURE'; tier: 'WARM' | 'COLD' }
+  | null;
+
+export interface PoolResolveResponse extends RouteEnvelopeError {
+  ok?: boolean;
+  poolKey?: string;
+  kind?: PoolKind;
+  channel?: RealChannel;
+  includeActive?: boolean;
+  // The criteria (+ membership) the campaign-builder persists onto the segment.
+  segment?: {
+    criteria: SegmentCriteriaV2;
+    membership: PoolMembershipFilter;
+  };
+  estimate?: number;
+  exclusions?: Record<string, number>;
+  description?: string;
+  note?: string;
+}
+
 // ── /marketing/import-segment (two-phase: preview → commit) ───────────────────
 export interface ImportColMap {
   email: number | null;
@@ -291,6 +344,11 @@ export interface SegmentCriteriaV2 {
   budgetMax?: number;
   locations?: string[];
   oppStages?: string[];
+  // Broad-blast suppression: when true, leads that are LOCKED / OWNED / in an
+  // ACTIVE opportunity are excluded. A LANE pool defaults this ON; the audience
+  // picker's "include locked/owned/active" override sets it false (carried back
+  // by /marketing/pool-segments resolve in segment.criteria).
+  suppressLockedOwnedActive?: boolean;
 }
 
 // ── /marketing/ai-build ──────────────────────────────────────────────────────

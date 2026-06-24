@@ -11,7 +11,9 @@ import {
   Group,
   Loader,
   Paper,
+  Popover,
   Progress,
+  Select,
   SimpleGrid,
   Stack,
   Text,
@@ -30,10 +32,16 @@ import {
   IconMessage,
   IconPhone,
   IconRefresh,
+  IconTargetArrow,
 } from 'twenty-ui/display';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
+import {
+  type CampaignConvertResponse,
+  CONVERT_LANE_OPTIONS,
+  type ConvertLane,
+} from '@/propel/lib/campaignConvert';
 import { runMarketingRoute } from '@/propel/lib/marketingHubActions';
 import { propelNivoTheme } from '@/propel/lib/nivoTheme';
 import {
@@ -209,9 +217,16 @@ const TimelineChart = ({
 const RecipientRow = ({
   r,
   onCall,
+  onConvert,
+  converting,
 }: {
   r: RecipientActivityRow;
   onCall: (personId: string) => void;
+  // Pull an engaged lead back to a lane (POST /lead/campaign-convert). Resolves
+  // true on success so the popover can close.
+  onConvert: (personId: string, lane: ConvertLane) => Promise<boolean>;
+  // The personId currently being converted (a spinner gate), or null.
+  converting: string | null;
 }) => (
   <Group gap="sm" wrap="nowrap" py="xs" px="sm">
     <Avatar color="gray" radius="xl" size={30}>
@@ -240,19 +255,101 @@ const RecipientRow = ({
     >
       {r.whenLabel}
     </Text>
+    {/* The CONVERSION action — close the marketing↔sales loop on an engaged lead.
+        Available for any engaged recipient with a known person (a reply is the
+        strongest signal, but a click is intent too). The popover picks the lane;
+        convert attributes the campaign + creates the lane opportunity + flips the
+        lead out of its pool. */}
+    {r.personId !== null ? (
+      <ConvertControl
+        personId={r.personId}
+        busy={converting === r.personId}
+        onConvert={onConvert}
+      />
+    ) : null}
     {r.isReplied && r.personId !== null ? (
       <Button
         size="compact-xs"
-        variant="light"
-        color="red"
+        variant="subtle"
+        color="gray"
         leftSection={<IconPhone size={13} />}
         onClick={() => onCall(r.personId as string)}
       >
-        Call
+        Open
       </Button>
     ) : null}
   </Group>
 );
+
+// The per-recipient "Convert" popover: pick a lane, then pull the engaged lead
+// into it. Local lane state so each row is independent; the parent owns the
+// network call + the busy gate (so only one convert runs at a time and the list
+// reloads after).
+const ConvertControl = ({
+  personId,
+  busy,
+  onConvert,
+}: {
+  personId: string;
+  busy: boolean;
+  onConvert: (personId: string, lane: ConvertLane) => Promise<boolean>;
+}) => {
+  const [opened, setOpened] = useState(false);
+  const [lane, setLane] = useState<ConvertLane>('secondary');
+
+  return (
+    <Popover
+      opened={opened}
+      onChange={setOpened}
+      width={240}
+      position="bottom-end"
+      withArrow
+      shadow="md"
+      zIndex={6000}
+    >
+      <Popover.Target>
+        <Button
+          size="compact-xs"
+          variant="light"
+          color="red"
+          leftSection={<IconTargetArrow size={13} />}
+          loading={busy}
+          onClick={() => setOpened((o) => !o)}
+        >
+          Convert
+        </Button>
+      </Popover.Target>
+      <Popover.Dropdown>
+        <Stack gap="xs">
+          <Text size="xs" c="dimmed">
+            Pull this lead into a lane and attribute the conversion to this
+            campaign.
+          </Text>
+          <Select
+            size="xs"
+            label="Lane"
+            value={lane}
+            onChange={(v) => v && setLane(v as ConvertLane)}
+            data={CONVERT_LANE_OPTIONS}
+            comboboxProps={{ withinPortal: true, zIndex: 6100 }}
+            allowDeselect={false}
+          />
+          <Button
+            size="compact-sm"
+            color="red"
+            loading={busy}
+            onClick={async () => {
+              const ok = await onConvert(personId, lane);
+              if (ok) setOpened(false);
+            }}
+          >
+            Convert to lane
+          </Button>
+        </Stack>
+      </Popover.Dropdown>
+    </Popover>
+  );
+};
 
 export const CampaignDetail = ({
   campaignId,
@@ -269,6 +366,8 @@ export const CampaignDetail = ({
   const [failed, setFailed] = useState(false);
   const [showTech, setShowTech] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  // The personId currently being converted (a per-row busy gate), or null.
+  const [converting, setConverting] = useState<string | null>(null);
   // Tracks whether anything mutated this campaign while open, so onBack reloads
   // the list even if the user navigates back after a successful retry.
   const [didMutate, setDidMutate] = useState(false);
@@ -305,6 +404,50 @@ export const CampaignDetail = ({
       notify(outcome.message, 'error');
     }
   };
+
+  // The CONVERSION action — POST /lead/campaign-convert. Pulls the engaged lead
+  // into the chosen lane, attributes the campaign, and flips it out of its pool.
+  // On success we deep-link to the new opportunity (the natural next stop) and
+  // mark the campaign mutated so the list reloads. Returns true so the row's
+  // popover closes; false leaves it open with the error toast shown.
+  const convert = useCallback(
+    async (personId: string, lane: ConvertLane): Promise<boolean> => {
+      if (converting !== null) return false;
+      setConverting(personId);
+      try {
+        const res = await callPropelRoute<CampaignConvertResponse>(
+          '/lead/campaign-convert',
+          { personId, campaignId, lane, createOpportunity: true },
+        );
+        if (res !== null && res.ok === true) {
+          setDidMutate(true);
+          notify(
+            'Converted — lead pulled into the lane and attributed to this campaign.',
+            'success',
+          );
+          if (typeof res.opportunityId === 'string' && res.opportunityId) {
+            navigate(`/object/opportunity/${res.opportunityId}`);
+          } else {
+            navigate(`/object/person/${personId}`);
+          }
+          return true;
+        }
+        notify(
+          res?.operatorAction ||
+            res?.error ||
+            'Could not convert this lead — try again.',
+          'error',
+        );
+        return false;
+      } catch {
+        notify('Could not convert — check your connection.', 'error');
+        return false;
+      } finally {
+        setConverting(null);
+      }
+    },
+    [converting, campaignId, navigate, notify],
+  );
 
   const back = (
     <Button
@@ -513,6 +656,8 @@ export const CampaignDetail = ({
                 <RecipientRow
                   r={r}
                   onCall={(personId) => navigate(`/object/person/${personId}`)}
+                  onConvert={convert}
+                  converting={converting}
                 />
               </Box>
             ))}

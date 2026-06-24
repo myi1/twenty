@@ -1,29 +1,35 @@
 import {
   Alert,
   Anchor,
+  Badge,
   Box,
   Button,
+  Card,
   Collapse,
   Group,
+  Loader,
   Modal,
   MultiSelect,
   NumberInput,
   SegmentedControl,
   Select,
   Stack,
+  Switch,
   Table,
   Text,
   Textarea,
   TextInput,
 } from '@mantine/core';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   IconAlertCircle,
   IconChevronDown,
   IconChevronRight,
   IconFileUpload,
   IconFilter,
+  IconStack2,
   IconUpload,
+  IconUsers,
 } from 'twenty-ui/display';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import {
@@ -40,6 +46,9 @@ import {
   type ImportColMap,
   type ImportCommitResponse,
   type ImportPreviewResponse,
+  type PoolCatalogEntry,
+  type PoolCatalogResponse,
+  type PoolResolveResponse,
   type SaveSegmentResponse,
   type SegmentOption,
 } from '@/propel/types/campaignBuilder';
@@ -77,7 +86,7 @@ export const SegmentCreateModal = ({
   channel: 'EMAIL' | 'WHATSAPP';
 }) => {
   const notify = usePropelToast();
-  const [mode, setMode] = useState<'csv' | 'criteria'>('csv');
+  const [mode, setMode] = useState<'pools' | 'csv' | 'criteria'>('pools');
   const [name, setName] = useState('');
 
   // CSV / Excel two-phase upload state.
@@ -110,6 +119,31 @@ export const SegmentCreateModal = ({
   const [savingCriteria, setSavingCriteria] = useState(false);
   const [criteriaErr, setCriteriaErr] = useState('');
 
+  // ── Pools (Pools ↔ Marketing Cloud) state ──────────────────────────────────
+  // The lead/nurture/lane pools resolve through /marketing/pool-segments. The
+  // catalog loads once on first open; picking a pool resolves its LIVE membership
+  // to an estimate + exclusion breakdown; "Use this audience" persists a saved
+  // segment from the pool's criteria so the campaign re-resolves at send-start.
+  const [poolCatalog, setPoolCatalog] = useState<PoolCatalogEntry[] | null>(null);
+  const [poolCatalogState, setPoolCatalogState] = useState<
+    'idle' | 'loading' | 'failed'
+  >('idle');
+  const [poolKey, setPoolKey] = useState<string | null>(null);
+  // "include locked / owned / active" override — only meaningful for LANE pools
+  // (where suppression defaults ON). Maps to the route's includeActive flag.
+  const [includeActive, setIncludeActive] = useState(false);
+  const [poolResolve, setPoolResolve] = useState<PoolResolveResponse | null>(
+    null,
+  );
+  const [poolResolving, setPoolResolving] = useState(false);
+  const [savingPool, setSavingPool] = useState(false);
+  const [poolErr, setPoolErr] = useState('');
+
+  const selectedPool = useMemo(
+    () => poolCatalog?.find((p) => p.key === poolKey) ?? null,
+    [poolCatalog, poolKey],
+  );
+
   // Live count of the hand-entered person allow-list (normalized the same way
   // the payload will be), so the user sees how many distinct ids they pasted.
   const personIdCount = useMemo(
@@ -126,7 +160,7 @@ export const SegmentCreateModal = ({
     personIdCount > 0;
 
   const resetAll = useCallback(() => {
-    setMode('csv');
+    setMode('pools');
     setName('');
     setPhase('pick');
     setUploadErr('');
@@ -143,13 +177,156 @@ export const SegmentCreateModal = ({
     setBudgetMax('');
     setPersonIdsRaw('');
     setCriteriaErr('');
+    setPoolKey(null);
+    setIncludeActive(false);
+    setPoolResolve(null);
+    setPoolErr('');
+    // Keep poolCatalog cached across opens (it's static) — only the selection resets.
   }, []);
 
   const handleClose = useCallback(() => {
-    if (uploading || committing || savingCriteria) return;
+    if (uploading || committing || savingCriteria || savingPool) return;
     resetAll();
     onClose();
-  }, [uploading, committing, savingCriteria, resetAll, onClose]);
+  }, [uploading, committing, savingCriteria, savingPool, resetAll, onClose]);
+
+  // ── Pools: load the catalog once when the Pools tab is first shown ──────────
+  // The catalog is static (a pool is a named criteria recipe, no DB row), so we
+  // fetch it once and cache it across opens. Loaded lazily on the Pools tab so a
+  // CSV-only user never pays for it.
+  useEffect(() => {
+    if (!opened || mode !== 'pools') return;
+    if (poolCatalog !== null || poolCatalogState === 'loading') return;
+    let active = true;
+    setPoolCatalogState('loading');
+    void callPropelRoute<PoolCatalogResponse>('/marketing/pool-segments', {
+      mode: 'catalog',
+    }).then((res) => {
+      if (!active) return;
+      if (res && res.ok && Array.isArray(res.pools)) {
+        setPoolCatalog(res.pools);
+        setPoolCatalogState('idle');
+      } else {
+        setPoolCatalogState('failed');
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [opened, mode, poolCatalog, poolCatalogState]);
+
+  // ── Pools: resolve the chosen pool's LIVE membership ────────────────────────
+  // Runs when the pool selection, the include-active override, or the channel
+  // changes (debounce not needed — these are discrete picks, not keystrokes).
+  // Honest: a failed resolve clears the estimate and shows the error rather than a
+  // stale/fake count.
+  useEffect(() => {
+    if (!opened || mode !== 'pools' || !poolKey) {
+      setPoolResolve(null);
+      return;
+    }
+    let active = true;
+    setPoolResolving(true);
+    setPoolErr('');
+    void callPropelRoute<PoolResolveResponse>('/marketing/pool-segments', {
+      mode: 'resolve',
+      poolKey,
+      channel,
+      includeActive,
+    }).then((res) => {
+      if (!active) return;
+      setPoolResolving(false);
+      if (res && res.ok && res.segment) {
+        setPoolResolve(res);
+      } else {
+        setPoolResolve(null);
+        setPoolErr(
+          envelopeMessage(res, 'Could not resolve this pool — try another.'),
+        );
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [opened, mode, poolKey, includeActive, channel]);
+
+  // Persist the resolved pool as a saved segment so the campaign's segment relation
+  // re-resolves the SAME live audience at send-start. We write the pool's CRITERIA
+  // (carried back by the resolve) via save-segment with resolve:true so the picker
+  // label is honest. The segment name defaults to the pool label unless the user
+  // typed one.
+  //
+  // ⚠ SEND-START FIDELITY (the membership-axis gap): for LANE pools the membership
+  // IS the criteria (lanes[] + suppressLockedOwnedActive), so the persisted segment
+  // resolves IDENTICALLY at send-start. For the LEAD POOL + NURTURE pools the
+  // membership is a SEPARATE filter the route applies (routingState='POOL' /
+  // nurtureState=tier) that the resolver/save-segment does NOT yet carry as a
+  // criteria axis — so the persisted segment would resolve a SUPERSET at send-start.
+  // We surface that honestly in the UI (see the membership note) and the count we
+  // STORE is the route's faithful pool estimate, never the looser save-segment one.
+  // BACKEND TODO(pools-membership-axis): widen SegmentCriteriaV2 + the resolver with
+  // a positive pool/nurture membership axis (routingState/nurtureState), persisted
+  // by save-segment, so send-start matches the preview exactly. That's CRM app-side
+  // (segment-resolver.ts + marketing-save-segment-route.ts) — owned by another agent.
+  const usePool = useCallback(async () => {
+    if (savingPool || !poolResolve || !poolResolve.segment || !selectedPool) {
+      return;
+    }
+    setSavingPool(true);
+    setPoolErr('');
+    const segName = name.trim() || selectedPool.label;
+    try {
+      const res = await callPropelRoute<SaveSegmentResponse>(
+        '/marketing/save-segment',
+        {
+          name: segName,
+          criteria: poolResolve.segment.criteria,
+          channel,
+          resolve: true,
+        },
+      );
+      if (res && res.ok && res.segmentId) {
+        // Store the ROUTE's faithful pool estimate (not save-segment's looser
+        // resolve) so the picker label reflects the pool's true membership.
+        const estimate =
+          typeof poolResolve.estimate === 'number'
+            ? poolResolve.estimate
+            : (res.estimate ?? 0);
+        onCreated({
+          id: res.segmentId,
+          name: segName,
+          lastResolvedCount: estimate,
+          lastResolvedLabel: `~${estimate.toLocaleString('en-US')} (live pool)`,
+        });
+        notify(
+          `Audience ready from ${selectedPool.label} — ~${estimate.toLocaleString(
+            'en-US',
+          )} contacts (resolves live at send).`,
+          'success',
+        );
+        resetAll();
+        onClose();
+      } else {
+        setPoolErr(
+          envelopeMessage(res, 'Could not save this audience — try again.'),
+        );
+      }
+    } catch {
+      setPoolErr('Could not save this audience — check your connection.');
+    } finally {
+      setSavingPool(false);
+    }
+  }, [
+    savingPool,
+    poolResolve,
+    selectedPool,
+    name,
+    channel,
+    onCreated,
+    notify,
+    resetAll,
+    onClose,
+  ]);
 
   // Phase 1 — read the chosen File's bytes and ask the server to PREVIEW columns
   // (creates nothing). Native File.arrayBuffer() replaces the sandbox's
@@ -367,32 +544,64 @@ export const SegmentCreateModal = ({
       title="New segment"
       size="lg"
       centered
-      closeOnClickOutside={!uploading && !committing && !savingCriteria}
+      closeOnClickOutside={
+        !uploading && !committing && !savingCriteria && !savingPool
+      }
     >
       <Stack gap="md">
         <TextInput
           label="Segment name"
-          placeholder="e.g. Cold Marina leads"
+          description={
+            mode === 'pools'
+              ? 'Optional — defaults to the pool name.'
+              : undefined
+          }
+          placeholder={
+            mode === 'pools'
+              ? 'e.g. Cold lead pool — October blast'
+              : 'e.g. Cold Marina leads'
+          }
           value={name}
           onChange={(e) => setName(e.currentTarget.value)}
-          required
+          required={mode !== 'pools'}
         />
 
         <SegmentedControl
           fullWidth
           value={mode}
           onChange={(v) => {
-            setMode(v as 'csv' | 'criteria');
+            setMode(v as 'pools' | 'csv' | 'criteria');
             setUploadErr('');
             setCriteriaErr('');
+            setPoolErr('');
           }}
           data={[
+            { label: 'From a pool', value: 'pools' },
             { label: 'Upload a list', value: 'csv' },
             { label: 'Build with criteria', value: 'criteria' },
           ]}
         />
 
-        {mode === 'csv' ? (
+        {mode === 'pools' ? (
+          <PoolsPanel
+            catalog={poolCatalog}
+            catalogState={poolCatalogState}
+            poolKey={poolKey}
+            onPoolKey={(k) => {
+              setPoolKey(k);
+              setIncludeActive(false);
+              setPoolErr('');
+            }}
+            selectedPool={selectedPool}
+            includeActive={includeActive}
+            onIncludeActive={setIncludeActive}
+            resolving={poolResolving}
+            resolve={poolResolve}
+            err={poolErr}
+            saving={savingPool}
+            onUse={() => void usePool()}
+          />
+        ) : mode === 'csv' ? (
           phase === 'pick' ? (
             <Stack gap="sm">
               <input
@@ -664,5 +873,233 @@ export const SegmentCreateModal = ({
         )}
       </Stack>
     </Modal>
+  );
+};
+
+// ── Pools panel (Pools ↔ Marketing Cloud audience picker) ────────────────────
+// Pick a lead/nurture/lane pool → see its LIVE membership resolved to an estimate
+// + exclusion breakdown → "Use this audience" persists it as a saved segment the
+// campaign re-resolves at send-start. The pool IS the audience the lead system
+// owns; marketing only reads it.
+const POOL_KIND_LABEL: Record<string, string> = {
+  LEAD_POOL: 'Lead pool',
+  NURTURE: 'Nurture',
+  LANE: 'Lane',
+};
+
+const PoolsPanel = ({
+  catalog,
+  catalogState,
+  poolKey,
+  onPoolKey,
+  selectedPool,
+  includeActive,
+  onIncludeActive,
+  resolving,
+  resolve,
+  err,
+  saving,
+  onUse,
+}: {
+  catalog: PoolCatalogEntry[] | null;
+  catalogState: 'idle' | 'loading' | 'failed';
+  poolKey: string | null;
+  onPoolKey: (k: string | null) => void;
+  selectedPool: PoolCatalogEntry | null;
+  includeActive: boolean;
+  onIncludeActive: (v: boolean) => void;
+  resolving: boolean;
+  resolve: PoolResolveResponse | null;
+  err: string;
+  saving: boolean;
+  onUse: () => void;
+}) => {
+  // The exclusion breakdown lines (reason → count), shown so the estimate is
+  // explainable, never a bare number. Sorted desc, zero reasons hidden.
+  const exclusionRows = useMemo(() => {
+    const ex = resolve?.exclusions ?? {};
+    return Object.entries(ex)
+      .filter(([, n]) => typeof n === 'number' && n > 0)
+      .sort((a, b) => b[1] - a[1]);
+  }, [resolve]);
+
+  // The send-start membership-fidelity note: LANE pools fold membership into
+  // criteria (lanes[]), so the persisted segment resolves identically at send.
+  // LEAD_POOL / NURTURE membership is a route-side filter not yet in the criteria
+  // axis, so the persisted segment can resolve a SUPERSET until the backend axis
+  // lands — surfaced honestly here rather than silently mis-sending.
+  const membershipKind = resolve?.segment?.membership?.kind ?? null;
+  const supersetAtSend = membershipKind === 'POOL' || membershipKind === 'NURTURE';
+
+  if (catalogState === 'loading' || catalog === null) {
+    return (
+      <Group justify="center" py="xl">
+        <Loader color="red" size="sm" />
+        <Text size="sm" c="dimmed">
+          Loading pools…
+        </Text>
+      </Group>
+    );
+  }
+
+  if (catalogState === 'failed') {
+    return (
+      <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />}>
+        Couldn&rsquo;t load the pools right now. Switch to &ldquo;Upload a
+        list&rdquo; or &ldquo;Build with criteria,&rdquo; or reopen this dialog to
+        retry.
+      </Alert>
+    );
+  }
+
+  return (
+    <Stack gap="sm">
+      <Select
+        label="Pool"
+        description="The lead system owns membership — these resolve live; a lead leaving the pool drops out automatically."
+        placeholder="Pick a pool"
+        leftSection={<IconStack2 size={16} />}
+        searchable
+        value={poolKey}
+        onChange={onPoolKey}
+        data={catalog.map((p) => ({ value: p.key, label: p.label }))}
+        nothingFoundMessage="No pools"
+        comboboxProps={{ withinPortal: true }}
+        renderOption={({ option }) => {
+          const p = catalog.find((c) => c.key === option.value);
+          return (
+            <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+              <Box style={{ flex: 1, minWidth: 0 }}>
+                <Text size="sm" fw={600} truncate>
+                  {option.label}
+                </Text>
+                {p?.description ? (
+                  <Text size="xs" c="dimmed" lineClamp={1}>
+                    {p.description}
+                  </Text>
+                ) : null}
+              </Box>
+              {p ? (
+                <Badge size="xs" variant="light" color="gray">
+                  {POOL_KIND_LABEL[p.kind] ?? p.kind}
+                </Badge>
+              ) : null}
+            </Group>
+          );
+        }}
+      />
+
+      {selectedPool ? (
+        <Text size="xs" c="dimmed">
+          {selectedPool.description}
+        </Text>
+      ) : null}
+
+      {/* "include locked / owned / active" override — only meaningful for LANE
+          pools (suppression defaults ON there). Hidden for lead/nurture pools
+          where it's a no-op (those are unowned by definition). */}
+      {selectedPool && selectedPool.broadBlastDefault ? (
+        <Switch
+          size="sm"
+          color="red"
+          checked={includeActive}
+          onChange={(e) => onIncludeActive(e.currentTarget.checked)}
+          label="Include locked / owned / active contacts"
+          description="Off by default for a lane blast — you don't message a contact an agent is actively working. Turn on to reach everyone in the lane."
+        />
+      ) : null}
+
+      {err !== '' ? (
+        <Alert color="red" variant="light" icon={<IconAlertCircle size={16} />}>
+          {err}
+        </Alert>
+      ) : null}
+
+      {poolKey ? (
+        <Card
+          withBorder
+          radius="md"
+          padding="md"
+          style={{ background: 'var(--mantine-color-body)' }}
+        >
+          <Group justify="space-between" align="flex-start">
+            <Box>
+              <Text size="xs" c="dimmed" fw={600} tt="uppercase">
+                Estimated reach
+              </Text>
+              {resolving ? (
+                <Group gap="xs" mt={4}>
+                  <Loader size="xs" color="red" />
+                  <Text size="sm" c="dimmed">
+                    Resolving live…
+                  </Text>
+                </Group>
+              ) : resolve && typeof resolve.estimate === 'number' ? (
+                <Text size="xl" fw={700} c="var(--mantine-color-text)">
+                  {resolve.estimate.toLocaleString('en-US')}
+                </Text>
+              ) : (
+                <Text size="sm" c="dimmed" mt={4}>
+                  —
+                </Text>
+              )}
+            </Box>
+            <IconUsers
+              size={20}
+              style={{ color: 'var(--mantine-color-dimmed)' }}
+            />
+          </Group>
+
+          {!resolving && resolve?.description ? (
+            <Text size="xs" c="dimmed" mt="sm">
+              {resolve.description}
+            </Text>
+          ) : null}
+
+          {!resolving && exclusionRows.length > 0 ? (
+            <Stack gap={2} mt="sm">
+              {exclusionRows.map(([reason, n]) => (
+                <Group key={reason} justify="space-between" gap="md">
+                  <Text size="xs" c="dimmed" tt="capitalize">
+                    {reason.replace(/[_-]/g, ' ')}
+                  </Text>
+                  <Text size="xs" c="dimmed" ff="monospace">
+                    {n.toLocaleString('en-US')}
+                  </Text>
+                </Group>
+              ))}
+            </Stack>
+          ) : null}
+
+          {!resolving && supersetAtSend ? (
+            <Alert
+              mt="sm"
+              color="yellow"
+              variant="light"
+              py={6}
+              icon={<IconAlertCircle size={14} />}
+            >
+              <Text size="xs">
+                This pool&rsquo;s membership is tracked live. The estimate above is
+                exact now; at send time the audience re-resolves and may differ
+                slightly as leads move in or out of the pool.
+              </Text>
+            </Alert>
+          ) : null}
+        </Card>
+      ) : null}
+
+      <Group justify="flex-end">
+        <Button
+          color="red"
+          leftSection={<IconUsers size={16} />}
+          loading={saving}
+          disabled={!resolve || resolving}
+          onClick={onUse}
+        >
+          Use this audience
+        </Button>
+      </Group>
+    </Stack>
   );
 };

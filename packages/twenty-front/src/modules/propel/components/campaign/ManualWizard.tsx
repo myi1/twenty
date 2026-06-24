@@ -1613,8 +1613,9 @@ const AudienceStep = ({
 
     {allSegments.length === 0 && (
       <Alert color="gray" variant="light" icon={<IconUsers size={16} />}>
-        You don&rsquo;t have any audiences yet. Create one from a CSV/Excel
-        upload or live criteria with &ldquo;New segment&rdquo;.
+        You don&rsquo;t have any audiences yet. Create one with &ldquo;New
+        segment&rdquo; — pick a live lead/nurture/lane pool, upload a CSV/Excel
+        list, or build one from criteria.
       </Alert>
     )}
   </Stack>
