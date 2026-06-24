@@ -37,6 +37,12 @@ export function generateFrontConfig(): void {
   // (HeroRoute) reads window._env_.REACT_APP_HEROES_BASE_URL and dynamic-imports
   // `${base}/<name>/index.js`. Defaults to `/heroes` in the FE when unset; set this
   // to point at the mounted heroes volume (e.g. when it's served from another path).
+  //
+  // This SAME base URL also serves the Propel nav fast-path config: the FE fetches
+  // `${base}/nav.config.json` (propelNavConfig.ts) to drive the sidebar hero nav
+  // (labels/icons/order/routes) at runtime. So a nav edit is just editing that JSON
+  // on the heroes mount + a refresh — no rebuild, no extra env var. No allowlist
+  // change is needed here: the nav config rides REACT_APP_HEROES_BASE_URL.
   if (process.env.REACT_APP_HEROES_BASE_URL) {
     envForFront.REACT_APP_HEROES_BASE_URL =
       process.env.REACT_APP_HEROES_BASE_URL;

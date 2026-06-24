@@ -2,6 +2,10 @@ import { AppRouterProviders } from '@/app/components/AppRouterProviders';
 import { LazyRoute } from '@/app/components/LazyRoute';
 import { SettingsRoutes } from '@/app/components/SettingsRoutes';
 import { HeroRoute } from '@/propel/runtime/HeroRoute';
+import {
+  getAllNavEntries,
+  getPropelNavConfig,
+} from '@/propel/runtime/propelNavConfig';
 import { VerifyLoginTokenEffect } from '@/auth/components/VerifyLoginTokenEffect';
 
 import { VerifyEmailEffect } from '@/auth/components/VerifyEmailEffect';
@@ -29,12 +33,18 @@ const RecordShowPage = lazy(() =>
   })),
 );
 
-// All 7 Propel heroes are now runtime-loaded via <HeroRoute name="…"/> — none of
-// them ship in the app bundle. HeroRoute fetches each one from the /heroes volume at
-// navigation time (see HeroRoute.tsx + heroRegistry.ts). The former in-bundle lazy()
-// imports for MarketingHero / MarketingCampaignBuilderPage / SequenceEditorPage /
-// OneOnOneRunnerPage / SocialCalendarPage / A2AStudioPage were removed here when each
-// graduated to runtime loading (listing-studio led; the other 6 followed).
+// All Propel heroes are runtime-loaded via <HeroRoute name="…"/> — none of them
+// ship in the app bundle. HeroRoute fetches each one from the /heroes volume at
+// navigation time (see HeroRoute.tsx). Their ROUTES are also config-driven now: the
+// route for each hero is registered by mapping over the runtime nav config
+// (propelNavConfig.ts → DEFAULT_NAV_CONFIG, overridable by the host-mounted
+// nav.config.json), so adding a hero in config wires its route too. Routes register
+// UNCONDITIONALLY (every config entry, enabled or not) — a nav-hidden entry simply
+// has no sidebar link but its route still resolves for deep-links, matching the
+// prior hand-written behavior. The former in-bundle lazy() imports for
+// MarketingHero / MarketingCampaignBuilderPage / SequenceEditorPage /
+// OneOnOneRunnerPage / SocialCalendarPage / A2AStudioPage were removed when each
+// graduated to runtime loading (listing-studio led; the others followed).
 
 const SignInUp = lazy(() =>
   import('~/pages/auth/SignInUp').then((module) => ({
@@ -234,38 +244,19 @@ export const useCreateAppRouter = (
               </LazyRoute>
             }
           />
-          <Route
-            path={AppPath.Inbox}
-            element={<HeroRoute name="inbox" />}
-          />
-          <Route
-            path={AppPath.MarketingHub}
-            element={<HeroRoute name="marketing-hub" />}
-          />
-          <Route
-            path={AppPath.MarketingCampaignBuilder}
-            element={<HeroRoute name="campaign-builder" />}
-          />
-          <Route
-            path={AppPath.MarketingSequenceEditor}
-            element={<HeroRoute name="sequence-editor" />}
-          />
-          <Route
-            path={AppPath.OneOnOneRunner}
-            element={<HeroRoute name="one-on-one-runner" />}
-          />
-          <Route
-            path={AppPath.MarketingSocialCalendar}
-            element={<HeroRoute name="social-calendar" />}
-          />
-          <Route
-            path={AppPath.A2AStudio}
-            element={<HeroRoute name="a2a-studio" />}
-          />
-          <Route
-            path={AppPath.ListingStudio}
-            element={<HeroRoute name="listing-studio" />}
-          />
+          {/* Propel hero routes, config-driven (see comment above). Built from
+              the nav config available synchronously at router-construction time
+              (the baked default, which lists every known hero; a mounted
+              nav.config.json that only RELABELS/REORDERS existing heroes needs no
+              route change, and routes register unconditionally so nav-hidden
+              entries still resolve for deep-links). */}
+          {getAllNavEntries(getPropelNavConfig()).map((entry) => (
+            <Route
+              key={entry.key}
+              path={entry.route}
+              element={<HeroRoute name={entry.bundle} />}
+            />
+          ))}
           <Route
             path={AppPath.PageLayoutPage}
             element={
