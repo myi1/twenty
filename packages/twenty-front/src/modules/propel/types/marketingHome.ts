@@ -257,6 +257,10 @@ export interface EmailTemplateOption {
   subject: string;
   bodyText: string;
   languageCode: string;
+  // Stringified GrapesJS project JSON for EXACT re-editability of the saved design
+  // (#59). Empty/undefined for templates saved HTML-only before the field existed —
+  // those re-open from the starter skeleton, same as before.
+  designProjectJson?: string;
 }
 
 export interface CustomFieldOption {
