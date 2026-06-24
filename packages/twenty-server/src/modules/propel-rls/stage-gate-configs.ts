@@ -3,6 +3,13 @@ import { type LaneGateConfig } from 'src/modules/propel-rls/stage-gate.util';
 // AUTO-DERIVED from the propel-crm §8.3 stage-entry emitters' NEXT_TASK_BY_STAGE
 // maps (titles MUST match for the gate to find the current stage's task). If you
 // change an emitter title, regenerate this. Keyed by object metadata name.
+//
+// 2026-06-24: rcbiOpportunity hand-synced to the lead-system RCBI stage SET
+// (NEW/CONTACTED/QUALIFIED/COMPLIANCE_CHECK/CONSULTATION/PARTNER_ENGAGED/APPLICATION/
+// CONVERTED, terminal ON_HOLD/LOST) and the on-rcbi-stage-entered.ts NEXT_TASK_BY_STAGE
+// titles on develop (v0.5.41). The old NEW_LEAD/PARTNER_ENGAGEMENT/CONVERSION_REVENUE
+// keys never matched after the lead-system rename, so the gate could not find the
+// current stage's task. See propel-rls/rcbi-compliance.util.ts RCBI_STAGE_ORDER.
 export const STAGE_GATE_CONFIGS: Record<string, { stageField: string; cfg: LaneGateConfig }> = {
   "secondaryOpportunity": {
     "stageField": "stage",
@@ -110,11 +117,14 @@ export const STAGE_GATE_CONFIGS: Record<string, { stageField: string; cfg: LaneG
     "stageField": "stage",
     "cfg": {
       "orderedStages": [
-        "NEW_LEAD",
+        "NEW",
         "CONTACTED",
         "QUALIFIED",
-        "PARTNER_ENGAGEMENT",
-        "CONVERSION_REVENUE"
+        "COMPLIANCE_CHECK",
+        "CONSULTATION",
+        "PARTNER_ENGAGED",
+        "APPLICATION",
+        "CONVERTED"
       ],
       "terminalStages": [
         "ON_HOLD",
@@ -122,12 +132,14 @@ export const STAGE_GATE_CONFIGS: Record<string, { stageField: string; cfg: LaneG
       ],
       "taskTargetField": "targetRcbiOpportunityId",
       "stageTaskTitleByStage": {
-        "NEW_LEAD": "Start first outreach to the RCBI lead",
-        "CONTACTED": "Run the qualification call (budget, nationality, family, objective)",
-        "QUALIFIED": "Select the partner company for this profile",
-        "PARTNER_ENGAGEMENT": "Run the partner intro + joint call; coordinate the programme",
-        "CONVERSION_REVENUE": "Track engagement, revenue and payout fields as the case progresses",
-        "ON_HOLD": "Review this on-hold RCBI case at the set review date"
+        "NEW": "Start first outreach to the RCBI lead (call or personal WhatsApp)",
+        "CONTACTED": "Run the qualification call (budget, nationality, motivation, timeline)",
+        "QUALIFIED": "Run the compliance check (nationality / source-of-funds / PEP)",
+        "COMPLIANCE_CHECK": "Complete compliance screening and clear or escalate",
+        "CONSULTATION": "Run the consultation — recommend a programme and confirm intent",
+        "PARTNER_ENGAGED": "Send the partner briefing and confirm receipt within 48h",
+        "APPLICATION": "Monitor the partner application; bi-weekly status check-in",
+        "CONVERTED": "Raise the commission invoice and send the referral ask"
       }
     }
   },
