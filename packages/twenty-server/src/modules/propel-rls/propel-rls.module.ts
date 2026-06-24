@@ -50,6 +50,8 @@ import { InstitutionalOpportunityStageGatePreQueryHook } from 'src/modules/prope
 import { RcbiOpportunityStageGatePreQueryHook } from 'src/modules/propel-rls/rcbi-opportunity-stage-gate.pre-query.hook';
 import { ListingStageGatePreQueryHook } from 'src/modules/propel-rls/listing-stage-gate.pre-query.hook';
 import { DealStageGatePreQueryHook } from 'src/modules/propel-rls/deal-stage-gate.pre-query.hook';
+import { RcbiComplianceGateService } from 'src/modules/propel-rls/rcbi-compliance-gate.service';
+import { RcbiOpportunityComplianceGatePreQueryHook } from 'src/modules/propel-rls/rcbi-opportunity-compliance-gate.pre-query.hook';
 
 // Propel clean-room module:
 //  - RLS read-path hooks (findMany/findOne/groupBy) inject per-tier row filters.
@@ -111,6 +113,10 @@ import { DealStageGatePreQueryHook } from 'src/modules/propel-rls/deal-stage-gat
     ListingStageGatePreQueryHook,
     DealStageGatePreQueryHook,
     StageGateService,
+    // RCBI compliance HARD-block (FATF/PEP) — a SEPARATE updateOne hook from the
+    // §8.3 task stage-gate above; both run, either can reject. Not manager-bypassable.
+    RcbiComplianceGateService,
+    RcbiOpportunityComplianceGatePreQueryHook,
   ],
 })
 export class PropelRlsModule {}
