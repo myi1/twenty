@@ -47,6 +47,8 @@ export interface ListingStudioState {
   resume: (draft: StudioDraft) => void;
   /** Merge a partial facts patch + autosave + re-preview. */
   patchFacts: (patch: Partial<StudioFacts>) => void;
+  /** Merge a partial draft patch (location/photos/writeup/permit/publish) + autosave. */
+  patchDraft: (patch: Partial<Omit<StudioDraft, 'draftId' | 'facts' | 'step'>>) => void;
   /** Jump the rail to a step. */
   goToStep: (step: StudioStep) => void;
   /** Discard the draft and return to the launcher. */
@@ -161,6 +163,19 @@ export const useListingStudioDraft = (): ListingStudioState => {
     [scheduleSave, schedulePreview],
   );
 
+  const patchDraft = useCallback(
+    (patch: Partial<Omit<StudioDraft, 'draftId' | 'facts' | 'step'>>) => {
+      setDraft((cur) => {
+        if (cur === null) return cur;
+        const next: StudioDraft = { ...cur, ...patch };
+        saveDraft(next);
+        scheduleSave(next);
+        return next;
+      });
+    },
+    [scheduleSave],
+  );
+
   const goToStep = useCallback(
     (step: StudioStep) => {
       setDraft((cur) => {
@@ -194,6 +209,7 @@ export const useListingStudioDraft = (): ListingStudioState => {
     startFromProperty,
     resume,
     patchFacts,
+    patchDraft,
     goToStep,
     discard,
   };

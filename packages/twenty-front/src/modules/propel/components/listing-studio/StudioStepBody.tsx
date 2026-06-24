@@ -1,244 +1,78 @@
 import {
-  Box,
-  Card,
-  Group,
-  NumberInput,
-  Select,
-  Stack,
-  Text,
-  TextInput,
-  ThemeIcon,
-} from '@mantine/core';
-import {
-  IconPhoto,
-  IconId,
-  IconFileText,
-  IconRocket,
-} from 'twenty-ui/display';
-import { type StudioFacts, type StudioStep } from '@/propel/types/listingStudio';
+  type StudioDraft,
+  type StudioFacts,
+  type StudioLocation,
+  type StudioPermit,
+  type StudioPhoto,
+  type StudioPublishResult,
+  type StudioStep,
+  type StudioWriteup,
+} from '@/propel/types/listingStudio';
+import { StudioIntakeStep } from '@/propel/components/listing-studio/StudioIntakeStep';
+import { StudioDetailsStep } from '@/propel/components/listing-studio/StudioDetailsStep';
+import { StudioPhotosStep } from '@/propel/components/listing-studio/StudioPhotosStep';
+import { StudioWriteupStep } from '@/propel/components/listing-studio/StudioWriteupStep';
+import { StudioPermitStep } from '@/propel/components/listing-studio/StudioPermitStep';
+import { StudioPublishStep } from '@/propel/components/listing-studio/StudioPublishStep';
 
-// The per-step body. In S2 the SHELL is the deliverable, so most steps are honest
-// stubs that state what lands in their slice (S3+). The exception is Details &
-// price (step 2): it gets a real, basic facts form so the rail → draft → live PF
-// preview loop is demonstrably working end-to-end this slice. The richer per-step
-// surfaces (document drop + AI read, photo grid + watermark, EN/AR write-up, permit
-// validation, publish/credits) replace these stubs in S3–S8.
-
-// ── A stub panel: an icon, what the step will do, and the slice it lands in. ──
-const StepStub = ({
-  icon,
-  title,
-  lines,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  lines: string[];
-}) => (
-  <Card withBorder radius="md" padding="xl">
-    <Stack align="center" gap="sm" py="lg">
-      <ThemeIcon variant="light" color="red" size={48} radius="xl">
-        {icon}
-      </ThemeIcon>
-      <Text fw={600}>{title}</Text>
-      <Stack gap={4} align="center">
-        {lines.map((l) => (
-          <Text key={l} size="sm" c="dimmed" ta="center">
-            {l}
-          </Text>
-        ))}
-      </Stack>
-    </Stack>
-  </Card>
-);
-
-// ── Details & price — the one real form in S2. Edits flow up via onPatch, which
-//    autosaves the draft and rebuilds the live PF preview. Kept basic (a handful
-//    of the most preview-relevant fields); the full deed-extracted grid + source
-//    badges + comps reality-check is S4. ──
-const ASSET_CLASS = ['RESIDENTIAL', 'COMMERCIAL', 'LAND', 'INDUSTRIAL'];
-const PROPERTY_TYPE = [
-  'APARTMENT',
-  'VILLA',
-  'TOWNHOUSE',
-  'PENTHOUSE',
-  'STUDIO',
-  'OFFICE',
-  'SHOP',
-  'RETAIL',
-  'WAREHOUSE',
-  'SHOWROOM',
-  'PLOT',
-];
-const FURNISHING = ['FURNISHED', 'UNFURNISHED', 'PARTLY'];
-const COMPLETION = ['READY', 'OFF_PLAN'];
-
-const DetailsForm = ({
-  facts,
-  onPatch,
-}: {
-  facts: StudioFacts;
-  onPatch: (patch: Partial<StudioFacts>) => void;
-}) => (
-  <Card withBorder radius="md" padding="lg">
-    <Stack gap="md">
-      <Box>
-        <Text fw={600}>Details &amp; price</Text>
-        <Text size="sm" c="dimmed">
-          Confirm the facts. The live preview on the right updates as you type.
-        </Text>
-      </Box>
-
-      <TextInput
-        label="Listing title"
-        placeholder="e.g. Spacious 2-Bedroom Apartment in Dubai Marina"
-        value={facts.name ?? ''}
-        onChange={(e) => onPatch({ name: e.currentTarget.value })}
-      />
-
-      <Group grow>
-        <Select
-          label="Asset class"
-          data={ASSET_CLASS}
-          value={facts.assetClass ?? null}
-          onChange={(v) => onPatch({ assetClass: v ?? undefined })}
-          comboboxProps={{ withinPortal: true }}
-        />
-        <Select
-          label="Property type"
-          data={PROPERTY_TYPE}
-          value={facts.propertyType ?? null}
-          onChange={(v) => onPatch({ propertyType: v ?? undefined })}
-          comboboxProps={{ withinPortal: true }}
-        />
-      </Group>
-
-      <TextInput
-        label="Community"
-        placeholder="e.g. Dubai Marina"
-        value={facts.community ?? ''}
-        onChange={(e) => onPatch({ community: e.currentTarget.value })}
-      />
-
-      <Group grow>
-        <NumberInput
-          label="Bedrooms"
-          min={0}
-          value={facts.bedrooms ?? ''}
-          onChange={(v) =>
-            onPatch({ bedrooms: typeof v === 'number' ? v : undefined })
-          }
-        />
-        <NumberInput
-          label="Bathrooms"
-          min={0}
-          step={0.5}
-          value={facts.bathrooms ?? ''}
-          onChange={(v) =>
-            onPatch({ bathrooms: typeof v === 'number' ? v : undefined })
-          }
-        />
-        <NumberInput
-          label="Size (sqft)"
-          min={0}
-          value={facts.sizeSqft ?? ''}
-          onChange={(v) =>
-            onPatch({ sizeSqft: typeof v === 'number' ? v : undefined })
-          }
-        />
-      </Group>
-
-      <Group grow>
-        <Select
-          label="Furnishing"
-          data={FURNISHING}
-          value={facts.furnishing ?? null}
-          onChange={(v) => onPatch({ furnishing: v ?? undefined })}
-          comboboxProps={{ withinPortal: true }}
-        />
-        <Select
-          label="Completion"
-          data={COMPLETION}
-          value={facts.completionStatus ?? null}
-          onChange={(v) => onPatch({ completionStatus: v ?? undefined })}
-          comboboxProps={{ withinPortal: true }}
-        />
-      </Group>
-
-      <NumberInput
-        label="Asking price (AED)"
-        min={0}
-        thousandSeparator=","
-        value={facts.askingPriceAed ?? ''}
-        onChange={(v) =>
-          onPatch({ askingPriceAed: typeof v === 'number' ? v : undefined })
-        }
-      />
-    </Stack>
-  </Card>
-);
+// The per-step body — routes the current step to its full surface. The shell
+// (frame, rail, live PF preview, draft/resume) lives in ListingStudioPage; each
+// step component owns its own form + side-effects and reports up via the patch
+// handlers (facts/location/photos/writeup/permit/publish) so the draft autosaves and
+// the live PF preview rebuilds.
 
 export const StudioStepBody = ({
   step,
-  facts,
+  draft,
   onPatch,
+  onLocation,
+  onPhotos,
+  onWriteup,
+  onPermit,
+  onPublished,
+  onGoToStep,
 }: {
   step: StudioStep;
-  facts: StudioFacts;
+  draft: StudioDraft;
   onPatch: (patch: Partial<StudioFacts>) => void;
+  onLocation: (loc: StudioLocation) => void;
+  onPhotos: (photos: StudioPhoto[]) => void;
+  onWriteup: (writeup: StudioWriteup) => void;
+  onPermit: (permit: StudioPermit) => void;
+  onPublished: (result: StudioPublishResult) => void;
+  onGoToStep: (step: StudioStep) => void;
 }) => {
   switch (step) {
     case 'intake':
       return (
-        <StepStub
-          icon={<IconFileText size={26} />}
-          title="Intake the mandate"
-          lines={[
-            'Drop the title deed (or Oqood / SPA), Form A, and unit photos.',
-            'We read them and pre-fill the facts.',
-          ]}        />
+        <StudioIntakeStep
+          onCompletionDetected={(completion) => onPatch({ completionStatus: completion })}
+          onSkipToDetails={() => onGoToStep('details')}
+        />
       );
     case 'details':
-      return <DetailsForm facts={facts} onPatch={onPatch} />;
-    case 'photos':
       return (
-        <StepStub
-          icon={<IconPhoto size={26} />}
-          title="Photos"
-          lines={[
-            'Order and cover-pick the unit photos.',
-            'Apply the RE/MAX watermark — never double-stamped.',
-          ]}        />
+        <StudioDetailsStep
+          facts={draft.facts}
+          location={draft.location}
+          onPatch={onPatch}
+          onLocation={onLocation}
+        />
       );
+    case 'photos':
+      return <StudioPhotosStep photos={draft.photos ?? []} onPhotos={onPhotos} />;
     case 'writeup':
       return (
-        <StepStub
-          icon={<IconFileText size={26} />}
-          title="Write-up"
-          lines={[
-            'Generate EN + AR copy in your chosen tone.',
-            'Compliance-lint strips anything Property Finder rejects.',
-          ]}        />
+        <StudioWriteupStep
+          facts={draft.facts}
+          writeup={draft.writeup}
+          onWriteup={onWriteup}
+        />
       );
     case 'permit':
-      return (
-        <StepStub
-          icon={<IconId size={26} />}
-          title="Permit"
-          lines={[
-            'Enter the Trakheesi permit you obtained from DLD.',
-            'We validate it against the property and expiry.',
-          ]}        />
-      );
+      return <StudioPermitStep permit={draft.permit} onPermit={onPermit} />;
     case 'publish':
-      return (
-        <StepStub
-          icon={<IconRocket size={26} />}
-          title="Publish"
-          lines={[
-            'Check eligibility and the credit cost.',
-            'Go live on Property Finder.',
-          ]}        />
-      );
+      return <StudioPublishStep draft={draft} onPublished={onPublished} />;
     default:
       return null;
   }

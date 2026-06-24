@@ -42,13 +42,90 @@ export interface StudioFacts {
   tenure?: string;
 }
 
-// A Studio draft as the hero owns it. `draftId` is client-minted in S2.
+// ── Write-up (Step 4) — the AI EN+AR copy + the chosen tone. ──────────────────
+export type StudioTone = 'luxury' | 'friendly' | 'facts';
+
+export interface StudioWriteup {
+  titleEn?: string;
+  descriptionEn?: string;
+  titleAr?: string;
+  descriptionAr?: string;
+  tone?: StudioTone;
+}
+
+// A single compliance-lint finding from the write-up route.
+export interface StudioLintFinding {
+  severity: 'hard' | 'soft';
+  field: 'titleEn' | 'titleAr' | 'descriptionEn' | 'descriptionAr';
+  message: string;
+}
+
+// ── Photos (Step 3) — a watermarked, ordered photo. `dataUrl` is the in-browser
+//    preview (the stamped bytes); `hosted` is the public URL PF will fetch (set
+//    once the host step runs — an open dependency on the B2 path). ──
+export interface StudioPhoto {
+  id: string;
+  name: string;
+  /** data: URL of the stamped (or original) bytes for preview. */
+  dataUrl: string;
+  /** true once the RE/MAX watermark has been applied to this photo. */
+  watermarked: boolean;
+  /** the public HTTPS URL PF fetches (set by the host step; may be absent). */
+  hosted?: string;
+}
+
+// ── Permit (Step 5) — the manually-entered Trakheesi block + validation result. ─
+export type StudioPermitAuthority = 'rera' | 'dtcm' | 'adrec';
+
+export interface StudioPermit {
+  permitNumber?: string;
+  authority?: StudioPermitAuthority;
+  licenseNumber?: string;
+  issuanceDate?: string;
+  /** the step-5 attestation checkbox. */
+  userConfirmedDataIsCorrect?: boolean;
+  /** set true once /listing-studio/permit validated it. */
+  validated?: boolean;
+  /** PF's expiry for the reality-check. */
+  expiresAt?: string;
+}
+
+// ── The PF location resolved by the typeahead (Step 2). ───────────────────────
+export interface StudioLocation {
+  id: number;
+  name: string;
+  /** true when this is the sandbox fallback (geo lookup unavailable). */
+  fallback?: boolean;
+}
+
+// ── Publish result (Step 6) the manage card renders. ──────────────────────────
+export interface StudioPublishResult {
+  listingId: string;
+  reference?: string;
+  published: boolean;
+  /** PF state, e.g. "pending_publishing" (async — 200 != live). */
+  state?: string;
+  cost?: { name?: string; credits?: number };
+}
+
+// A Studio draft as the hero owns it. `draftId` is client-minted in S2; S3+ add
+// the per-step state (location, photos, writeup, permit, publish).
 export interface StudioDraft {
   draftId: string;
   entry: StudioEntry;
   propertyId?: string;
   facts: StudioFacts;
   step: StudioStep;
+  /** Step 2 — the resolved PF location. */
+  location?: StudioLocation;
+  /** Step 3 — watermarked, ordered photos (cover = index 0). */
+  photos?: StudioPhoto[];
+  /** Step 4 — the AI write-up. */
+  writeup?: StudioWriteup;
+  /** Step 5 — the validated permit. */
+  permit?: StudioPermit;
+  /** Step 6 — the publish/manage result once live. */
+  publish?: StudioPublishResult;
 }
 
 // The PF-vocabulary projection the preview pane renders (spec §6). Built server-

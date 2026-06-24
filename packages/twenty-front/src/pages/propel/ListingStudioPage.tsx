@@ -60,6 +60,7 @@ export const ListingStudioPage = () => {
     startFromProperty,
     resume,
     patchFacts,
+    patchDraft,
     goToStep,
     discard,
   } = useListingStudioDraft();
@@ -164,8 +165,14 @@ export const ListingStudioPage = () => {
             >
               <StudioStepBody
                 step={draft.step}
-                facts={draft.facts}
+                draft={draft}
                 onPatch={patchFacts}
+                onLocation={(location) => patchDraft({ location })}
+                onPhotos={(photos) => patchDraft({ photos })}
+                onWriteup={(writeup) => patchDraft({ writeup })}
+                onPermit={(permit) => patchDraft({ permit })}
+                onPublished={(publish) => patchDraft({ publish })}
+                onGoToStep={goToStep}
               />
             </Box>
 
