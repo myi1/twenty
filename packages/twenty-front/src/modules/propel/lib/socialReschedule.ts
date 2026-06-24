@@ -17,6 +17,7 @@ import { parseMediaRefs } from '@/propel/lib/socialPostDetail';
 import { type SaveOutcome, savePost } from '@/propel/lib/socialComposer';
 import {
   callPropelRoute,
+  callPropelRouteWithStatus,
 } from '@/propel/lib/callPropelRoute';
 import {
   type SocialNetwork,
@@ -153,11 +154,30 @@ const RETRY_ERROR_FALLBACK: Record<string, string> = {
 // the cron's next attempt starts clean. The UI only offers Retry on FAILED posts,
 // but we still surface the envelope honestly if the server disagrees.
 export const retryPost = async (postId: string): Promise<RetryOutcome> => {
-  const res = await callPropelRoute<unknown>('/marketing/social/retry-post', {
-    body: { postId },
-  });
+  // Status-aware: the retry route may not be deployed on every environment yet.
+  // A 404 there must read as "retry isn't available on this server" (an honest,
+  // actionable message), NOT the generic "check your connection" — otherwise an
+  // operator chases a network ghost. See callPropelRouteWithStatus + the report
+  // note flagging /marketing/social/retry-post as a pending CRM-app route.
+  const { data: res, status } = await callPropelRouteWithStatus<unknown>(
+    '/marketing/social/retry-post',
+    { body: { postId } },
+  );
 
   if (res === null) {
+    // 404 = the route isn't on this server (coordinator-gated routes return a
+    // NOT_FOUND *envelope* with a 200, not a 404 — a real 404 means the route
+    // itself is absent). Distinguish that from a transport failure (status 0).
+    if (status === 404) {
+      return {
+        ok: false,
+        code: 'ROUTE_MISSING',
+        message:
+          "Retry isn't available on this environment yet. Delete this post and re-compose it, or use Duplicate to start a fresh draft from it.",
+        operatorAction:
+          'Use Duplicate (or Delete + re-compose) until the retry route is deployed.',
+      };
+    }
     return {
       ok: false,
       code: 'NETWORK',
