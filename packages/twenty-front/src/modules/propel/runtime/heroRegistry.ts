@@ -1,16 +1,26 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Propel runtime-loaded heroes — REGISTRY
+// Propel runtime-loaded heroes — REGISTRY (derived from the nav config)
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// One entry per graduated hero. The `name` (the map KEY) is the bundle directory
-// served at `${REACT_APP_HEROES_BASE_URL}/<name>/index.js` and the slug used in the
-// router (`<HeroRoute name="listing-studio" />`). `displayName` is for fallback /
-// error UI only.
+// The hero set (bundle names + display names + routes) now lives in ONE place:
+// the runtime nav config (propelNavConfig.ts → DEFAULT_NAV_CONFIG, overridable by
+// the host-mounted nav.config.json). This module is a thin lookup over it so the
+// rest of the runtime-hero code (HeroRoute's error UI, etc.) keeps a stable API.
 //
-// Migration status: only `listing-studio` loads at runtime today (the others still
-// ride the in-bundle `lazy()` routes in useCreateAppRouter.tsx). As each hero is
-// ported, swap its route to <HeroRoute name="…"/> and it joins the runtime path.
+// `name` (the bundle name) is the directory served at
+// `${REACT_APP_HEROES_BASE_URL}/<name>/index.js` and the slug used in the router
+// (`<HeroRoute name="listing-studio" />`). Adding a hero is now a config-only
+// change — add an entry to the nav config and BOTH its nav item and its route
+// pick it up, no edit here required.
 
+import {
+  DEFAULT_NAV_CONFIG,
+  getPropelNavConfig,
+} from '@/propel/runtime/propelNavConfig';
+
+// The known-at-build-time bundle names. Kept as a type for the routes that name
+// heroes literally in TSX (useCreateAppRouter); runtime-added heroes are still
+// fine because HeroRoute accepts any string name.
 export type HeroName =
   | 'inbox'
   | 'listing-studio'
@@ -21,17 +31,18 @@ export type HeroName =
   | 'social-calendar'
   | 'a2a-studio';
 
-export type HeroDescriptor = {
-  displayName: string;
-};
-
-export const HERO_REGISTRY: Record<HeroName, HeroDescriptor> = {
-  inbox: { displayName: 'Inbox' },
-  'listing-studio': { displayName: 'Listing Studio' },
-  'marketing-hub': { displayName: 'Marketing' },
-  'campaign-builder': { displayName: 'Campaign Builder' },
-  'sequence-editor': { displayName: 'Sequence Editor' },
-  'one-on-one-runner': { displayName: '1:1 Runner' },
-  'social-calendar': { displayName: 'Social Calendar' },
-  'a2a-studio': { displayName: 'A2A Studio' },
+// Look up a hero's display name (for the loading / error UI). Reads the live nav
+// config first (so a mounted relabel is reflected), then the baked default,
+// finally the bundle name itself.
+export const getHeroDisplayName = (name: string): string => {
+  const fromLive = getPropelNavConfig().entries.find(
+    (entry) => entry.bundle === name,
+  )?.label;
+  if (fromLive !== undefined) {
+    return fromLive;
+  }
+  const fromDefault = DEFAULT_NAV_CONFIG.entries.find(
+    (entry) => entry.bundle === name,
+  )?.label;
+  return fromDefault ?? name;
 };

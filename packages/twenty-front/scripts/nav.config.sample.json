@@ -1,0 +1,42 @@
+{
+  "_comment": "Propel nav fast-path config (Taskmaster #74). This is a SAMPLE / reference of the file the frontend fetches at GET ${REACT_APP_HEROES_BASE_URL || '/heroes'}/nav.config.json. Drop a copy (named exactly nav.config.json) on the SAME host-mounted heroes volume that serves the hero bundles, then hard-refresh the browser — NO engine rebuild. Prod mount: /data/coolify/services/<svc>/heroes/nav.config.json. Staging mount: ~/twenty-staging/heroes/nav.config.json. Each entry merges OVER the baked default (packages/twenty-front/src/modules/propel/runtime/propelNavConfig.ts DEFAULT_NAV_CONFIG) by `key` — so to just relabel Marketing you only need {\"key\":\"marketing-hub\",\"label\":\"Campaigns\"}. `icon` is any Tabler icon name from twenty-ui/display (e.g. IconBroadcast). `enabled:false` hides the sidebar item but the route still resolves for deep-links. `route` is the AppPath path string. `bundle` is the runtime hero bundle name (heroes/<bundle>/index.js). If this file is absent/malformed the baked default is used and nothing regresses.",
+  "version": 1,
+  "entries": [
+    {
+      "key": "inbox",
+      "label": "Inbox",
+      "icon": "IconInbox",
+      "route": "/inbox",
+      "bundle": "inbox",
+      "enabled": true,
+      "order": 10
+    },
+    {
+      "key": "marketing-hub",
+      "label": "Marketing",
+      "icon": "IconBroadcast",
+      "route": "/marketing",
+      "bundle": "marketing-hub",
+      "enabled": true,
+      "order": 20
+    },
+    {
+      "key": "one-on-one-runner",
+      "label": "Weekly 1:1",
+      "icon": "IconUsers",
+      "route": "/one-on-one",
+      "bundle": "one-on-one-runner",
+      "enabled": true,
+      "order": 30
+    },
+    {
+      "key": "listing-studio",
+      "label": "Listing Studio",
+      "icon": "IconBuildingSkyscraper",
+      "route": "/listing-studio",
+      "bundle": "listing-studio",
+      "enabled": true,
+      "order": 40
+    }
+  ]
+}

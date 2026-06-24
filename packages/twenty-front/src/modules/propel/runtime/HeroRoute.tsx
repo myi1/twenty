@@ -34,7 +34,7 @@ import {
   type PropelHeroHost,
   type PropelHeroNotifyVariant,
 } from '@/propel/runtime/heroHost';
-import { type HeroName, HERO_REGISTRY } from '@/propel/runtime/heroRegistry';
+import { getHeroDisplayName } from '@/propel/runtime/heroRegistry';
 
 // REACT_APP_HEROES_BASE_URL: where hero bundles are served. Default `/heroes` (the
 // runtime-mutable volume). Runtime read pattern mirrors the rest of the front:
@@ -47,7 +47,10 @@ const heroesBaseUrl = (): string =>
 // Module-level cache of lazy components keyed by hero name, so re-navigating to a
 // hero doesn't re-trigger the dynamic import (React.lazy already memoizes per
 // component identity — we must NOT create a fresh lazy() on every render).
-const lazyHeroCache = new Map<string, ComponentType<{ host: PropelHeroHost }>>();
+const lazyHeroCache = new Map<
+  string,
+  ComponentType<{ host: PropelHeroHost }>
+>();
 
 const getLazyHero = (name: string): ComponentType<{ host: PropelHeroHost }> => {
   const cached = lazyHeroCache.get(name);
@@ -142,7 +145,9 @@ const HeroLoading = () => (
 );
 
 // ── The route component ───────────────────────────────────────────────────────
-export const HeroRoute = ({ name }: { name: HeroName }) => {
+// `name` is the hero bundle name (e.g. "marketing-hub"). Typed as a plain string
+// so a hero added purely via the runtime nav config (no code change) still works.
+export const HeroRoute = ({ name }: { name: string }) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const {
@@ -152,7 +157,10 @@ export const HeroRoute = ({ name }: { name: HeroName }) => {
     enqueueWarningSnackBar,
   } = useSnackBar();
 
-  const notify = (message: string, variant: PropelHeroNotifyVariant = 'info') => {
+  const notify = (
+    message: string,
+    variant: PropelHeroNotifyVariant = 'info',
+  ) => {
     if (variant === 'success') return enqueueSuccessSnackBar({ message });
     if (variant === 'error') return enqueueErrorSnackBar({ message });
     if (variant === 'warning') return enqueueWarningSnackBar({ message });
@@ -170,7 +178,7 @@ export const HeroRoute = ({ name }: { name: HeroName }) => {
   };
 
   const Hero = getLazyHero(name);
-  const displayName = HERO_REGISTRY[name]?.displayName ?? name;
+  const displayName = getHeroDisplayName(name);
 
   return (
     <HeroErrorBoundary displayName={displayName}>

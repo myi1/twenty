@@ -1,26 +1,27 @@
 import { useLingui } from '@lingui/react/macro';
-import { AppPath, SettingsPath } from 'twenty-shared/types';
-import {
-  IconBroadcast,
-  IconBuildingSkyscraper,
-  IconHelpCircle,
-  IconInbox,
-  IconSettings,
-  IconUsers,
-} from 'twenty-ui/display';
+import { SettingsPath } from 'twenty-shared/types';
+import { IconHelpCircle, IconSettings } from 'twenty-ui/display';
 import { AnimatedExpandableContainer } from 'twenty-ui/layout';
 
-// Propel: the graduated Marketing Home hub and the 1:1 Runner hub nav entries are
-// gated behind a build/runtime flag so they only appear where the engine image
-// enables them. Same dual mechanism as the dialer dock (window._env_ for the Docker
-// runtime injection, import.meta.env for vite dev). The /marketing and /one-on-one
-// routes themselves register unconditionally (they simply 404 when nav-hidden); only
-// these nav items are gated.
+// Propel: the graduated hero hub nav entries (Inbox, Marketing, Weekly 1:1,
+// Listing Studio, …) are gated behind a build/runtime flag so they only appear
+// where the engine image enables them. Same dual mechanism as the dialer dock
+// (window._env_ for the Docker runtime injection, import.meta.env for vite dev).
+// The hero routes themselves register unconditionally (they 404 when nav-hidden);
+// only these nav ITEMS are gated.
 const PROPEL_MARKETING_HUB_ENABLED =
   Boolean(window._env_?.REACT_APP_PROPEL_MARKETING_HUB) ||
   Boolean(import.meta.env.REACT_APP_PROPEL_MARKETING_HUB);
 
 import { currentWorkspaceMemberState } from '@/auth/states/currentWorkspaceMemberState';
+import {
+  getEnabledNavEntries,
+  type PropelNavEntry,
+} from '@/propel/runtime/propelNavConfig';
+import {
+  resolvePropelNavIcon,
+  usePropelNavConfig,
+} from '@/propel/runtime/usePropelNavConfig';
 import { getDocumentationUrl } from '@/support/utils/getDocumentationUrl';
 import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomStateValue';
 
@@ -33,10 +34,31 @@ import { isNavigationSectionOpenFamilyState } from '@/ui/navigation/navigation-d
 import { useAtomFamilyStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomFamilyStateValue';
 import { useNavigateSettings } from '~/hooks/useNavigateSettings';
 
+// One Propel hero nav item, rendered from a runtime config entry. The label is a
+// plain string straight from the config (NOT the t`` Lingui macro): these are
+// Propel-custom strings absent from the compiled catalog, so the macro would
+// render the hashed message id ("vo2a+a") instead of the text — the very bug
+// (TM#14) this config approach fixes. The CRM is English-only, so a literal is
+// correct and catalog-independent. The icon name is resolved against
+// twenty-ui/display at render so config can name any Tabler icon.
+const PropelHeroNavItem = ({ entry }: { entry: PropelNavEntry }) => (
+  <NavigationDrawerItem
+    label={entry.label}
+    to={entry.route}
+    Icon={resolvePropelNavIcon(entry.icon)}
+  />
+);
+
 export const NavigationDrawerOtherSection = () => {
   const { t } = useLingui();
   const navigateSettings = useNavigateSettings();
   const currentWorkspaceMember = useAtomStateValue(currentWorkspaceMemberState);
+
+  // Runtime nav config — read from the host-mounted nav.config.json (loaded at
+  // boot, baked default until then). usePropelNavConfig re-renders this section
+  // when the mounted config arrives. See modules/propel/runtime/propelNavConfig.ts.
+  const navConfig = usePropelNavConfig();
+  const propelNavEntries = getEnabledNavEntries(navConfig);
 
   const { toggleNavigationSection } = useNavigationSection('Other');
   const isNavigationSectionOpen = useAtomFamilyStateValue(
@@ -64,52 +86,14 @@ export const NavigationDrawerOtherSection = () => {
         containAnimation
         initial={false}
       >
-        {/* Propel: plain string labels (NOT the t`` macro). These are
-            Propel-custom strings absent from the compiled Lingui catalog, so the
-            macro renders the hashed message id at runtime ("vo2a+a" / "4T6rI4")
-            instead of the text. The CRM is English-only, so a literal is correct
-            and catalog-independent. Do not "restore" the t`` macro. */}
-        {/* Propel: the unified Inbox graduated from a tab inside the Marketing hero
-            to its OWN top-level nav entry (founder-directed), placed ABOVE Marketing.
-            Same gate as Marketing (REACT_APP_PROPEL_MARKETING_HUB); the /inbox route
-            registers unconditionally and serves the runtime-loaded `inbox` hero. */}
-        {PROPEL_MARKETING_HUB_ENABLED && (
-          <NavigationDrawerItem
-            label="Inbox"
-            to={AppPath.Inbox}
-            Icon={IconInbox}
-          />
-        )}
-        {PROPEL_MARKETING_HUB_ENABLED && (
-          <NavigationDrawerItem
-            label="Marketing"
-            to={AppPath.MarketingHub}
-            Icon={IconBroadcast}
-          />
-        )}
-        {/* Social Calendar is now the "Social" tab inside the unified Marketing
-            hero (task #41) — its standalone nav item was removed so Marketing is a
-            single entry. The /marketing/social route still resolves for any saved
-            deep-links. */}
-        {PROPEL_MARKETING_HUB_ENABLED && (
-          <NavigationDrawerItem
-            label="Weekly 1:1"
-            to={AppPath.OneOnOneRunner}
-            Icon={IconUsers}
-          />
-        )}
-        {/* A2A Studio has NO standalone nav entry: it's only meaningful opened from
-            a Secondary/Sell opportunity (the "Prepare A2A" command prefills it), and a
-            bare nav link just lands on the "open from an opportunity" placeholder. The
-            /a2a-studio route still resolves (the command + any deep-links navigate to
-            it). Removed per founder 2026-06-19. */}
-        {PROPEL_MARKETING_HUB_ENABLED && (
-          <NavigationDrawerItem
-            label="Listing Studio"
-            to={AppPath.ListingStudio}
-            Icon={IconBuildingSkyscraper}
-          />
-        )}
+        {/* Propel hero nav items, rendered from the runtime config. Labels,
+            icons, order and routes are all config-driven — editing them needs only
+            a nav.config.json edit on the heroes mount + a refresh (NO rebuild).
+            Gated by REACT_APP_PROPEL_MARKETING_HUB exactly as before. */}
+        {PROPEL_MARKETING_HUB_ENABLED &&
+          propelNavEntries.map((entry) => (
+            <PropelHeroNavItem key={entry.key} entry={entry} />
+          ))}
         <NavigationDrawerItem
           label={t`Settings`}
           Icon={IconSettings}
