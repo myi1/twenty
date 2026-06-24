@@ -28,6 +28,7 @@ export enum AppPath {
   OneOnOneRunner = '/one-on-one',
   A2AStudio = '/a2a-studio',
   ListingStudio = '/listing-studio',
+  SettingsHub = '/settings-hub',
 
   RecordIndexPage = '/objects/:objectNamePlural',
   RecordShowPage = '/object/:objectNameSingular/:objectRecordId',

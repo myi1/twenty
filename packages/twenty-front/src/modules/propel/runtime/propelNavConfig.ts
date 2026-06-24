@@ -133,6 +133,15 @@ export const DEFAULT_NAV_CONFIG: PropelNavConfig = {
       enabled: true,
       order: 40,
     },
+    {
+      key: 'settings-hub',
+      label: 'Settings',
+      icon: 'IconSettings',
+      route: AppPath.SettingsHub,
+      bundle: 'settings-hub',
+      enabled: true,
+      order: 90,
+    },
     // ── route-only entries (no sidebar item; deep-links still resolve) ──
     {
       key: 'campaign-builder',

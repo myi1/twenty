@@ -37,6 +37,15 @@
       "bundle": "listing-studio",
       "enabled": true,
       "order": 40
+    },
+    {
+      "key": "settings-hub",
+      "label": "Settings",
+      "icon": "IconSettings",
+      "route": "/settings-hub",
+      "bundle": "settings-hub",
+      "enabled": true,
+      "order": 90
     }
   ]
 }
