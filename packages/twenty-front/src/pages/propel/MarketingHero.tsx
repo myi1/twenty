@@ -9,9 +9,11 @@ import {
   IconPhone,
   IconSend,
   IconSettings,
+  IconTargetArrow,
 } from 'twenty-ui/display';
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
+import { AdsTab } from '@/propel/components/marketingHero/AdsTab';
 import { CampaignsTab } from '@/propel/components/marketingHero/CampaignsTab';
 import { ConfigTab } from '@/propel/components/marketingHero/ConfigTab';
 import { MarketingHomeTab } from '@/propel/components/marketingHero/MarketingHomeTab';
@@ -29,7 +31,7 @@ import { isManagerRole, useViewerRole } from '@/propel/hooks/useViewerRole';
 // header (title + tab strip) and the active tab body, wrapped in its own Mantine
 // scope (PropelMantineProvider).
 //
-// Tab order: Home · Campaigns · Templates · Social · Numbers · Config. The
+// Tab order: Home · Campaigns · Ads · Templates · Social · Numbers · Config. The
 // active tab is URL-synced via ?tab= so a tab is linkable / survives reload /
 // back-forward navigates between tabs. (Inbox graduated OUT of this hero to its own
 // top-level /inbox route — see InboxPage; ?tab=inbox redirects there for old links.)
@@ -37,6 +39,14 @@ import { isManagerRole, useViewerRole } from '@/propel/hooks/useViewerRole';
 // Tab status:
 //   • Home      — full (the graduated dashboard, formerly MarketingHomePage)
 //   • Campaigns — list only (detail drill-in deferred; see CampaignsTab)
+//   • Ads       — MANAGER/ADMIN ONLY (gated by useViewerRole). The Meta Ads
+//                 monitor + light actions, graduated from the legacy in-sandbox
+//                 Marketing Cloud "Ads" tab (marketing-cloud-ads.tsx). Live Meta
+//                 campaigns (spend/leads/CPL) joined to CRM leads/opps/revenue/ROI
+//                 by externalId, a 7/30/90d range, a per-campaign daily-series
+//                 drawer, and pause/resume · budget · duplicate. Reads the
+//                 MANAGER/ADMIN-gated /marketing/meta-ads-monitor + -action routes,
+//                 so it's hidden from agents (the route is the fail-closed backstop).
 //   • Templates — full catalog + editor modals (merge-tags sub-tab deferred)
 //   • Social    — full (the social calendar, formerly SocialCalendarPage)
 //   • Numbers   — full (the telephony number hub)
@@ -57,6 +67,7 @@ import { isManagerRole, useViewerRole } from '@/propel/hooks/useViewerRole';
 type HeroTab =
   | 'home'
   | 'campaigns'
+  | 'ads'
   | 'templates'
   | 'social'
   | 'numbers'
@@ -65,6 +76,7 @@ type HeroTab =
 const TAB_VALUES: HeroTab[] = [
   'home',
   'campaigns',
+  'ads',
   'templates',
   'social',
   'numbers',
@@ -95,10 +107,18 @@ export const MarketingHero = () => {
   // agent who deep-links ?tab=config is bounced to Home below.
   const { role: viewerRole } = useViewerRole();
   const canSeeConfig = isManagerRole(viewerRole);
+  // Ads (Meta Ads monitor + actions) is MANAGER/ADMIN only — the monitor route is
+  // coordinator-gated server-side, so agents would only ever see a blocked empty
+  // shape. Hide the tab from them entirely (same gate as Config); a deep-link to
+  // ?tab=ads is bounced to Home below.
+  const canSeeAds = isManagerRole(viewerRole);
 
   const requestedTab: HeroTab = isHeroTab(rawTab) ? rawTab : 'home';
   const activeTab: HeroTab =
-    requestedTab === 'config' && !canSeeConfig ? 'home' : requestedTab;
+    (requestedTab === 'config' && !canSeeConfig) ||
+    (requestedTab === 'ads' && !canSeeAds)
+      ? 'home'
+      : requestedTab;
 
   // Campaigns + Templates read the same fuller hub payload; one fetch, shared
   // reload. (Mounted at hero level so switching between the two tabs doesn't
@@ -137,6 +157,11 @@ export const MarketingHero = () => {
             />
           ) : null}
         </Tabs.Panel>
+        {canSeeAds ? (
+          <Tabs.Panel value="ads">
+            {activeTab === 'ads' ? <AdsTab /> : null}
+          </Tabs.Panel>
+        ) : null}
         <Tabs.Panel value="templates">
           {activeTab === 'templates' ? (
             <TemplatesTab
@@ -159,7 +184,7 @@ export const MarketingHero = () => {
         ) : null}
       </>
     ),
-    [activeTab, hub, hubLoading, reloadHub, canSeeConfig],
+    [activeTab, hub, hubLoading, reloadHub, canSeeAds, canSeeConfig],
   );
 
   return (
@@ -200,6 +225,11 @@ export const MarketingHero = () => {
             <Tabs.Tab value="campaigns" leftSection={<IconSend size={15} />}>
               Campaigns
             </Tabs.Tab>
+            {canSeeAds ? (
+              <Tabs.Tab value="ads" leftSection={<IconTargetArrow size={15} />}>
+                Ads
+              </Tabs.Tab>
+            ) : null}
             <Tabs.Tab value="templates" leftSection={<IconFileText size={15} />}>
               Templates
             </Tabs.Tab>
