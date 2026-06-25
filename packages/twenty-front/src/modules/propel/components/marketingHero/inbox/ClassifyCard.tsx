@@ -47,9 +47,10 @@ import {
 // Placement: directly under the Triage card in InboxContextRail.
 //
 // CALM REDESIGN (2026-06-25, founder-approved): ONE accent — only the Save button is
-// coloured (blue, the calm info/brand accent). Every secondary link is neutral/dimmed,
-// never red (red is reserved strictly for destructive actions — there are none here).
-// Sentence-case labels, generous spacing, 0.5px dividers, normal/medium weights.
+// coloured, in RE/MAX brand red (`remax` = #DC1C2E, PropelMantineProvider). It stays
+// the single coloured element; every secondary link is neutral/dimmed. Red-the-colour
+// is otherwise reserved for the brand accent only (no generic alert-red here — there
+// are no destructive actions). Sentence-case labels, generous spacing, 0.5px dividers.
 //
 // TYPE / TEAM-MEMBER DEDUP: the standalone "Mark as team member" toggle is GONE.
 // "Remax Hub agent" is now just a contactType value (Not-prospects group). When that
@@ -478,11 +479,13 @@ export const ClassifyCard = ({
           </Text>
         </Box>
 
-        {/* The ONE accent in the card — the primary Save button (blue = calm info
-            accent). Everything else stays neutral. */}
+        {/* The ONE accent in the card — the primary Save button in RE/MAX brand red
+            (`remax` = #DC1C2E, defined in PropelMantineProvider). It stays the only
+            coloured element; everything else is neutral/dimmed, so the single accent
+            reads as brand, not as the old red-everywhere noise. */}
         <Button
           size="xs"
-          color="blue"
+          color="remax"
           fullWidth
           disabled={!dirty || noteTooLong}
           loading={saving}
@@ -582,7 +585,7 @@ export const ClassifyCard = ({
                             <Button
                               size="compact-xs"
                               variant="filled"
-                              color="blue"
+                              color="remax"
                               loading={merging}
                               onClick={() => void confirmMerge(cand.id)}
                             >

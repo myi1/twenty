@@ -19,6 +19,28 @@ import { ThemeContext, themeCssVariables } from 'twenty-ui/theme-constants';
 
 const propelMantineTheme = createTheme({
   fontFamily: 'Inter, sans-serif',
+  // The RE/MAX brand red (#DC1C2E) as a named Mantine color. Mantine's built-in
+  // `red` is a generic alert-red (#e03131-ish), NOT the brand colour — and it's
+  // still used semantically elsewhere (SLA-breach badge, negative sentiment), so we
+  // DON'T hijack it. Instead `remax` is a dedicated 10-shade scale anchored on
+  // #DC1C2E at the primary index (light 6 / dark 8, matching Mantine's defaults), so
+  // `color="remax"` on the ONE primary button per calm card renders the true brand
+  // red with correct hover/disabled/light derivations. The single accent in the
+  // calmed Inbox surfaces (ClassifyCard Save, Triage primary action) references it.
+  colors: {
+    remax: [
+      '#fff0f1', // 0 — lightest tint (light backgrounds / 'remax-light')
+      '#ffe0e3', // 1
+      '#ffc2c8', // 2
+      '#fb9aa3', // 3
+      '#f3727e', // 4
+      '#ea5060', // 5
+      '#dc1c2e', // 6 — BRAND RED (primary shade, light scheme)
+      '#c11626', // 7
+      '#9f1220', // 8 — primary shade, dark scheme
+      '#7d0d18', // 9 — darkest
+    ],
+  },
   primaryColor: 'red',
   defaultRadius: 'md',
   // Dropdowns must paint ABOVE Twenty's drawers/modals. The hero composer lives in

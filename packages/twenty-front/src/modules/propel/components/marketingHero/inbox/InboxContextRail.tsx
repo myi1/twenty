@@ -110,20 +110,25 @@ const TriageRailCard = ({ row }: { row: InboxThreadRow }) => {
   return (
     <Box
       p="md"
-      style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}
+      style={{ borderBottom: '0.5px solid var(--mantine-color-default-border)' }}
     >
+      {/* CALM REDESIGN (2026-06-25, founder follow-up) — same treatment as the
+          ClassifyCard: neutral chrome (no red border/gradient), sentence-case labels,
+          medium weights, breathing room. Colour is reserved for MEANING only: the
+          class badge keeps its semantic colour (it encodes lead class), and the
+          SLA-breach badge stays red because it's a genuine urgency alert. No red
+          decoration. */}
       <Box
         style={{
-          border: '1px solid var(--mantine-color-red-light)',
+          border: '0.5px solid var(--mantine-color-default-border)',
           borderRadius: 12,
-          background:
-            'linear-gradient(180deg, var(--mantine-color-red-light), transparent 70%)',
+          background: 'var(--mantine-color-default-hover)',
           padding: '12px 13px',
         }}
       >
         <Group gap={7} mb="sm" wrap="nowrap">
-          <IconSparkles size={14} color="var(--mantine-color-red-6)" />
-          <Text size="sm" fw={700}>
+          <IconSparkles size={14} color="var(--mantine-color-dimmed)" />
+          <Text size="sm" fw={600}>
             Triage
           </Text>
           {row.slaBreached ? (
@@ -133,7 +138,7 @@ const TriageRailCard = ({ row }: { row: InboxThreadRow }) => {
           ) : ageLabel ? (
             <Text
               size="xs"
-              fw={700}
+              fw={600}
               ml="auto"
               c={
                 row.ageMs != null && row.ageMs > 8 * 60_000
@@ -146,7 +151,7 @@ const TriageRailCard = ({ row }: { row: InboxThreadRow }) => {
           ) : null}
         </Group>
         <Group gap={8} mb={7}>
-          <Text size="xs" tt="uppercase" fw={700} c="dimmed">
+          <Text size="xs" fw={500} c="dimmed">
             Class
           </Text>
           <Badge size="sm" variant="light" color={meta.color}>
@@ -157,8 +162,9 @@ const TriageRailCard = ({ row }: { row: InboxThreadRow }) => {
           <Text
             size="xs"
             c="dimmed"
+            lh={1.4}
             style={{
-              background: 'var(--mantine-color-default-hover)',
+              background: 'var(--mantine-color-body)',
               borderRadius: 8,
               padding: '7px 9px',
               margin: '7px 0',
@@ -169,14 +175,14 @@ const TriageRailCard = ({ row }: { row: InboxThreadRow }) => {
         ) : null}
         {row.leadSource ? (
           <Group gap={8} mb={5}>
-            <Text size="xs" tt="uppercase" fw={700} c="dimmed">
+            <Text size="xs" fw={500} c="dimmed">
               Source
             </Text>
             <Text size="xs">{humanizeEnum(row.leadSource)}</Text>
           </Group>
         ) : null}
         <Group gap={8}>
-          <Text size="xs" tt="uppercase" fw={700} c="dimmed">
+          <Text size="xs" fw={500} c="dimmed">
             Owner
           </Text>
           <Text size="xs" c={owned ? undefined : 'dimmed'}>
@@ -185,7 +191,7 @@ const TriageRailCard = ({ row }: { row: InboxThreadRow }) => {
         </Group>
         {!owned && row.suggestedAgentName ? (
           <Text size="xs" c="dimmed" mt={9} lh={1.45}>
-            <Text span fw={700} c="var(--mantine-color-text)">
+            <Text span fw={600} c="var(--mantine-color-text)">
               Suggested:
             </Text>{' '}
             {row.suggestedAgentName}
@@ -307,7 +313,7 @@ const TriageActions = ({
       <Box
         p="md"
         style={{
-          borderBottom: '1px solid var(--mantine-color-default-border)',
+          borderBottom: '0.5px solid var(--mantine-color-default-border)',
         }}
       >
         <Text size="xs" c="dimmed">
@@ -320,15 +326,18 @@ const TriageActions = ({
   return (
     <Box
       p="md"
-      style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}
+      style={{ borderBottom: '0.5px solid var(--mantine-color-default-border)' }}
     >
       <Stack gap={8}>
         {isManager && personId ? (
           <>
+            {/* Primary triage action — the ONE brand-red accent in this surface
+                (`remax` = #DC1C2E, matching the ClassifyCard Save). Assigning starts
+                the SLA clock + first-response task, so it's the dominant action. */}
             <Button
               size="xs"
               variant={panel === 'assign' ? 'filled' : 'light'}
-              color="red"
+              color="remax"
               fullWidth
               leftSection={<IconUserPlus size={14} />}
               onClick={() => openPanel('assign')}
@@ -338,7 +347,7 @@ const TriageActions = ({
             {panel === 'assign' ? (
               <Box
                 style={{
-                  border: '1px solid var(--mantine-color-default-border)',
+                  border: '0.5px solid var(--mantine-color-default-border)',
                   borderRadius: 8,
                   padding: 6,
                   maxHeight: 200,
@@ -347,7 +356,7 @@ const TriageActions = ({
               >
                 {!agentsLoaded ? (
                   <Group gap={6} p={6}>
-                    <Loader size="xs" color="red" />
+                    <Loader size="xs" color="gray" />
                     <Text size="xs" c="dimmed">
                       Loading agents…
                     </Text>
@@ -390,7 +399,7 @@ const TriageActions = ({
                                 current
                               </Badge>
                             ) : isSuggested ? (
-                              <Badge size="xs" variant="light" color="red">
+                              <Badge size="xs" variant="light" color="gray">
                                 suggested
                               </Badge>
                             ) : null}
@@ -408,10 +417,12 @@ const TriageActions = ({
               </Box>
             ) : null}
 
+            {/* Secondary triage action — neutral, so the single red accent (Assign)
+                stays dominant and the surface reads calm. */}
             <Button
               size="xs"
-              variant={panel === 'opp' ? 'filled' : 'light'}
-              color="red"
+              variant={panel === 'opp' ? 'filled' : 'default'}
+              color="gray"
               fullWidth
               leftSection={<IconPlus size={14} />}
               onClick={() => openPanel('opp')}
@@ -505,17 +516,17 @@ const LeadEventsTimeline = ({ personId }: { personId: string }) => {
   return (
     <Box
       p="md"
-      style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}
+      style={{ borderTop: '0.5px solid var(--mantine-color-default-border)' }}
     >
       <Group gap={6} mb="sm">
-        <IconHistory size={13} color="var(--mantine-color-red-6)" />
-        <Text size="xs" tt="uppercase" fw={700} c="dimmed">
+        <IconHistory size={13} color="var(--mantine-color-dimmed)" />
+        <Text size="xs" fw={500} c="dimmed">
           Lead activity
         </Text>
       </Group>
       {phase === 'loading' ? (
         <Group gap={7}>
-          <Loader size="xs" color="red" />
+          <Loader size="xs" color="gray" />
           <Text size="xs" c="dimmed">
             Loading activity…
           </Text>
@@ -525,7 +536,7 @@ const LeadEventsTimeline = ({ personId }: { personId: string }) => {
           active={-1}
           bulletSize={20}
           lineWidth={2}
-          color="red"
+          color="gray"
           styles={{ itemBody: { paddingBottom: 4 } }}
         >
           {events.map((ev) => {
@@ -655,17 +666,17 @@ const InboxAiInsightsCard = ({
   return (
     <Box
       p="md"
-      style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}
+      style={{ borderTop: '0.5px solid var(--mantine-color-default-border)' }}
     >
       <Group gap={6} mb="sm">
-        <IconSparkles size={13} color="var(--mantine-color-red-6)" />
-        <Text size="xs" tt="uppercase" fw={700} c="dimmed">
+        <IconSparkles size={13} color="var(--mantine-color-dimmed)" />
+        <Text size="xs" fw={500} c="dimmed">
           AI insights
         </Text>
       </Group>
       <Box
         style={{
-          border: '1px solid var(--mantine-color-default-border)',
+          border: '0.5px solid var(--mantine-color-default-border)',
           borderRadius: 12,
           padding: '12px 13px',
         }}
@@ -680,13 +691,13 @@ const InboxAiInsightsCard = ({
         ) : phase === 'ready' && insights ? (
           <Stack gap={11}>
             <div>
-              <Text size="xs" tt="uppercase" fw={700} c="dimmed" mb={4}>
+              <Text size="xs" fw={500} c="dimmed" mb={4}>
                 Summary
               </Text>
               <Text size="sm">{insights.summary}</Text>
             </div>
             <Group gap={8}>
-              <Text size="xs" tt="uppercase" fw={700} c="dimmed">
+              <Text size="xs" fw={500} c="dimmed">
                 Sentiment
               </Text>
               <Badge size="sm" variant="light" color={sentimentColor}>
@@ -695,8 +706,8 @@ const InboxAiInsightsCard = ({
             </Group>
             <div>
               <Group gap={5} mb={4}>
-                <IconArrowRight size={12} color="var(--mantine-color-red-6)" />
-                <Text size="xs" tt="uppercase" fw={700} c="dimmed">
+                <IconArrowRight size={12} color="var(--mantine-color-dimmed)" />
+                <Text size="xs" fw={500} c="dimmed">
                   Next step
                 </Text>
               </Group>
