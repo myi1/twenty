@@ -53,6 +53,7 @@ import {
   channelLabel,
   humanizeEnum,
 } from '@/propel/components/marketingHero/inbox/InboxBits';
+import { ClassifyCard } from '@/propel/components/marketingHero/inbox/ClassifyCard';
 
 // ── Lead Engine S1 — triage primitives ──────────────────────────────────────
 // The right-rail triage surface: class badge, SLA heat, owner/suggested agent, and
@@ -755,6 +756,17 @@ export const InboxContextRail = ({
         thread={thread}
         row={row}
         viewerRole={viewerRole}
+        onActed={onActed}
+      />
+
+      {/* Contact-tagging (Phase B) — the "Classify" card, directly under triage. Sets
+          the durable who-is-this tag / note / team-member link via the gated
+          /contact/classify route; a non-prospect tag filters the contact out of the
+          lead pipeline (the card shows that consequence). onActed refreshes the list
+          so a regrouped thread moves to "Known / internal". */}
+      <ClassifyCard
+        personId={thread.personId}
+        contact={thread.contact}
         onActed={onActed}
       />
 

@@ -12,6 +12,7 @@ import { getTokenPair } from '@/apollo/utils/getTokenPair';
 import { REACT_APP_SERVER_BASE_URL } from '~/config';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import {
+  type ContactClassifyResponse,
   type InboxAgentOption,
   type InboxChannel,
   type InboxPayload,
@@ -133,6 +134,29 @@ export const fetchLeadEvents = (args: {
     subjectObjectType: args.subjectObjectType,
     subjectRecordId: args.subjectRecordId,
     ...(typeof args.limit === 'number' ? { limit: args.limit } : {}),
+  });
+
+// POST /contact/classify (Phase A) — set the durable who-is-this contact tag, note,
+// and/or team-member link on a Person, GATED (never a direct mutation). FLAT body:
+// only the keys present here are written, and at least one optional key is required.
+// `contactTagNote: null` clears the note; `teamMemberIdentityId: null` unlinks. We
+// build the body in the card (omitting untouched keys, passing explicit null to
+// clear), so this helper just forwards it. The route returns `{ ok, personId,
+// updated }` on success or the shared error envelope (200 body) on failure — the
+// caller reads res?.error / res?.operatorAction the same way the /lead/* actions do.
+export const classifyContact = (args: {
+  personId: string;
+  contactType?: string | null;
+  contactTagNote?: string | null;
+  teamMemberIdentityId?: string | null;
+}): Promise<ContactClassifyResponse | null> =>
+  callPropelRoute<ContactClassifyResponse>('/contact/classify', {
+    personId: args.personId,
+    ...('contactType' in args ? { contactType: args.contactType } : {}),
+    ...('contactTagNote' in args ? { contactTagNote: args.contactTagNote } : {}),
+    ...('teamMemberIdentityId' in args
+      ? { teamMemberIdentityId: args.teamMemberIdentityId }
+      : {}),
   });
 
 // Follow-up ping — a deterministic nudge (NOT the substantive reply, NOT the

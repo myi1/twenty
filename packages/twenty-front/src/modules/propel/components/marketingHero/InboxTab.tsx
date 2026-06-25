@@ -5,14 +5,22 @@ import {
   Box,
   Button,
   Center,
+  Collapse,
   Group,
   Loader,
   Stack,
   Text,
   TextInput,
   Title,
+  UnstyledButton,
 } from '@mantine/core';
-import { IconInbox, IconRefresh, IconSearch } from 'twenty-ui/display';
+import {
+  IconChevronDown,
+  IconChevronRight,
+  IconInbox,
+  IconRefresh,
+  IconSearch,
+} from 'twenty-ui/display';
 import { type InboxChannel, type InboxPayload } from '@/propel/types/inbox';
 import { fetchInbox } from '@/propel/lib/inboxApi';
 import { effectiveNeedsTriage } from '@/propel/lib/inboxTriage';
@@ -60,6 +68,11 @@ export const InboxTab = () => {
   // Bumped on each successful (re)load so the open thread pane re-fetches its body
   // in lockstep with the list — not just the list rows.
   const [reloadToken, setReloadToken] = useState(0);
+  // Contact-tagging (Phase B): the "Known / internal" group (pipelineEligible=false —
+  // partners / agents / suppliers / spam / linked staff) is collapsed by default so
+  // the triage queue stays focused on real prospects. Filtered ≠ deleted — the
+  // threads are still here, one click away.
+  const [showKnown, setShowKnown] = useState(false);
   const listInFlightRef = useRef(false);
 
   // `silent` skips the full loading flip — used by the background poll + manual
@@ -175,6 +188,20 @@ export const InboxTab = () => {
         t.preview.toLowerCase().includes(q),
     );
   }, [payload, filter, triage, search, viewerMemberId]);
+
+  // Contact-tagging (Phase B): split the visible threads into the prospect triage
+  // queue (the main list) and a secondary "Known / internal" group (partners /
+  // agents / suppliers / spam / linked staff — pipelineEligible === false). A row
+  // with no pipelineEligible field (older route response) is treated as a prospect,
+  // so nothing silently disappears before the server starts reporting the flag.
+  const prospects = useMemo(
+    () => shown.filter((t) => t.pipelineEligible !== false),
+    [shown],
+  );
+  const known = useMemo(
+    () => shown.filter((t) => t.pipelineEligible === false),
+    [shown],
+  );
 
   if (phase === 'loading') {
     return (
@@ -366,14 +393,78 @@ export const InboxTab = () => {
                     : 'No conversations in this channel.'}
             </Text>
           ) : (
-            shown.map((t) => (
-              <InboxThreadRow
-                key={`${t.channel}-${t.id}`}
-                row={t}
-                active={selected?.id === t.id}
-                onClick={() => setSelected({ id: t.id, channel: t.channel })}
-              />
-            ))
+            <>
+              {/* Prospect triage queue — the main list. */}
+              {prospects.length === 0 && known.length > 0 ? (
+                <Text size="sm" c="dimmed" p="md">
+                  No prospect conversations here — see “Known / internal” below.
+                </Text>
+              ) : (
+                prospects.map((t) => (
+                  <InboxThreadRow
+                    key={`${t.channel}-${t.id}`}
+                    row={t}
+                    active={selected?.id === t.id}
+                    onClick={() =>
+                      setSelected({ id: t.id, channel: t.channel })
+                    }
+                  />
+                ))
+              )}
+
+              {/* Known / internal — partners, agents, suppliers, spam, linked
+                  staff (filtered out of the lead pipeline). Collapsed by default;
+                  still fully present, one click away (filtered ≠ deleted). */}
+              {known.length > 0 ? (
+                <Box
+                  style={{
+                    borderTop: '1px solid var(--mantine-color-default-border)',
+                  }}
+                >
+                  <UnstyledButton
+                    onClick={() => setShowKnown((v) => !v)}
+                    aria-expanded={showKnown}
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '10px 14px',
+                      background: 'var(--mantine-color-default-hover)',
+                    }}
+                  >
+                    {showKnown ? (
+                      <IconChevronDown size={14} />
+                    ) : (
+                      <IconChevronRight size={14} />
+                    )}
+                    <Text size="xs" tt="uppercase" fw={700} c="dimmed">
+                      Known / internal
+                    </Text>
+                    <Badge
+                      size="xs"
+                      variant="default"
+                      color="gray"
+                      ml="auto"
+                    >
+                      {known.length}
+                    </Badge>
+                  </UnstyledButton>
+                  <Collapse in={showKnown}>
+                    {known.map((t) => (
+                      <InboxThreadRow
+                        key={`${t.channel}-${t.id}`}
+                        row={t}
+                        active={selected?.id === t.id}
+                        onClick={() =>
+                          setSelected({ id: t.id, channel: t.channel })
+                        }
+                      />
+                    ))}
+                  </Collapse>
+                </Box>
+              ) : null}
+            </>
           )}
         </Box>
       </Box>

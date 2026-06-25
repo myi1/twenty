@@ -52,6 +52,12 @@ export interface InboxThreadRow {
   assignedAgentName: string; // resolved agent name ('' when unowned)
   leadSource: string | null; // META | PROPERTY_FINDER | CAMPAIGN | …
   contactType: string | null; // LEAD | CLIENT | …
+  // Contact-tagging (Phase A): false → this contact is a partner / agent / supplier /
+  // spam OR is linked to a team member, so it's filtered OUT of the lead pipeline (no
+  // triage queue, no campaigns, no SLA). Filtered ≠ deleted — the thread is still
+  // returned; the Inbox groups it under "Known / internal". Optional for back-compat
+  // with an older route response (absent → treated as eligible / in-pipeline).
+  pipelineEligible?: boolean;
   needsTriage: boolean; // unowned + real-intent/unclassified → wants a human
   ageMs: number | null; // ms since first enquiry (null when unknown) — SLA heat
   slaBreached: boolean; // source SLA window lapsed without a first response
@@ -109,6 +115,23 @@ export interface InboxAgentOption {
   id: string;
   name: string;
   available: boolean;
+}
+
+// ── Contact classify route envelope (POST /contact/classify) ──────────────────
+// Phase A contract (propel-crm-integration feat/contact-tagging). Gated route, FLAT
+// body — only present keys are written; ≥1 optional key required. On success the
+// route returns `{ ok:true, personId, updated:[keys] }`; on failure it returns the
+// shared marketing envelope `{ error, code:'NOT_FOUND', context, correlationId }`
+// as a 200 body (so callPropelRoute surfaces it — same as the /lead/* actions).
+export interface ContactClassifyResponse {
+  ok?: boolean;
+  personId?: string;
+  updated?: string[]; // which keys were written
+  // failure envelope fields
+  error?: string;
+  code?: string;
+  correlationId?: string;
+  operatorAction?: string;
 }
 
 // ── Lead events (POST /lead/events) ──────────────────────────────────────────
@@ -192,6 +215,16 @@ export interface InboxContact {
   phone: string | null;
   leadSource: string | null; // e.g. META, PROPERTY_FINDER
   contactType: string | null; // e.g. LEAD, CLIENT
+  // Contact-tagging (Phase A): the durable free-text classification note
+  // (person.contactTagNote, ≤500 chars). null/'' → none. The Classify card seeds its
+  // note field from this. Optional for back-compat with an older route response.
+  contactTagNote?: string | null;
+  // Contact-tagging (Phase A): the workspaceMember this contact record IS (the team-
+  // member link, person.teamMemberIdentityId) — distinct from assignedAgent ("handled
+  // by"). null/'' → not linked. The Classify card seeds its staff-link control from
+  // this. Optional for back-compat with an older route response.
+  teamMemberIdentityId?: string | null;
+  teamMemberIdentityName?: string | null; // resolved display name ('' when unset)
 }
 
 // The linked deal shown in the context rail. null when the contact has no deal.
