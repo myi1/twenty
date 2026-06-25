@@ -802,7 +802,7 @@ export const InboxContextRail = ({
           </Box>
           <Box style={{ minWidth: 0 }}>
             <Text
-              fw={700}
+              fw={600}
               size="sm"
               style={{
                 whiteSpace: 'nowrap',
@@ -812,18 +812,26 @@ export const InboxContextRail = ({
             >
               {thread.contactName || thread.title}
             </Text>
-            <Group gap={5} mt={5} style={{ flexWrap: 'wrap' }}>
-              {c?.contactType ? (
-                <Badge size="xs" variant="default" color="gray">
-                  {humanizeEnum(c.contactType)}
-                </Badge>
-              ) : null}
-              {c?.leadSource ? (
-                <Badge size="xs" variant="default" color="gray">
-                  {humanizeEnum(c.leadSource)}
-                </Badge>
-              ) : null}
-            </Group>
+            {/* Source line — where this contact came from (channel + lead origin).
+                NOT a repeated type chip: the contactType lives only in the Classify
+                card's Type dropdown. */}
+            <Text
+              size="xs"
+              c="dimmed"
+              mt={3}
+              style={{
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {[
+                channelLabel(thread.channel),
+                c?.leadSource ? humanizeEnum(c.leadSource) : '',
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </Text>
           </Box>
         </Group>
         {hasMethod ? (
@@ -840,15 +848,14 @@ export const InboxContextRail = ({
           <Anchor
             component="button"
             type="button"
+            c="dimmed"
             onClick={() => navigate(`/object/person/${thread.personId}`)}
             style={{
-              width: '100%',
               display: 'inline-flex',
               alignItems: 'center',
-              justifyContent: 'center',
               gap: 6,
               fontSize: 12.5,
-              fontWeight: 600,
+              fontWeight: 500,
             }}
           >
             <IconUser size={14} /> Open contact
@@ -898,15 +905,14 @@ export const InboxContextRail = ({
             <Anchor
               component="button"
               type="button"
+              c="dimmed"
               onClick={() => navigate(`/object/secondaryOpportunity/${d.id}`)}
               style={{
-                width: '100%',
                 display: 'inline-flex',
                 alignItems: 'center',
-                justifyContent: 'center',
                 gap: 6,
                 fontSize: 12.5,
-                fontWeight: 600,
+                fontWeight: 500,
               }}
             >
               <IconArrowRight size={14} /> Open deal

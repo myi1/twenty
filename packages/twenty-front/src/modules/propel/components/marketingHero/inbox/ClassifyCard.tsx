@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Anchor,
-  Badge,
   Box,
   Button,
   Group,
@@ -12,13 +11,9 @@ import {
 } from '@mantine/core';
 import {
   IconArrowMerge,
-  IconBriefcase,
-  IconCheck,
+  IconFilter,
   IconSparkles,
-  IconTag,
-  IconUnlink,
-  IconUsers,
-  IconX,
+  IconUserCircle,
 } from 'twenty-ui/display';
 import {
   type ContactTypeSuggestion,
@@ -42,24 +37,38 @@ import {
 
 // ── Contact-tagging (Phase B) — the "Classify" card ──────────────────────────
 // Lets an operator quickly say WHAT KIND of contact this is, attach a short note,
-// and optionally mark the handle as one of our own team members — all from the
-// Inbox right rail, without leaving the conversation. Writes go through the gated
+// and (for a Remax Hub agent) link the handle to their CRM staff account — all from
+// the Inbox right rail, without leaving the conversation. Writes go through the gated
 // POST /contact/classify route (flat body, only changed keys) — the card NEVER
-// mutates the Person directly. Tagging a non-prospect (or linking a team member)
-// filters the contact out of the lead pipeline server-side (no triage, no
+// mutates the Person directly. Tagging any non-prospect type (or linking a staff
+// account) filters the contact out of the lead pipeline server-side (no triage, no
 // campaigns, no SLA); the card shows that consequence inline.
 //
 // Placement: directly under the Triage card in InboxContextRail.
 //
-// Round 2 (this file): (1) an AI SUGGESTION pill — on an untagged contact the card
-// asks /contact/suggest-type for a likely tag, shows it as "Suggested: <type> —
-// <reason>", and PRE-SELECTS it in the dropdown when the operator clicks Use. It is
-// NEVER auto-applied — the agent still hits Save (AI suggests, human confirms). (2) a
-// MERGE control — "Find duplicate contacts" runs /contact/find-duplicates, lists the
-// matches with WHY each matched, and on confirm folds the duplicate into THIS contact
-// via /contact/merge (the engine repoints relations + removes the duplicate).
+// CALM REDESIGN (2026-06-25, founder-approved): ONE accent — only the Save button is
+// coloured (blue, the calm info/brand accent). Every secondary link is neutral/dimmed,
+// never red (red is reserved strictly for destructive actions — there are none here).
+// Sentence-case labels, generous spacing, 0.5px dividers, normal/medium weights.
+//
+// TYPE / TEAM-MEMBER DEDUP: the standalone "Mark as team member" toggle is GONE.
+// "Remax Hub agent" is now just a contactType value (Not-prospects group). When that
+// type is selected, the card reveals a contextual "Link to their CRM account" picker
+// (the same teamMemberIdentity link, reusing listInboxAgents). Hidden for every other
+// type. A single neutral consequence line shows for ANY non-prospect type.
+//
+// Round 2: (1) an AI SUGGESTION pill — on an untagged contact the card asks
+// /contact/suggest-type for a likely tag and PRE-SELECTS it in the dropdown when the
+// operator clicks Use (never auto-applied — the agent still hits Save). (2) a MERGE
+// control — "Merge into existing contact" finds Persons that are likely the same human
+// and folds them into THIS contact via /contact/merge.
 
 const NOTE_MAX = 500;
+
+// The contactType value that flags one of our own Remax Hub agents. Selecting it
+// reveals the optional "link to their CRM account" staff picker. Mirrors the Phase A
+// enum (person-contact-type.field.ts) — a single value, never a separate toggle.
+const REMAX_HUB_AGENT = 'REMAX_HUB_AGENT';
 
 // Human label for a match axis (find-duplicates).
 const REASON_LABEL: Record<string, string> = {
@@ -97,7 +106,6 @@ export const ClassifyCard = ({
   const [type, setType] = useState<string | null>(serverType);
   const [note, setNote] = useState<string>(serverNote);
   const [teamId, setTeamId] = useState<string | null>(serverTeamId);
-  const [showStaffPicker, setShowStaffPicker] = useState(false);
   const [agents, setAgents] = useState<InboxAgentOption[]>([]);
   const [agentsLoaded, setAgentsLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -116,6 +124,9 @@ export const ClassifyCard = ({
   const [pendingMergeId, setPendingMergeId] = useState<string | null>(null); // confirm step
   const [merging, setMerging] = useState(false);
 
+  // Is the Remax-Hub-agent type selected? — reveals the optional staff-link picker.
+  const isRemaxHubAgent = type === REMAX_HUB_AGENT;
+
   // Re-seed when the open contact changes (switching threads). Keyed on the identity
   // of the committed values so a poll that returns the same values doesn't stomp an
   // in-progress edit.
@@ -123,7 +134,6 @@ export const ClassifyCard = ({
     setType(serverType);
     setNote(serverNote);
     setTeamId(serverTeamId);
-    setShowStaffPicker(false);
     // reset the Round-2 surfaces on a thread switch
     setSuggestion(null);
     setSuggestionDismissed(false);
@@ -158,13 +168,18 @@ export const ClassifyCard = ({
     void listInboxAgents().then(setAgents);
   }, [agentsLoaded]);
 
-  // The team-link display name: prefer the freshly-picked agent's name, else the
-  // server-resolved name for the committed link.
-  const teamName = useMemo(() => {
-    if (teamId === null) return '';
-    if (teamId === serverTeamId && serverTeamName) return serverTeamName;
-    return agents.find((a) => a.id === teamId)?.name ?? serverTeamName ?? '';
-  }, [teamId, serverTeamId, serverTeamName, agents]);
+  // Lazily load the staff list the moment the Remax-Hub-agent type is selected, so the
+  // contextual link picker has options ready without a separate click.
+  useEffect(() => {
+    if (isRemaxHubAgent) ensureAgents();
+  }, [isRemaxHubAgent, ensureAgents]);
+
+  // When the operator moves OFF the Remax-Hub-agent type, drop any pending staff link —
+  // the link only makes sense for an agent, and we never want a stale link to persist.
+  useEffect(() => {
+    if (!isRemaxHubAgent && teamId !== null) setTeamId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRemaxHubAgent]);
 
   // Is the contact untagged AND unlinked? — the prominent "classify this" prompt.
   const isUntagged =
@@ -178,12 +193,11 @@ export const ClassifyCard = ({
   const teamChanged = (teamId ?? null) !== (serverTeamId ?? null);
   const dirty = typeChanged || noteChanged || teamChanged;
 
-  // Whether the contact WOULD be filtered out of the lead pipeline given the pending
-  // selection: a non-prospect tag OR a set team-member link filters. Drives the
-  // inline "Filtered from lead pipeline" status line (the founder's "see the
-  // consequence" ask).
+  // Whether the SELECTED type would filter the contact out of the lead pipeline — any
+  // non-prospect type. Drives the inline consequence line (the founder's "see the
+  // effect" ask). Untagged stays in the pipeline, so no line.
   const willFilter =
-    (teamId !== null && teamId !== '') || !isPipelineContactType(type);
+    (type !== null && type !== '') && !isPipelineContactType(type);
 
   const noteTooLong = note.length > NOTE_MAX;
 
@@ -203,7 +217,7 @@ export const ClassifyCard = ({
     setSaving(false);
     if (res?.ok) {
       notify(
-        willFilter
+        willFilter || (teamId !== null && teamId !== '')
           ? 'Saved. This contact is now filtered out of the lead pipeline.'
           : 'Contact classified.',
         'success',
@@ -279,15 +293,12 @@ export const ClassifyCard = ({
       <Box
         p="md"
         style={{
-          borderBottom: '1px solid var(--mantine-color-default-border)',
+          borderBottom: '0.5px solid var(--mantine-color-default-border)',
         }}
       >
-        <Group gap={6} mb={6}>
-          <IconTag size={13} color="var(--mantine-color-red-6)" />
-          <Text size="xs" tt="uppercase" fw={700} c="dimmed">
-            Classify
-          </Text>
-        </Group>
+        <Text size="sm" fw={500} mb={6}>
+          Classify contact
+        </Text>
         <Text size="xs" c="dimmed">
           Attach this thread to a contact to classify it.
         </Text>
@@ -298,37 +309,24 @@ export const ClassifyCard = ({
   return (
     <Box
       p="md"
-      style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}
+      style={{ borderBottom: '0.5px solid var(--mantine-color-default-border)' }}
     >
-      <Group gap={6} mb="sm">
-        <IconTag size={13} color="var(--mantine-color-red-6)" />
-        <Text size="xs" tt="uppercase" fw={700} c="dimmed">
-          Classify
-        </Text>
-        {/* Current committed tag chip — what the contact IS right now. */}
-        {serverType ? (
-          <Badge size="xs" variant="light" color="gray" ml="auto">
-            {contactTypeLabel(serverType)}
-          </Badge>
-        ) : null}
-      </Group>
+      <Text size="sm" fw={500} mb="md">
+        Classify contact
+      </Text>
 
-      {/* Untagged prompt — make an unclassified contact obvious + one-tap fast. */}
+      {/* Untagged prompt — make an unclassified contact obvious, calmly (neutral
+          secondary-bg box, no red). */}
       {isUntagged ? (
         <Box
-          mb="sm"
+          mb="md"
           style={{
-            border: '1px solid var(--mantine-color-red-light)',
             borderRadius: 8,
-            background:
-              'linear-gradient(180deg, var(--mantine-color-red-light), transparent 80%)',
+            background: 'var(--mantine-color-default-hover)',
             padding: '8px 10px',
           }}
         >
-          <Text size="xs" fw={600}>
-            Untagged — classify this contact
-          </Text>
-          <Text size="xs" c="dimmed" mt={2}>
+          <Text size="xs" c="dimmed" lh={1.4}>
             Pick what kind of contact this is so non-prospects leave the lead
             queue.
           </Text>
@@ -336,28 +334,29 @@ export const ClassifyCard = ({
       ) : null}
 
       {/* AI SUGGESTION pill — the LLM's read of who this is. PRE-SELECTS the tag on
-          Use (the agent still hits Save); never auto-applied. Hidden once acted on or
-          if the tag already matches the suggestion. */}
+          Use (the agent still hits Save); never auto-applied. Kept calm/neutral — a
+          subtle dashed box with a dimmed sparkle, grey actions. Hidden once acted on
+          or if the tag already matches the suggestion. */}
       {suggestion &&
       !suggestionDismissed &&
       (type ?? null) !== suggestion.suggestedType ? (
         <Box
-          mb="sm"
+          mb="md"
           style={{
-            border: '1px solid var(--mantine-color-violet-light)',
+            border: '0.5px solid var(--mantine-color-default-border)',
             borderRadius: 8,
-            background: 'var(--mantine-color-violet-light)',
+            background: 'var(--mantine-color-default-hover)',
             padding: '8px 10px',
           }}
         >
           <Group gap={6} wrap="nowrap" align="flex-start">
             <IconSparkles
               size={14}
-              color="var(--mantine-color-violet-7)"
+              color="var(--mantine-color-dimmed)"
               style={{ flex: 'none', marginTop: 1 }}
             />
             <Box style={{ flex: 1, minWidth: 0 }}>
-              <Text size="xs" fw={600}>
+              <Text size="xs" fw={500}>
                 Suggested: {contactTypeLabel(suggestion.suggestedType)}
                 {suggestion.confidence === 'low' ? (
                   <Text span size="xs" c="dimmed" fw={400}>
@@ -371,38 +370,37 @@ export const ClassifyCard = ({
                   {suggestion.reason}
                 </Text>
               ) : null}
-              <Group gap={6} mt={6}>
+              <Group gap={6} mt={8}>
                 <Button
                   size="compact-xs"
-                  variant="light"
-                  color="violet"
-                  leftSection={<IconCheck size={11} />}
+                  variant="default"
                   onClick={acceptSuggestion}
                 >
                   Use
                 </Button>
-                <Button
-                  size="compact-xs"
-                  variant="subtle"
-                  color="gray"
-                  leftSection={<IconX size={11} />}
+                <Anchor
+                  component="button"
+                  type="button"
+                  c="dimmed"
                   onClick={() => setSuggestionDismissed(true)}
+                  style={{ fontSize: 12, fontWeight: 500 }}
                 >
                   Dismiss
-                </Button>
+                </Anchor>
               </Group>
             </Box>
           </Group>
         </Box>
       ) : null}
 
-      <Stack gap={9}>
-        {/* The 3-group tag dropdown. zIndex 5000 is inherited from
-            PropelMantineProvider (Select.defaultProps.comboboxProps.zIndex) so the
-            menu clears Twenty's RightDrawer (z1001). */}
+      <Stack gap="md">
+        {/* The 3-group type dropdown — contactType lives ONLY here (no duplicate chip
+            elsewhere). zIndex 5000 is inherited from PropelMantineProvider
+            (Select.defaultProps.comboboxProps.zIndex) so the menu clears Twenty's
+            RightDrawer (z1001). */}
         <Select
           size="xs"
-          label="Tag"
+          label="Type"
           placeholder="Choose a type…"
           data={CONTACT_TYPE_SELECT_DATA}
           value={type}
@@ -413,162 +411,127 @@ export const ClassifyCard = ({
           aria-label="Contact type"
         />
 
-        {/* Note — durable free-text classification note (≤500). */}
-        <Textarea
-          size="xs"
-          label="Note"
-          placeholder="e.g. Samia — our IG content agent"
-          value={note}
-          onChange={(e) => setNote(e.currentTarget.value)}
-          autosize
-          minRows={2}
-          maxRows={4}
-          error={
-            noteTooLong
-              ? `Too long — ${note.length}/${NOTE_MAX} characters`
-              : undefined
-          }
-          aria-label="Classification note"
-        />
-        <Text size="xs" c="dimmed" ta="right" mt={-6}>
-          {note.length}/{NOTE_MAX}
-        </Text>
-
-        {/* Team-member link — "this contact IS one of our staff". Distinct from
-            assignedAgent ("handled by"). Setting it implies internal/non-prospect. */}
-        <Box>
-          <Text size="xs" fw={600} mb={4}>
-            Is a team member
-          </Text>
-          {teamId !== null && teamId !== '' ? (
-            <Group gap={7} wrap="nowrap">
-              <Badge
-                size="sm"
-                variant="light"
-                color="red"
-                leftSection={<IconBriefcase size={11} />}
-                style={{ maxWidth: '100%' }}
-              >
-                {teamName || 'Linked staff member'}
-              </Badge>
-              <Anchor
-                component="button"
-                type="button"
-                onClick={() => {
-                  setTeamId(null);
-                  setShowStaffPicker(false);
-                }}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  fontSize: 12,
-                  fontWeight: 600,
-                  flex: 'none',
-                }}
-              >
-                <IconUnlink size={12} /> Unlink
-              </Anchor>
-            </Group>
-          ) : showStaffPicker ? (
-            <Select
-              size="xs"
-              placeholder="Pick a team member…"
-              data={agents.map((a) => ({ value: a.id, label: a.name }))}
-              value={null}
-              onChange={(v) => {
-                setTeamId(v);
-                setShowStaffPicker(false);
-              }}
-              searchable
-              nothingFoundMessage={
-                agentsLoaded ? 'No team members' : 'Loading…'
-              }
-              aria-label="Pick the team member this contact is"
-            />
-          ) : (
-            <Anchor
-              component="button"
-              type="button"
-              onClick={() => {
-                ensureAgents();
-                setShowStaffPicker(true);
-              }}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 5,
-                fontSize: 12.5,
-                fontWeight: 600,
-              }}
-            >
-              <IconBriefcase size={13} /> This contact is a staff member
-            </Anchor>
-          )}
-        </Box>
-
-        {/* The consequence line — show that a filtered selection leaves the pipeline,
-            so the operator SEES the effect of tagging a non-prospect / staff member. */}
+        {/* Inline consequence line — neutral box + filter icon, shown for ANY
+            non-prospect type so the operator SEES the effect of the tag (not red). */}
         {willFilter ? (
-          <Text size="xs" c="dimmed" lh={1.4}>
-            <IconCheck size={11} style={{ verticalAlign: -1 }} /> Filtered from
-            lead pipeline · no SLA, no campaigns
-          </Text>
+          <Group
+            gap={7}
+            wrap="nowrap"
+            align="flex-start"
+            style={{
+              borderRadius: 8,
+              background: 'var(--mantine-color-default-hover)',
+              padding: '7px 9px',
+            }}
+          >
+            <IconFilter
+              size={13}
+              color="var(--mantine-color-dimmed)"
+              style={{ flex: 'none', marginTop: 1 }}
+            />
+            <Text size="xs" c="dimmed" lh={1.4}>
+              Filtered from campaigns &amp; the lead pipeline
+            </Text>
+          </Group>
         ) : null}
 
+        {/* Contextual staff link — ONLY for a Remax Hub agent. Links the handle to its
+            CRM staff account (teamMemberIdentity); optional. Hidden for every other
+            type. zIndex 5000 inherited (clears the RightDrawer). */}
+        {isRemaxHubAgent ? (
+          <Select
+            size="xs"
+            label="Link to their CRM account"
+            description="Optional"
+            placeholder="Pick a team member…"
+            leftSection={<IconUserCircle size={14} />}
+            data={agents.map((a) => ({ value: a.id, label: a.name }))}
+            value={teamId}
+            onChange={setTeamId}
+            searchable
+            clearable
+            nothingFoundMessage={agentsLoaded ? 'No team members' : 'Loading…'}
+            aria-label="Link to the team member this contact is"
+          />
+        ) : null}
+
+        {/* Note — durable free-text classification note (≤500). */}
+        <Box>
+          <Textarea
+            size="xs"
+            label="Note"
+            placeholder="e.g. Samia — our IG content agent"
+            value={note}
+            onChange={(e) => setNote(e.currentTarget.value)}
+            autosize
+            minRows={2}
+            maxRows={4}
+            error={
+              noteTooLong
+                ? `Too long — ${note.length}/${NOTE_MAX} characters`
+                : undefined
+            }
+            aria-label="Classification note"
+          />
+          <Text size="xs" c="dimmed" ta="right" mt={4}>
+            {note.length}/{NOTE_MAX}
+          </Text>
+        </Box>
+
+        {/* The ONE accent in the card — the primary Save button (blue = calm info
+            accent). Everything else stays neutral. */}
         <Button
           size="xs"
-          color="red"
+          color="blue"
           fullWidth
           disabled={!dirty || noteTooLong}
           loading={saving}
           onClick={() => void handleSave()}
         >
-          Save classification
+          Save
         </Button>
 
         {/* ── Merge into existing contact (Round 2) ─────────────────────────────
             A distinct action from classify-save: find Persons that are likely the
-            SAME human (same phone/email/Meta id) and fold them into THIS contact.
-            The duplicate's conversations, deals, tasks and notes move here; the
-            duplicate is removed. Coordinator-gated server-side. */}
+            SAME human (same phone/email/Meta id) and fold them into THIS contact. The
+            duplicate's conversations, deals, tasks and notes move here; the duplicate
+            is removed. Coordinator-gated server-side. Quiet grey link — not red. */}
         <Box
-          mt={4}
-          pt={10}
-          style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}
+          mt={2}
+          pt="md"
+          style={{ borderTop: '0.5px solid var(--mantine-color-default-border)' }}
         >
           {!showMerge ? (
             <Anchor
               component="button"
               type="button"
+              c="dimmed"
               onClick={() => void runFindDuplicates()}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 5,
                 fontSize: 12.5,
-                fontWeight: 600,
+                fontWeight: 500,
               }}
             >
-              <IconArrowMerge size={13} /> Merge into existing contact
+              <IconArrowMerge size={13} /> Merge with another contact
             </Anchor>
           ) : (
-            <Stack gap={8}>
+            <Stack gap={10}>
               <Group gap={6} justify="space-between">
-                <Group gap={5}>
-                  <IconUsers size={13} color="var(--mantine-color-dimmed)" />
-                  <Text size="xs" tt="uppercase" fw={700} c="dimmed">
-                    Possible duplicates
-                  </Text>
-                </Group>
+                <Text size="xs" fw={500} c="dimmed">
+                  Possible duplicates
+                </Text>
                 <Anchor
                   component="button"
                   type="button"
+                  c="dimmed"
                   onClick={() => {
                     setShowMerge(false);
                     setPendingMergeId(null);
                   }}
-                  style={{ fontSize: 12, fontWeight: 600 }}
+                  style={{ fontSize: 12, fontWeight: 500 }}
                 >
                   Close
                 </Anchor>
@@ -585,19 +548,19 @@ export const ClassifyCard = ({
                     : 'Tap to search for duplicates.'}
                 </Text>
               ) : (
-                <Stack gap={7}>
+                <Stack gap={8}>
                   {candidates.map((cand) => (
                     <Box
                       key={cand.id}
                       style={{
-                        border: '1px solid var(--mantine-color-default-border)',
+                        border: '0.5px solid var(--mantine-color-default-border)',
                         borderRadius: 8,
                         padding: '8px 10px',
                       }}
                     >
                       <Group gap={6} justify="space-between" wrap="nowrap">
                         <Box style={{ minWidth: 0 }}>
-                          <Text size="xs" fw={600} truncate>
+                          <Text size="xs" fw={500} truncate>
                             {cand.name}
                           </Text>
                           <Text size="xs" c="dimmed" truncate>
@@ -615,10 +578,11 @@ export const ClassifyCard = ({
                           ) : null}
                         </Box>
                         {pendingMergeId === cand.id ? (
-                          <Group gap={5} wrap="nowrap" style={{ flex: 'none' }}>
+                          <Group gap={6} wrap="nowrap" style={{ flex: 'none' }}>
                             <Button
                               size="compact-xs"
-                              color="red"
+                              variant="filled"
+                              color="blue"
                               loading={merging}
                               onClick={() => void confirmMerge(cand.id)}
                             >
@@ -627,8 +591,9 @@ export const ClassifyCard = ({
                             <Anchor
                               component="button"
                               type="button"
+                              c="dimmed"
                               onClick={() => setPendingMergeId(null)}
-                              style={{ fontSize: 12, fontWeight: 600 }}
+                              style={{ fontSize: 12, fontWeight: 500 }}
                             >
                               Cancel
                             </Anchor>
@@ -636,8 +601,7 @@ export const ClassifyCard = ({
                         ) : (
                           <Button
                             size="compact-xs"
-                            variant="light"
-                            color="red"
+                            variant="default"
                             leftSection={<IconArrowMerge size={11} />}
                             style={{ flex: 'none' }}
                             disabled={merging}
