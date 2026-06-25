@@ -134,6 +134,74 @@ export interface ContactClassifyResponse {
   operatorAction?: string;
 }
 
+// ── Merge-into-existing-contact (Round 2) ────────────────────────────────────
+// POST /contact/find-duplicates → the likely-duplicate Persons of this contact,
+// matched on phone E.164 / email / metaUserId, ranked, with WHY + a conflict
+// preview. The card shows these for the operator to pick. Read-only.
+export interface MergeFieldConflict {
+  field: string;
+  canonical: string;
+  duplicate: string;
+}
+export interface MergeCandidate {
+  id: string;
+  name: string;
+  matchReasons: string[]; // 'phone' | 'email' | 'metaUserId'
+  contactType: string | null;
+  leadSource: string | null;
+  email: string | null;
+  phone: string | null;
+  createdAt: string;
+  conflicts: MergeFieldConflict[];
+}
+export interface FindDuplicatesResponse {
+  ok?: boolean;
+  personId?: string;
+  targetName?: string;
+  candidates?: MergeCandidate[];
+  // failure envelope
+  error?: string;
+  code?: string;
+  operatorAction?: string;
+}
+
+// POST /contact/merge → folds the duplicate into the canonical via the engine's
+// native mergeManyPeople (relations repointed, canonical wins conflicts, loser
+// removed). Idempotent (merged:false when the duplicate is already gone).
+export interface MergeContactResponse {
+  ok?: boolean;
+  merged?: boolean;
+  canonicalId?: string;
+  duplicateId?: string;
+  matchReasons?: string[];
+  forced?: boolean;
+  reason?: string; // e.g. 'duplicate-already-absent' when merged:false
+  // failure envelope
+  error?: string;
+  code?: string;
+  operatorAction?: string;
+}
+
+// ── AI tag suggestion (Round 2) ──────────────────────────────────────────────
+// POST /contact/suggest-type → the LLM's suggested contactType (the 14-value enum)
+// + a one-line reason + a coarse confidence. The card shows it as a pill and PRE-
+// SELECTS it; the agent always confirms/overrides — never auto-applied. Degrades to
+// suggestion:null (never an error) when the AI env is unset / the call fails.
+export interface ContactTypeSuggestion {
+  suggestedType: string;
+  reason: string;
+  confidence: 'low' | 'medium' | 'high';
+}
+export interface SuggestTypeResponse {
+  ok?: boolean;
+  suggestion?: ContactTypeSuggestion | null;
+  reason?: string; // why there's no suggestion (e.g. 'ai-unavailable', 'unparseable')
+  // failure envelope (only on a hard validation failure — not the no-suggestion path)
+  error?: string;
+  code?: string;
+  operatorAction?: string;
+}
+
 // ── Lead events (POST /lead/events) ──────────────────────────────────────────
 // One row of the append-only leadEvent log for a subject (Person / opportunity /
 // deal / conversation). Operational metadata ONLY (no PII / message content) — the

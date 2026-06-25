@@ -13,6 +13,7 @@ import { REACT_APP_SERVER_BASE_URL } from '~/config';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import {
   type ContactClassifyResponse,
+  type FindDuplicatesResponse,
   type InboxAgentOption,
   type InboxChannel,
   type InboxPayload,
@@ -21,10 +22,12 @@ import {
   type LeadAssignResponse,
   type LeadCreateOpportunityResponse,
   type LeadEventsResponse,
+  type MergeContactResponse,
   type OutboundMediaKind,
   type QuickRepliesPayload,
   type QuickReply,
   type ReplySendEnvelope,
+  type SuggestTypeResponse,
 } from '@/propel/types/inbox';
 
 // ── Route calls ──────────────────────────────────────────────────────────────
@@ -158,6 +161,41 @@ export const classifyContact = (args: {
       ? { teamMemberIdentityId: args.teamMemberIdentityId }
       : {}),
   });
+
+// ── Merge into existing contact (Round 2) ────────────────────────────────────
+// POST /contact/find-duplicates — read-only; returns the likely-duplicate Persons of
+// this contact (matched on phone/email/metaUserId), ranked, with WHY + a conflict
+// preview. The card shows the candidates for the operator to pick before merging.
+export const findContactDuplicates = (
+  personId: string,
+): Promise<FindDuplicatesResponse | null> =>
+  callPropelRoute<FindDuplicatesResponse>('/contact/find-duplicates', { personId });
+
+// POST /contact/merge — fold `duplicateId` into `canonicalId` via the engine's native
+// mergeManyPeople (relations repointed onto the canonical, canonical wins scalar
+// conflicts, duplicate removed). Coordinator-gated server-side. `force` overrides the
+// no-shared-axis guard (the UI sends it only after an explicit confirm). Idempotent —
+// merged:false when the duplicate is already gone.
+export const mergeContact = (args: {
+  canonicalId: string;
+  duplicateId: string;
+  force?: boolean;
+}): Promise<MergeContactResponse | null> =>
+  callPropelRoute<MergeContactResponse>('/contact/merge', {
+    canonicalId: args.canonicalId,
+    duplicateId: args.duplicateId,
+    ...(args.force ? { force: true } : {}),
+  });
+
+// ── AI tag suggestion (Round 2) ──────────────────────────────────────────────
+// POST /contact/suggest-type — the LLM's suggested contactType + reason + confidence,
+// grounded in the contact's inbound messages + source. Read-only. Degrades to
+// suggestion:null (never errors) when the AI env is unset — the card simply shows no
+// pill. AI suggests, human confirms (the agent must click to apply).
+export const suggestContactType = (
+  personId: string,
+): Promise<SuggestTypeResponse | null> =>
+  callPropelRoute<SuggestTypeResponse>('/contact/suggest-type', { personId });
 
 // Follow-up ping — a deterministic nudge (NOT the substantive reply, NOT the
 // on-arrival auto-ack): re-send a short "an agent is on it" line via the existing
