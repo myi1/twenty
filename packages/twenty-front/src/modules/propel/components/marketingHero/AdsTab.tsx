@@ -19,9 +19,14 @@ import {
   Title,
   Tooltip,
 } from '@mantine/core';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   IconAlertTriangle,
+  IconArrowDown,
+  IconArrowsSort,
+  IconArrowUp,
+  IconChevronLeft,
+  IconChevronRight,
   IconCoins,
   IconCopy,
   IconPlayerPause,
@@ -89,6 +94,66 @@ const aedLabel = (minor: number | null): string =>
 
 const ACTION_ROUTE = '/marketing/meta-ads-action';
 const MONITOR_ROUTE = '/marketing/meta-ads-monitor';
+
+// ── client-side sorting + pagination over payload.rows ───────────────────────
+// PURE client-side: the route already returns ALL campaigns pre-sorted by spend
+// desc (server default). We sort/page the rows it returns; no route change.
+const PAGE_SIZE = 12;
+
+type SortDir = 'asc' | 'desc';
+type SortKey =
+  | 'name'
+  | 'spend'
+  | 'impressions'
+  | 'metaLeads'
+  | 'cpl'
+  | 'crmLeads'
+  | 'crmOpps'
+  | 'revenue'
+  | 'roi';
+
+// Each sortable column → the RAW value it sorts on (numeric minor units / counts
+// / ratio, NOT the formatted display strings). 'name' sorts on the string.
+const SORT_VALUE: Record<
+  SortKey,
+  (r: AdsCampaignRow) => number | string | null
+> = {
+  name: (r) => r.name,
+  spend: (r) => r.spendMinor,
+  impressions: (r) => r.impressions,
+  metaLeads: (r) => r.metaLeads,
+  cpl: (r) => r.cplMinor,
+  // CRM-side counts read as null (sort LAST) when the campaign isn't CRM-linked,
+  // matching the table's '—' rendering.
+  crmLeads: (r) => (r.crmLinked ? r.crmLeads : null),
+  crmOpps: (r) => (r.crmLinked ? r.crmOpps : null),
+  revenue: (r) => (r.crmLinked ? r.attributedRevenueMinor : null),
+  roi: (r) => r.roi,
+};
+
+// Compare two rows for the active key/dir. null/'—' values ALWAYS sort LAST,
+// regardless of direction. Strings compare case-insensitively.
+const compareRows = (
+  a: AdsCampaignRow,
+  b: AdsCampaignRow,
+  key: SortKey,
+  dir: SortDir,
+): number => {
+  const va = SORT_VALUE[key](a);
+  const vb = SORT_VALUE[key](b);
+  const aNull = va == null;
+  const bNull = vb == null;
+  if (aNull && bNull) return 0;
+  if (aNull) return 1; // a after b
+  if (bNull) return -1; // b after a
+  let cmp: number;
+  if (typeof va === 'string' || typeof vb === 'string') {
+    cmp = String(va).localeCompare(String(vb), 'en', { sensitivity: 'base' });
+  } else {
+    cmp = (va as number) - (vb as number);
+  }
+  return dir === 'asc' ? cmp : -cmp;
+};
 
 const isPaused = (r: AdsCampaignRow): boolean =>
   r.statusLabel.toLowerCase().includes('paus');
@@ -705,6 +770,56 @@ const AdsEmpty = ({
   </Center>
 );
 
+// ── sortable column header ───────────────────────────────────────────────────
+// Click toggles asc/desc; a caret shows on the active column (a faint
+// double-arrow on inactive sortable columns hints they're clickable).
+const SortableTh = ({
+  label,
+  sortKey,
+  activeKey,
+  dir,
+  onSort,
+  align = 'left',
+  color,
+}: {
+  label: string;
+  sortKey: SortKey;
+  activeKey: SortKey;
+  dir: SortDir;
+  onSort: (k: SortKey) => void;
+  align?: 'left' | 'right';
+  color?: string;
+}) => {
+  const active = activeKey === sortKey;
+  const Caret = active
+    ? dir === 'asc'
+      ? IconArrowUp
+      : IconArrowDown
+    : IconArrowsSort;
+  return (
+    <Table.Th ta={align} c={color}>
+      <Group
+        gap={4}
+        wrap="nowrap"
+        justify={align === 'right' ? 'flex-end' : 'flex-start'}
+        onClick={() => onSort(sortKey)}
+        style={{ cursor: 'pointer', userSelect: 'none' }}
+      >
+        <Text size="xs" fw={700} inherit span>
+          {label}
+        </Text>
+        <Caret
+          size={13}
+          style={{
+            opacity: active ? 1 : 0.35,
+            flex: '0 0 auto',
+          }}
+        />
+      </Group>
+    </Table.Th>
+  );
+};
+
 // ═══════════════════════════════════════════════════════════════════════════
 // ADS TAB
 // ═══════════════════════════════════════════════════════════════════════════
@@ -723,6 +838,42 @@ export const AdsTab = () => {
   const [busy, setBusy] = useState(false);
   const writingRef = useRef(false);
 
+  // ── sort + pagination (pure client-side over payload.rows) ──────────────────
+  // Initial state mirrors the server's existing order (spend desc) so NOTHING
+  // changes on first load.
+  const [sortKey, setSortKey] = useState<SortKey>('spend');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [page, setPage] = useState(1);
+
+  const onSort = useCallback((key: SortKey) => {
+    setSortKey((prevKey) => {
+      setSortDir((prevDir) =>
+        prevKey === key ? (prevDir === 'asc' ? 'desc' : 'asc') : 'desc',
+      );
+      return key;
+    });
+    setPage(1); // reset to page 1 whenever the sort changes
+  }, []);
+
+  const rows = payload?.rows;
+
+  const sortedRows = useMemo(() => {
+    if (!rows) return [];
+    return [...rows].sort((a, b) => compareRows(a, b, sortKey, sortDir));
+  }, [rows, sortKey, sortDir]);
+
+  const totalRows = sortedRows.length;
+  const pageCount = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
+  // Clamp page (guards against a stale page after data shrinks).
+  const safePage = Math.min(page, pageCount);
+  const pagedRows = useMemo(
+    () => sortedRows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
+    [sortedRows, safePage],
+  );
+  const showPager = totalRows > PAGE_SIZE;
+  const firstShown = totalRows === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
+  const lastShown = Math.min(safePage * PAGE_SIZE, totalRows);
+
   const load = useCallback(async (r: AdsRange) => {
     setPhase('loading');
     const res = await callPropelRoute<MetaAdsMonitorPayload>(MONITOR_ROUTE, {
@@ -733,6 +884,7 @@ export const AdsTab = () => {
       return;
     }
     setPayload(res);
+    setPage(1); // reset to page 1 whenever data reloads (range toggle / refresh)
     setPhase('ready');
   }, []);
 
@@ -931,36 +1083,90 @@ export const AdsTab = () => {
             <Table highlightOnHover verticalSpacing="sm">
               <Table.Thead>
                 <Table.Tr>
-                  <Table.Th>Campaign</Table.Th>
-                  <Table.Th ta="right" c="red.6">
-                    Spend
-                  </Table.Th>
-                  <Table.Th ta="right" c="red.6">
-                    Impr.
-                  </Table.Th>
-                  <Table.Th ta="right" c="red.6">
-                    Leads
-                  </Table.Th>
-                  <Table.Th ta="right" c="red.6">
-                    CPL
-                  </Table.Th>
-                  <Table.Th ta="right" c="blue.6">
-                    Leads
-                  </Table.Th>
-                  <Table.Th ta="right" c="blue.6">
-                    Opps
-                  </Table.Th>
-                  <Table.Th ta="right" c="blue.6">
-                    Revenue
-                  </Table.Th>
-                  <Table.Th ta="right" c="blue.6">
-                    ROI
-                  </Table.Th>
+                  <SortableTh
+                    label="Campaign"
+                    sortKey="name"
+                    activeKey={sortKey}
+                    dir={sortDir}
+                    onSort={onSort}
+                  />
+                  <SortableTh
+                    label="Spend"
+                    sortKey="spend"
+                    activeKey={sortKey}
+                    dir={sortDir}
+                    onSort={onSort}
+                    align="right"
+                    color="red.6"
+                  />
+                  <SortableTh
+                    label="Impr."
+                    sortKey="impressions"
+                    activeKey={sortKey}
+                    dir={sortDir}
+                    onSort={onSort}
+                    align="right"
+                    color="red.6"
+                  />
+                  <SortableTh
+                    label="Leads"
+                    sortKey="metaLeads"
+                    activeKey={sortKey}
+                    dir={sortDir}
+                    onSort={onSort}
+                    align="right"
+                    color="red.6"
+                  />
+                  <SortableTh
+                    label="CPL"
+                    sortKey="cpl"
+                    activeKey={sortKey}
+                    dir={sortDir}
+                    onSort={onSort}
+                    align="right"
+                    color="red.6"
+                  />
+                  <SortableTh
+                    label="Leads"
+                    sortKey="crmLeads"
+                    activeKey={sortKey}
+                    dir={sortDir}
+                    onSort={onSort}
+                    align="right"
+                    color="blue.6"
+                  />
+                  <SortableTh
+                    label="Opps"
+                    sortKey="crmOpps"
+                    activeKey={sortKey}
+                    dir={sortDir}
+                    onSort={onSort}
+                    align="right"
+                    color="blue.6"
+                  />
+                  <SortableTh
+                    label="Revenue"
+                    sortKey="revenue"
+                    activeKey={sortKey}
+                    dir={sortDir}
+                    onSort={onSort}
+                    align="right"
+                    color="blue.6"
+                  />
+                  <SortableTh
+                    label="ROI"
+                    sortKey="roi"
+                    activeKey={sortKey}
+                    dir={sortDir}
+                    onSort={onSort}
+                    align="right"
+                    color="blue.6"
+                  />
                   {canAct ? <Table.Th ta="right">Actions</Table.Th> : null}
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {payload.rows.map((r) => (
+                {pagedRows.map((r) => (
                   <Table.Tr
                     key={r.campaignId}
                     style={{ cursor: 'pointer' }}
@@ -1057,6 +1263,38 @@ export const AdsTab = () => {
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
+
+          {/* pager — hidden when everything fits on one page (≤ 12 rows) */}
+          {showPager ? (
+            <Group justify="space-between" align="center" mt="md" wrap="wrap">
+              <Text size="xs" c="dimmed" ff="monospace">
+                {firstShown}–{lastShown} of {totalRows}
+              </Text>
+              <Group gap="xs" align="center">
+                <Button
+                  size="xs"
+                  variant="default"
+                  leftSection={<IconChevronLeft size={14} />}
+                  disabled={safePage <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  Prev
+                </Button>
+                <Text size="xs" c="dimmed">
+                  Page {safePage} / {pageCount}
+                </Text>
+                <Button
+                  size="xs"
+                  variant="default"
+                  rightSection={<IconChevronRight size={14} />}
+                  disabled={safePage >= pageCount}
+                  onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                >
+                  Next
+                </Button>
+              </Group>
+            </Group>
+          ) : null}
         </>
       ) : null}
 
