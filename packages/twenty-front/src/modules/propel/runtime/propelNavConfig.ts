@@ -133,16 +133,21 @@ export const DEFAULT_NAV_CONFIG: PropelNavConfig = {
       enabled: true,
       order: 40,
     },
+    // ── route-only entries (no sidebar item; deep-links still resolve) ──
     {
+      // The standalone Settings Hub hero was FOLDED into the Marketing hero's
+      // "Config" tab (manager/admin only) — so it's no longer a top-level nav
+      // item. Its route + bundle stay registered (enabled:false) so existing
+      // /settings-hub deep-links keep resolving and no engine rebuild is needed;
+      // the canonical config surface is now /marketing?tab=config.
       key: 'settings-hub',
       label: 'Settings',
       icon: 'IconSettings',
       route: AppPath.SettingsHub,
       bundle: 'settings-hub',
-      enabled: true,
+      enabled: false,
       order: 90,
     },
-    // ── route-only entries (no sidebar item; deep-links still resolve) ──
     {
       key: 'campaign-builder',
       label: 'Campaign Builder',

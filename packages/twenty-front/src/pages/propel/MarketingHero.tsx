@@ -3,17 +3,17 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AppPath } from 'twenty-shared/types';
 import {
-  IconArrowsSplit2,
   IconBroadcast,
   IconCalendarEvent,
   IconFileText,
   IconPhone,
   IconSend,
+  IconSettings,
 } from 'twenty-ui/display';
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { CampaignsTab } from '@/propel/components/marketingHero/CampaignsTab';
-import { LeadRoutingTab } from '@/propel/components/marketingHero/LeadRoutingTab';
+import { ConfigTab } from '@/propel/components/marketingHero/ConfigTab';
 import { MarketingHomeTab } from '@/propel/components/marketingHero/MarketingHomeTab';
 import { NumbersTab } from '@/propel/components/marketingHero/NumbersTab';
 import { SocialCalendarTab } from '@/propel/components/marketingHero/SocialCalendarTab';
@@ -29,19 +29,25 @@ import { isManagerRole, useViewerRole } from '@/propel/hooks/useViewerRole';
 // header (title + tab strip) and the active tab body, wrapped in its own Mantine
 // scope (PropelMantineProvider).
 //
-// Tab order: Home · Campaigns · Templates · Social · Numbers · Lead Routing. The
+// Tab order: Home · Campaigns · Templates · Social · Numbers · Config. The
 // active tab is URL-synced via ?tab= so a tab is linkable / survives reload /
 // back-forward navigates between tabs. (Inbox graduated OUT of this hero to its own
 // top-level /inbox route — see InboxPage; ?tab=inbox redirects there for old links.)
 //
 // Tab status:
-//   • Home         — full (the graduated dashboard, formerly MarketingHomePage)
-//   • Campaigns    — list only (detail drill-in deferred; see CampaignsTab)
-//   • Templates    — full catalog + editor modals (merge-tags sub-tab deferred)
-//   • Social       — full (the social calendar, formerly SocialCalendarPage)
-//   • Numbers      — full (the telephony number hub)
-//   • Lead Routing — MANAGER/ADMIN ONLY (gated by useViewerRole). Full-width Mantine
-//                    port of the legacy Cmd-K side-drawer lead-source-config panel.
+//   • Home      — full (the graduated dashboard, formerly MarketingHomePage)
+//   • Campaigns — list only (detail drill-in deferred; see CampaignsTab)
+//   • Templates — full catalog + editor modals (merge-tags sub-tab deferred)
+//   • Social    — full (the social calendar, formerly SocialCalendarPage)
+//   • Numbers   — full (the telephony number hub)
+//   • Config    — MANAGER/ADMIN ONLY (gated by useViewerRole). The brokerage's
+//                 operational config — formerly the standalone Settings Hub hero
+//                 (SettingsHubPage), now folded in here per founder direction. Its
+//                 6 sub-tabs (Lead routing · Lane automations · Agent profiles ·
+//                 Lead sources · Quiet hours · Custom fields) live in ConfigTab and
+//                 reuse the same gated CRM routes. The Lead sources sub-tab
+//                 SUPERSEDES the former top-level "Lead Routing" tab (both read
+//                 /lead/source-config) — that standalone tab was removed.
 //
 // Campaigns + Templates share ONE /marketing/hub fetch via useMarketingHub; the
 // Home tab fetches its own subset (useMarketingDashboardData), and Social fetches
@@ -54,7 +60,7 @@ type HeroTab =
   | 'templates'
   | 'social'
   | 'numbers'
-  | 'lead-routing';
+  | 'config';
 
 const TAB_VALUES: HeroTab[] = [
   'home',
@@ -62,7 +68,7 @@ const TAB_VALUES: HeroTab[] = [
   'templates',
   'social',
   'numbers',
-  'lead-routing',
+  'config',
 ];
 
 const isHeroTab = (v: string | null): v is HeroTab =>
@@ -82,19 +88,17 @@ export const MarketingHero = () => {
     }
   }, [rawTab, navigate]);
 
-  // Lead Routing is MANAGER/ADMIN only — hidden for agents. The role is the same
+  // Config is MANAGER/ADMIN only — hidden for agents. The role is the same
   // server-authoritative signal the Inbox triage trusts (viewerRole from
-  // /marketing/inbox); the write route is independently fail-closed, so this is a
+  // /marketing/inbox); every config WRITE is independently fail-closed, so this is a
   // pure UX gate. While the role is unknown the tab stays hidden (fail-closed). An
-  // agent who deep-links ?tab=lead-routing is bounced to Home below.
+  // agent who deep-links ?tab=config is bounced to Home below.
   const { role: viewerRole } = useViewerRole();
-  const canSeeLeadRouting = isManagerRole(viewerRole);
+  const canSeeConfig = isManagerRole(viewerRole);
 
   const requestedTab: HeroTab = isHeroTab(rawTab) ? rawTab : 'home';
   const activeTab: HeroTab =
-    requestedTab === 'lead-routing' && !canSeeLeadRouting
-      ? 'home'
-      : requestedTab;
+    requestedTab === 'config' && !canSeeConfig ? 'home' : requestedTab;
 
   // Campaigns + Templates read the same fuller hub payload; one fetch, shared
   // reload. (Mounted at hero level so switching between the two tabs doesn't
@@ -148,14 +152,14 @@ export const MarketingHero = () => {
         <Tabs.Panel value="numbers">
           {activeTab === 'numbers' ? <NumbersTab /> : null}
         </Tabs.Panel>
-        {canSeeLeadRouting ? (
-          <Tabs.Panel value="lead-routing">
-            {activeTab === 'lead-routing' ? <LeadRoutingTab /> : null}
+        {canSeeConfig ? (
+          <Tabs.Panel value="config">
+            {activeTab === 'config' ? <ConfigTab /> : null}
           </Tabs.Panel>
         ) : null}
       </>
     ),
-    [activeTab, hub, hubLoading, reloadHub, canSeeLeadRouting],
+    [activeTab, hub, hubLoading, reloadHub, canSeeConfig],
   );
 
   return (
@@ -205,12 +209,9 @@ export const MarketingHero = () => {
             <Tabs.Tab value="numbers" leftSection={<IconPhone size={15} />}>
               Numbers
             </Tabs.Tab>
-            {canSeeLeadRouting ? (
-              <Tabs.Tab
-                value="lead-routing"
-                leftSection={<IconArrowsSplit2 size={15} />}
-              >
-                Lead Routing
+            {canSeeConfig ? (
+              <Tabs.Tab value="config" leftSection={<IconSettings size={15} />}>
+                Config
               </Tabs.Tab>
             ) : null}
           </Tabs.List>

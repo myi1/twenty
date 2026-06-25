@@ -39,12 +39,13 @@
       "order": 40
     },
     {
+      "_comment": "Settings Hub was folded into the Marketing hero's Config tab (manager/admin only) — no longer a top-level sidebar item. Kept here enabled:false so its route still resolves for /settings-hub deep-links; the canonical config surface is /marketing?tab=config.",
       "key": "settings-hub",
       "label": "Settings",
       "icon": "IconSettings",
       "route": "/settings-hub",
       "bundle": "settings-hub",
-      "enabled": true,
+      "enabled": false,
       "order": 90
     }
   ]
