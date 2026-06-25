@@ -73,11 +73,66 @@ export type PropelNavEntry = {
   order: number;
 };
 
+// ── Section schema (config-version 2) ────────────────────────────────────────
+//
+// The sidebar is composed of an ORDERED list of SECTIONS, each rendered by its
+// `kind`. This makes the section layout itself config-driven (the same fast-path
+// the hero entries already have): the founder can reorder / rename / add / remove
+// nav sections by editing the mounted nav.config.json — NO engine rebuild.
+//
+// The four kinds map onto the engine's existing section renderers (we WRAP the
+// native Favorites/Workspace rendering, we do not reimplement them):
+//   • 'favorites'  — native Favorites section.
+//   • 'workspace'  — native Workspace object/folder nav. `excludeFolders` omits
+//                    app-side folders that have been PROMOTED to their own section
+//                    (so they aren't listed twice), matched by folder name or
+//                    universalIdentifier-derived name.
+//   • 'folder'     — promote ONE app-side nav folder (named by `folder`) to a
+//                    top-level section whose children render as FLAT, top-level
+//                    (non-collapsible) items. Reuses the folder-children the
+//                    collapsible folder already resolves. This is what turns the
+//                    "Pipeline" folder into the "Pipelines" section.
+//   • 'heroes'     — the Propel hero entries (today's "Other" section), sourced
+//                    from `entries` above.
+//
+// BACK-COMPAT: if `sections` is absent / empty / malformed, the engine falls back
+// to the hardcoded composition (Favorites → Workspace → Other). A bad config can
+// never break the nav.
+
+export type PropelNavSectionKind =
+  | 'favorites'
+  | 'workspace'
+  | 'folder'
+  | 'heroes';
+
+export type PropelNavSection = {
+  // Stable identity (React key + the section open/closed atom-family id). Unique.
+  key: string;
+  // User-facing section title. Ignored for 'favorites'/'workspace' (those keep
+  // their native i18n titles); used as-is for 'folder'/'heroes'.
+  title: string;
+  // Ascending sort order among sections. Ties broken by array position.
+  order: number;
+  // How this section is rendered (see above).
+  kind: PropelNavSectionKind;
+  // kind:'folder' only — the app-side folder to promote, by its `name`
+  // (e.g. 'Pipeline') or universalIdentifier (e.g. 'folderPipeline'). Matched
+  // case-insensitively against the folder's resolved name.
+  folder?: string;
+  // kind:'workspace' only — app-side folder names/identifiers to OMIT from the
+  // Workspace section because they're promoted into their own 'folder' section.
+  excludeFolders?: string[];
+  // Whether the section renders. Default true. A disabled section is skipped.
+  enabled?: boolean;
+};
+
 export type PropelNavConfig = {
-  // Optional schema marker for forward-compat; ignored today.
+  // Schema marker. Absent/1 ⇒ legacy (entries only); 2 ⇒ adds `sections`.
   version?: number;
-  // The ordered hero nav entries.
+  // The ordered hero nav entries (consumed by the 'heroes' section).
   entries: PropelNavEntry[];
+  // The ordered nav sections. Absent/empty ⇒ hardcoded fallback composition.
+  sections?: PropelNavSection[];
 };
 
 // ── Baked default (the current live nav) ───────────────────────────────────
@@ -95,7 +150,7 @@ export type PropelNavConfig = {
 //   • sequence-editor  → opened from within Marketing, not a top-level nav slot
 
 export const DEFAULT_NAV_CONFIG: PropelNavConfig = {
-  version: 1,
+  version: 2,
   entries: [
     {
       key: 'inbox',
@@ -185,7 +240,63 @@ export const DEFAULT_NAV_CONFIG: PropelNavConfig = {
       order: 80,
     },
   ],
+  sections: undefined, // filled in below (DEFAULT_NAV_CONFIG.sections = DEFAULT_SECTIONS)
 };
+
+// ── Baked default SECTIONS (config-version 2) ────────────────────────────────
+//
+// Reproduces TODAY's nav composition PLUS the promoted "Pipelines" section:
+//   Favorites → Workspace (minus the promoted Pipeline folder) → Pipelines → Other
+// This is the synchronous value the nav drawer sees on first render, and the
+// source of truth when no mounted nav.config.json `sections` array is present.
+//
+// The founder reshuffles the sidebar by editing these in the mounted JSON:
+// reorder via `order`, rename a promoted section via `title`, hide via
+// `enabled:false`, or promote a different folder by adding a `kind:'folder'`
+// section. A mounted `sections` array REPLACES this default wholesale (sections
+// are not key-merged like entries — the section LAYOUT is all-or-nothing so a
+// partial edit can't leave an inconsistent half-promoted folder).
+
+export const DEFAULT_SECTIONS: PropelNavSection[] = [
+  {
+    key: 'favorites',
+    title: 'Favorites',
+    kind: 'favorites',
+    order: 10,
+    enabled: true,
+  },
+  {
+    key: 'workspace',
+    title: 'Workspace',
+    kind: 'workspace',
+    order: 20,
+    // The Pipeline folder is promoted to its own 'pipelines' section below, so
+    // omit it here to avoid listing the lanes twice. Matched by folder name OR
+    // universalIdentifier ('Pipeline' / 'folderPipeline').
+    excludeFolders: ['folderPipeline'],
+    enabled: true,
+  },
+  {
+    key: 'pipelines',
+    title: 'Pipelines',
+    kind: 'folder',
+    // Promote the app-side 'Pipeline' folder (folderPipeline) — its 6 lane
+    // children (Sell, Secondary, Institutional, Off-plan, RCBI, Deal) render as
+    // flat top-level items. Placed BETWEEN Workspace (20) and Other (40).
+    folder: 'folderPipeline',
+    order: 30,
+    enabled: true,
+  },
+  {
+    key: 'other',
+    title: 'Other',
+    kind: 'heroes',
+    order: 40,
+    enabled: true,
+  },
+];
+
+DEFAULT_NAV_CONFIG.sections = DEFAULT_SECTIONS;
 
 // ── Runtime cache + subscription ────────────────────────────────────────────
 //
@@ -253,12 +364,63 @@ const normalizeEntry = (raw: unknown): PropelNavEntry | null => {
   };
 };
 
+// The valid section kinds, for runtime validation of the mounted JSON.
+const VALID_SECTION_KINDS: readonly PropelNavSectionKind[] = [
+  'favorites',
+  'workspace',
+  'folder',
+  'heroes',
+];
+
+// Validate + normalize ONE raw section from the mounted JSON. Returns null if the
+// section is unusable (missing key, unknown kind, or a 'folder' kind with no
+// `folder`) — it's then skipped, not fatal. A section array that ends up empty
+// after validation is treated as "absent" by mergeConfig (→ baked default).
+const normalizeSection = (raw: unknown): PropelNavSection | null => {
+  if (typeof raw !== 'object' || raw === null) {
+    return null;
+  }
+  const r = raw as Record<string, unknown>;
+  const key = typeof r.key === 'string' ? r.key : undefined;
+  const kind =
+    typeof r.kind === 'string' &&
+    (VALID_SECTION_KINDS as readonly string[]).includes(r.kind)
+      ? (r.kind as PropelNavSectionKind)
+      : undefined;
+  if (key === undefined || kind === undefined) {
+    return null;
+  }
+  // A 'folder' section is meaningless without a folder to promote.
+  const folder = typeof r.folder === 'string' ? r.folder : undefined;
+  if (kind === 'folder' && folder === undefined) {
+    return null;
+  }
+  const excludeFolders = Array.isArray(r.excludeFolders)
+    ? r.excludeFolders.filter((f): f is string => typeof f === 'string')
+    : undefined;
+  return {
+    key,
+    kind,
+    title: typeof r.title === 'string' ? r.title : key,
+    order: typeof r.order === 'number' ? r.order : 999,
+    enabled: typeof r.enabled === 'boolean' ? r.enabled : true,
+    ...(folder !== undefined ? { folder } : {}),
+    ...(excludeFolders !== undefined ? { excludeFolders } : {}),
+  };
+};
+
 // Merge the mounted config over the baked default: entries are matched by `key`.
 // A mounted entry overrides the default of the same key (partial overrides are
 // applied field-by-field); a mounted entry with a new key is appended. Default
 // entries not mentioned in the mounted config are preserved. This means a nav
 // edit can be as small as "{ key: 'marketing-hub', label: 'Campaigns' }" while
 // every other entry keeps its baked values.
+//
+// SECTIONS are handled differently from entries: a mounted `sections` array
+// REPLACES the baked DEFAULT_SECTIONS wholesale (the section LAYOUT is
+// all-or-nothing — a partial merge could leave a folder both promoted AND listed
+// in Workspace). If the mounted `sections` is absent or validates to empty, the
+// baked DEFAULT_SECTIONS stands (→ today's nav + the Pipelines section).
 const mergeConfig = (raw: unknown): PropelNavConfig => {
   if (typeof raw !== 'object' || raw === null) {
     return DEFAULT_NAV_CONFIG;
@@ -300,10 +462,24 @@ const mergeConfig = (raw: unknown): PropelNavConfig => {
     }
   }
 
+  // Sections: validate the mounted array (if any). An absent or all-invalid
+  // array → keep the baked DEFAULT_SECTIONS. A non-empty valid array REPLACES it.
+  const rawSections = (raw as Record<string, unknown>).sections;
+  let sections = DEFAULT_SECTIONS;
+  if (Array.isArray(rawSections)) {
+    const normalized = rawSections
+      .map(normalizeSection)
+      .filter((s): s is PropelNavSection => s !== null);
+    if (normalized.length > 0) {
+      sections = normalized;
+    }
+  }
+
   const version = (raw as Record<string, unknown>).version;
   return {
     version: typeof version === 'number' ? version : DEFAULT_NAV_CONFIG.version,
     entries: [...byKey.values()],
+    sections,
   };
 };
 
@@ -355,3 +531,34 @@ export const getEnabledNavEntries = (
 // having a nav link — every entry's route is registered.
 export const getAllNavEntries = (config: PropelNavConfig): PropelNavEntry[] =>
   [...config.entries].sort((a, b) => a.order - b.order);
+
+// The ordered, ENABLED nav SECTIONS that compose the sidebar. Returns [] when the
+// config carries no usable sections — the SIGNAL for the nav drawer to fall back
+// to its hardcoded composition (Favorites → Workspace → Other). Because
+// DEFAULT_NAV_CONFIG.sections === DEFAULT_SECTIONS, the out-of-the-box result is
+// the full config-driven composition (incl. the promoted Pipelines section); the
+// [] fallback only triggers if a mounted config somehow disables every section.
+export const getNavSections = (config: PropelNavConfig): PropelNavSection[] => {
+  const sections = config.sections;
+  if (!Array.isArray(sections) || sections.length === 0) {
+    return [];
+  }
+  return sections
+    .filter((section) => section.enabled !== false)
+    .sort((a, b) => a.order - b.order);
+};
+
+// Folder-name/identifier matching for kind:'workspace' excludeFolders and
+// kind:'folder' folder. The app-side folder carries a `name` ('Pipeline') and an
+// universalIdentifier ('folderPipeline'); the front only receives the name, so we
+// match a config token against the folder name case-insensitively, AND accept the
+// universalIdentifier form by stripping a leading 'folder' prefix + lowercasing
+// (so 'folderPipeline' ≈ 'Pipeline'). Pure helper, shared by the section renderers.
+export const propelNavFolderTokenMatchesName = (
+  token: string,
+  folderName: string,
+): boolean => {
+  const normalize = (value: string): string =>
+    value.trim().toLowerCase().replace(/^folder/, '');
+  return normalize(token) === normalize(folderName);
+};

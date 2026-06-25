@@ -1,0 +1,82 @@
+{
+  "version": 2,
+  "entries": [
+    {
+      "key": "inbox",
+      "label": "Inbox",
+      "icon": "IconInbox",
+      "route": "/inbox",
+      "bundle": "inbox",
+      "enabled": true,
+      "order": 10
+    },
+    {
+      "key": "marketing-hub",
+      "label": "Marketing",
+      "icon": "IconBroadcast",
+      "route": "/marketing",
+      "bundle": "marketing-hub",
+      "enabled": true,
+      "order": 20
+    },
+    {
+      "key": "one-on-one-runner",
+      "label": "Weekly 1:1",
+      "icon": "IconUsers",
+      "route": "/one-on-one",
+      "bundle": "one-on-one-runner",
+      "enabled": true,
+      "order": 30
+    },
+    {
+      "key": "listing-studio",
+      "label": "Listing Studio",
+      "icon": "IconBuildingSkyscraper",
+      "route": "/listing-studio",
+      "bundle": "listing-studio",
+      "enabled": true,
+      "order": 40
+    },
+    {
+      "key": "settings-hub",
+      "label": "Settings",
+      "icon": "IconSettings",
+      "route": "/settings-hub",
+      "bundle": "settings-hub",
+      "enabled": false,
+      "order": 90
+    }
+  ],
+  "sections": [
+    {
+      "key": "favorites",
+      "title": "Favorites",
+      "kind": "favorites",
+      "order": 10,
+      "enabled": true
+    },
+    {
+      "key": "workspace",
+      "title": "Workspace",
+      "kind": "workspace",
+      "order": 20,
+      "excludeFolders": ["folderPipeline"],
+      "enabled": true
+    },
+    {
+      "key": "pipelines",
+      "title": "Pipelines",
+      "kind": "folder",
+      "folder": "folderPipeline",
+      "order": 30,
+      "enabled": true
+    },
+    {
+      "key": "other",
+      "title": "Other",
+      "kind": "heroes",
+      "order": 40,
+      "enabled": true
+    }
+  ]
+}

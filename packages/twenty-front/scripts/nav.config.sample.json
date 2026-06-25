@@ -1,6 +1,8 @@
 {
-  "_comment": "Propel nav fast-path config (Taskmaster #74). This is a SAMPLE / reference of the file the frontend fetches at GET ${REACT_APP_HEROES_BASE_URL || '/heroes'}/nav.config.json. Drop a copy (named exactly nav.config.json) on the SAME host-mounted heroes volume that serves the hero bundles, then hard-refresh the browser — NO engine rebuild. Prod mount: /data/coolify/services/<svc>/heroes/nav.config.json. Staging mount: ~/twenty-staging/heroes/nav.config.json. Each entry merges OVER the baked default (packages/twenty-front/src/modules/propel/runtime/propelNavConfig.ts DEFAULT_NAV_CONFIG) by `key` — so to just relabel Marketing you only need {\"key\":\"marketing-hub\",\"label\":\"Campaigns\"}. `icon` is any Tabler icon name from twenty-ui/display (e.g. IconBroadcast). `enabled:false` hides the sidebar item but the route still resolves for deep-links. `route` is the AppPath path string. `bundle` is the runtime hero bundle name (heroes/<bundle>/index.js). If this file is absent/malformed the baked default is used and nothing regresses.",
-  "version": 1,
+  "_comment": "Propel nav fast-path config (config-version 2). SAMPLE / reference of the file the frontend fetches at GET ${REACT_APP_HEROES_BASE_URL || '/heroes'}/nav.config.json. Drop a copy named EXACTLY nav.config.json on the SAME host-mounted heroes volume that serves the hero bundles, then hard-refresh the browser — NO engine rebuild. Prod mount: /data/coolify/services/<svc>/heroes/nav.config.json. Staging mount: ~/twenty-staging/heroes/nav.config.json. If this file is absent/malformed the baked default (packages/twenty-front/src/modules/propel/runtime/propelNavConfig.ts) is used and nothing regresses.",
+  "_comment_entries": "`entries` = the Propel hero nav items (the 'heroes'/'Other' section content). Each merges OVER the baked DEFAULT_NAV_CONFIG by `key` — to just relabel Marketing you only need {\"key\":\"marketing-hub\",\"label\":\"Campaigns\"}. `icon` is any Tabler icon from twenty-ui/display (e.g. IconBroadcast). `enabled:false` hides the sidebar item but the route still resolves for deep-links. `route` is the AppPath path string. `bundle` is the runtime hero bundle name (heroes/<bundle>/index.js).",
+  "_comment_sections": "`sections` = the ORDERED sidebar SECTIONS (config-version 2). A non-empty `sections` array REPLACES the baked DEFAULT_SECTIONS wholesale (the section LAYOUT is all-or-nothing). Reorder via `order`, rename a promoted/heroes section via `title`, hide via `enabled:false`, promote another app-side folder by adding a {\"kind\":\"folder\",\"folder\":\"<name|universalIdentifier>\"} section. Kinds: 'favorites' (native Favorites), 'workspace' (native object/folder nav; `excludeFolders` omits folders promoted elsewhere so they aren't listed twice), 'folder' (promote an app-side nav FOLDER to a flat top-level section — `folder` matches a folder name like 'Pipeline' or universalIdentifier like 'folderPipeline'), 'heroes' (the `entries` above). If `sections` is absent/empty/all-invalid the baked DEFAULT_SECTIONS stands; if it disables every section the engine falls back to the hardcoded Favorites → Workspace → Other.",
+  "version": 2,
   "entries": [
     {
       "key": "inbox",
@@ -39,7 +41,7 @@
       "order": 40
     },
     {
-      "_comment": "Settings Hub was folded into the Marketing hero's Config tab (manager/admin only) — no longer a top-level sidebar item. Kept here enabled:false so its route still resolves for /settings-hub deep-links; the canonical config surface is /marketing?tab=config.",
+      "_comment": "Settings Hub was folded into the Marketing hero's Config tab (manager/admin only) — no longer a top-level sidebar item. Kept enabled:false so /settings-hub deep-links still resolve; the canonical config surface is /marketing?tab=config.",
       "key": "settings-hub",
       "label": "Settings",
       "icon": "IconSettings",
@@ -47,6 +49,40 @@
       "bundle": "settings-hub",
       "enabled": false,
       "order": 90
+    }
+  ],
+  "sections": [
+    {
+      "key": "favorites",
+      "title": "Favorites",
+      "kind": "favorites",
+      "order": 10,
+      "enabled": true
+    },
+    {
+      "_comment": "Native Workspace nav. excludeFolders omits the Pipeline folder because it's promoted to its own 'pipelines' section below (so the lanes aren't listed twice). Match by folder name ('Pipeline') or universalIdentifier ('folderPipeline').",
+      "key": "workspace",
+      "title": "Workspace",
+      "kind": "workspace",
+      "order": 20,
+      "excludeFolders": ["folderPipeline"],
+      "enabled": true
+    },
+    {
+      "_comment": "Promote the app-side 'Pipeline' folder (folderPipeline) to a top-level section. Its 6 lane children (Sell, Secondary, Institutional, Off-plan, RCBI, Deal) render as FLAT top-level items, only those the current user can read. Placed BETWEEN Workspace (20) and Other (40).",
+      "key": "pipelines",
+      "title": "Pipelines",
+      "kind": "folder",
+      "folder": "folderPipeline",
+      "order": 30,
+      "enabled": true
+    },
+    {
+      "key": "other",
+      "title": "Other",
+      "kind": "heroes",
+      "order": 40,
+      "enabled": true
     }
   ]
 }
