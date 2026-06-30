@@ -68,6 +68,18 @@ import { TaskGroupByRlsPreQueryHook } from 'src/modules/propel-rls/task-group-by
 import { TimelineActivityRlsPreQueryHook } from 'src/modules/propel-rls/timeline-activity-rls.pre-query.hook';
 import { TimelineActivityFindOneRlsPreQueryHook } from 'src/modules/propel-rls/timeline-activity-find-one-rls.pre-query.hook';
 import { TimelineActivityGroupByRlsPreQueryHook } from 'src/modules/propel-rls/timeline-activity-group-by-rls.pre-query.hook';
+// ── Track 2 v2 generic RLS hooks (wildcard, convention-driven) ──────────────
+// Three wildcard hooks (*.findMany, *.findOne, *.groupBy) consult the
+// PROPEL_OWNER_FIELD convention table and apply the AGENT-tier filter for
+// any object in the convention. The 23 per-object hooks ABOVE remain
+// registered as the safety net during the overlap window — wildcard hooks
+// run FIRST (per Twenty's hook storage `[...wildcardInstances, ...specificInstances]`
+// composition), the per-object hooks AND-merge an identical filter on top
+// (idempotent under AND). A follow-up cleanup branch deletes the per-object
+// hooks once the wildcard has soaked in prod.
+import { GenericRlsFindManyPreQueryHook } from 'src/modules/propel-rls/generic-rls-find-many.pre-query.hook';
+import { GenericRlsFindOnePreQueryHook } from 'src/modules/propel-rls/generic-rls-find-one.pre-query.hook';
+import { GenericRlsGroupByPreQueryHook } from 'src/modules/propel-rls/generic-rls-group-by.pre-query.hook';
 
 // Propel clean-room module:
 //  - RLS read-path hooks (findMany/findOne/groupBy) inject per-tier row filters.
@@ -143,6 +155,10 @@ import { TimelineActivityGroupByRlsPreQueryHook } from 'src/modules/propel-rls/t
     TimelineActivityRlsPreQueryHook,
     TimelineActivityFindOneRlsPreQueryHook,
     TimelineActivityGroupByRlsPreQueryHook,
+    // Track 2 v2 wildcard hooks — see imports above.
+    GenericRlsFindManyPreQueryHook,
+    GenericRlsFindOnePreQueryHook,
+    GenericRlsGroupByPreQueryHook,
   ],
 })
 export class PropelRlsModule {}
