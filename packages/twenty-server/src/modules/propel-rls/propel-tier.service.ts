@@ -119,9 +119,13 @@ export class PropelTierService {
   // Builds the per-tier row filter for the RLS read-path hooks.
   //   non-user context        → null (integrations unfiltered)
   //   MANAGER (Admin/Manager)  → null (sees all)
-  //   AGENT (everything else)  → ownerId == requesting member (own rows)
+  //   AGENT (everything else)  → <ownerField> == requesting member (own rows)
   // Fail-closed: if anything is off, resolveTier() returns AGENT, so a user
   // never gets the null (see-all) filter by accident.
+  // `options.ownerField` defaults to 'ownerId' (the convention on the 14
+  // custom CRM objects). Standard objects with a different owner column name
+  // pass it explicitly (person → assignedAgentId, task → assigneeId,
+  // timelineActivity → workspaceMemberId).
   async buildTierFilter(
     authContext: WorkspaceAuthContext,
     options: TierFilterOptions = {},
@@ -141,7 +145,9 @@ export class PropelTierService {
 
     if (!memberId) return null;
 
-    return { ownerId: { eq: memberId } };
+    const ownerField = options.ownerField ?? 'ownerId';
+
+    return { [ownerField]: { eq: memberId } };
   }
 
   // Whether RLS-style bypass applies for the §8.3 stage gate:
