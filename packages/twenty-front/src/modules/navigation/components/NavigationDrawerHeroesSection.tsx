@@ -14,6 +14,8 @@ const PROPEL_MARKETING_HUB_ENABLED =
   Boolean(import.meta.env.REACT_APP_PROPEL_MARKETING_HUB);
 
 import { currentWorkspaceMemberState } from '@/auth/states/currentWorkspaceMemberState';
+import { usePropelEffectiveFlags } from '@/propel/hooks/usePropelEffectiveFlags';
+import { getRequiredFlagKeyForHero } from '@/propel/runtime/heroKeyToFlagKey';
 import {
   getEnabledNavEntries,
   type PropelNavEntry,
@@ -67,7 +69,16 @@ export const NavigationDrawerHeroesSection = ({
   // boot, baked default until then). usePropelNavConfig re-renders this section
   // when the mounted config arrives. See modules/propel/runtime/propelNavConfig.ts.
   const navConfig = usePropelNavConfig();
-  const propelNavEntries = getEnabledNavEntries(navConfig);
+  // Track 2 v2 hero gating: filter entries by the user's effective permission
+  // flag set ((role flags ∪ workspaceMember.additionalFlags) \ excludedFlags).
+  // Heroes not mapped in HERO_KEY_TO_FLAG_KEY pass through (fail-open) — matches
+  // the existing propel-nav-filter posture on the server. Backend routes remain
+  // the security boundary; this is cosmetic-only.
+  const effectiveFlags = usePropelEffectiveFlags();
+  const propelNavEntries = getEnabledNavEntries(navConfig).filter((entry) => {
+    const required = getRequiredFlagKeyForHero(entry.key);
+    return required === undefined || effectiveFlags.has(required);
+  });
 
   const { toggleNavigationSection } = useNavigationSection('Other');
   const isNavigationSectionOpen = useAtomFamilyStateValue(
