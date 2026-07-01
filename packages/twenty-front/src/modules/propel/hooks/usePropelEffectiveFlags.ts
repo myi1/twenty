@@ -7,20 +7,29 @@ import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomState
 // Resolves the user's EFFECTIVE permission-flag set for the propel
 // hero-gating layer.
 //
-//   effective = (roleFlags ∪ additionalFlags) \ excludedFlags
+//   effective = (roleAppFlags ∪ additionalFlags) \ excludedFlags
 //
-// - roleFlags: server-computed at the User.currentUserWorkspace.permissionFlags
-//   field (Twenty native — derived from the user's role's
-//   permissionFlagUniversalIdentifiers). Includes built-in Twenty flag keys
-//   AND the propel app's flag keys (PROPEL_INBOX, PROPEL_MARKETING_HUB, …).
-// - additionalFlags / excludedFlags: propel-custom MULTI_SELECT fields on
-//   the currentWorkspaceMember (see workspace-member-additional-flags.field.ts /
-//   workspace-member-excluded-flags.field.ts). Option `value`s mirror the
-//   permission-flag KEYS exactly.
+// PRIMARY SOURCE — currentUserWorkspace.propelEffectiveFlags: a NEW string[]
+// field computed SERVER-SIDE (see permissions.service.ts →
+// computePropelEffectiveFlags). The server already folds in the role's app-flag
+// keys (PROPEL_INBOX, …) AND this member's per-agent additionalFlags /
+// excludedFlags overrides, with exclude-wins. The role's PROPEL_* keys are NOT
+// reachable via currentUserWorkspace.permissionFlags (that field is the Twenty
+// core PermissionFlagType enum — PROPEL_* keys are silently dropped there), so
+// the server-computed field is the only place they surface.
+//
+// CLIENT FALLBACK — currentWorkspaceMember.additionalFlags / excludedFlags:
+// propel-custom MULTI_SELECT fields (see workspace-member-additional-flags.field
+// / .../excluded-flags.field), already fetched on the workspaceMember fragment.
+// Merged in below so the gate still honors per-agent overrides even if talking
+// to a server that predates propelEffectiveFlags (empty → this fallback carries
+// the overrides; role app-flags are simply unavailable in that legacy case).
+// When both sources are present the result is identical (idempotent union +
+// exclude-wins), so keeping the fallback is harmless.
 //
 // EXCLUDE WINS on conflict — by design (a flag in both `additional` and
-// `excluded` resolves to NOT visible). Matches the docstring on the field
-// definitions + the design in docs/RLS-CONFIG-SYSTEM-DESIGN.md (v2) §5.
+// `excluded` resolves to NOT visible). Matches the server compute + the field
+// definitions + docs/RLS-CONFIG-SYSTEM-DESIGN.md (v2) §5.
 //
 // This is a COSMETIC gate (matches the propel-nav-filter posture). Backend
 // routes / RLS hooks remain the security boundary. A user who edits this
@@ -31,10 +40,18 @@ export const usePropelEffectiveFlags = (): ReadonlySet<string> => {
   const currentWorkspaceMember = useAtomStateValue(currentWorkspaceMemberState);
 
   return useMemo(() => {
-    const roleFlags = currentUserWorkspace?.permissionFlags ?? [];
+    // Server-computed effective set (role app-flags + per-agent overrides).
+    const serverEffective =
+      (
+        currentUserWorkspace as {
+          propelEffectiveFlags?: string[] | null;
+        } | null
+      )?.propelEffectiveFlags ?? [];
+
     // `additionalFlags` / `excludedFlags` are MULTI_SELECT custom fields →
     // string[] of option values, or null when no custom fields are installed
-    // (e.g. a workspace without the propel app, dev fixtures).
+    // (e.g. a workspace without the propel app, dev fixtures). Kept as a
+    // harmless fallback for legacy servers (see docstring above).
     const additional =
       (currentWorkspaceMember as { additionalFlags?: string[] | null } | null)
         ?.additionalFlags ?? [];
@@ -42,7 +59,7 @@ export const usePropelEffectiveFlags = (): ReadonlySet<string> => {
       (currentWorkspaceMember as { excludedFlags?: string[] | null } | null)
         ?.excludedFlags ?? [];
 
-    const merged = new Set<string>(roleFlags);
+    const merged = new Set<string>(serverEffective);
     for (const f of additional) merged.add(f);
     for (const f of excluded) merged.delete(f); // exclude wins
 
