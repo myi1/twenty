@@ -15,6 +15,7 @@ import {
   ApplicationException,
   ApplicationExceptionCode,
 } from 'src/engine/core-modules/application/application.exception';
+import { UserWorkspaceEntity } from 'src/engine/core-modules/user-workspace/user-workspace.entity';
 import { TOOL_PERMISSION_FLAGS } from 'src/engine/metadata-modules/permissions/constants/tool-permission-flags';
 import {
   PermissionsException,
@@ -42,6 +43,8 @@ export class PermissionsService {
     private readonly roleRepository: WorkspaceScopedRepository<RoleEntity>,
     @InjectRepository(ApplicationEntity)
     private readonly applicationRepository: Repository<ApplicationEntity>,
+    @InjectRepository(UserWorkspaceEntity)
+    private readonly userWorkspaceRepository: Repository<UserWorkspaceEntity>,
     private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
   ) {}
 
@@ -160,10 +163,14 @@ export class PermissionsService {
   }
 
   // Reads the per-agent MULTI_SELECT overrides (additionalFlags / excludedFlags)
-  // from the workspace's workspaceMember standard object, matched by
-  // userWorkspaceId. These columns only exist when the propel app is installed;
-  // if it isn't (or the query fails for any reason) we return empty arrays. The
-  // caller wraps this in try/catch too — this is defense-in-depth.
+  // from the workspace's workspaceMember standard object. The workspaceMember
+  // table keys on `userId` (NOT userWorkspaceId), so we first resolve the
+  // userWorkspaceId → userId via the core userWorkspace repo, then query the
+  // workspaceMember by userId (mirrors user-role.service.ts
+  // ::getWorkspaceMembersAssignedToRole). The additionalFlags / excludedFlags
+  // columns only exist when the propel app is installed; if it isn't (or the
+  // query fails for any reason) we return empty arrays. The caller wraps this in
+  // try/catch too — this is defense-in-depth.
   private async getPropelMemberFlagOverrides({
     userWorkspaceId,
     workspaceId,
@@ -172,6 +179,15 @@ export class PermissionsService {
     workspaceId: string;
   }): Promise<{ additionalFlags: string[]; excludedFlags: string[] }> {
     try {
+      const userWorkspace = await this.userWorkspaceRepository.findOne({
+        where: { id: userWorkspaceId },
+      });
+      const userId = userWorkspace?.userId;
+
+      if (!isDefined(userId)) {
+        return { additionalFlags: [], excludedFlags: [] };
+      }
+
       const authContext = buildSystemAuthContext(workspaceId);
 
       const member = await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
@@ -185,10 +201,10 @@ export class PermissionsService {
 
           return workspaceMemberRepository.findOne({
             where: {
-              // `userWorkspaceId` is a propel-added relation column on
-              // workspaceMember; not present on the base entity type, hence the
-              // loose cast.
-              userWorkspaceId,
+              // `userId` IS a real workspaceMember column; the loose cast only
+              // bridges the entity-type gap for additionalFlags/excludedFlags
+              // (propel-added columns not on the base entity type).
+              userId,
             } as Record<string, unknown>,
           });
         },

@@ -8,9 +8,11 @@ import {
 
 import { ApiKeyRoleService } from 'src/engine/core-modules/api-key/services/api-key-role.service';
 import { ApplicationEntity } from 'src/engine/core-modules/application/application.entity';
+import { UserWorkspaceEntity } from 'src/engine/core-modules/user-workspace/user-workspace.entity';
 import { PermissionsService } from 'src/engine/metadata-modules/permissions/permissions.service';
 import { RoleEntity } from 'src/engine/metadata-modules/role/role.entity';
 import { UserRoleService } from 'src/engine/metadata-modules/user-role/user-role.service';
+import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { getWorkspaceScopedRepositoryToken } from 'src/engine/twenty-orm/workspace-scoped-repository/get-workspace-scoped-repository-token.util';
 import { WorkspaceCacheService } from 'src/engine/workspace-cache/services/workspace-cache.service';
 
@@ -39,6 +41,14 @@ describe('PermissionsService', () => {
         },
         {
           provide: getRepositoryToken(ApplicationEntity),
+          useValue: {},
+        },
+        {
+          provide: getRepositoryToken(UserWorkspaceEntity),
+          useValue: {},
+        },
+        {
+          provide: GlobalWorkspaceOrmManager,
           useValue: {},
         },
       ],

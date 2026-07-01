@@ -18,14 +18,15 @@ import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomState
 // core PermissionFlagType enum — PROPEL_* keys are silently dropped there), so
 // the server-computed field is the only place they surface.
 //
-// CLIENT FALLBACK — currentWorkspaceMember.additionalFlags / excludedFlags:
+// CLIENT-SIDE DEFENSE — currentWorkspaceMember.additionalFlags / excludedFlags:
 // propel-custom MULTI_SELECT fields (see workspace-member-additional-flags.field
 // / .../excluded-flags.field), already fetched on the workspaceMember fragment.
-// Merged in below so the gate still honors per-agent overrides even if talking
-// to a server that predates propelEffectiveFlags (empty → this fallback carries
-// the overrides; role app-flags are simply unavailable in that legacy case).
-// When both sources are present the result is identical (idempotent union +
-// exclude-wins), so keeping the fallback is harmless.
+// The server field is the PRIMARY source once populated; this client-side merge
+// is a live belt-and-suspenders layer, not merely legacy-server support. It
+// re-applies the per-agent overrides directly from the workspaceMember record,
+// so the gate stays correct even if the server-computed set is stale, empty, or
+// (transiently) not yet populated. When both sources agree the result is
+// identical (idempotent union + exclude-wins), so the extra merge is harmless.
 //
 // EXCLUDE WINS on conflict — by design (a flag in both `additional` and
 // `excluded` resolves to NOT visible). Matches the server compute + the field
