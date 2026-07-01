@@ -11,12 +11,18 @@ import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomState
 // Resolves the user's EFFECTIVE permission-flag set for the propel
 // hero-gating layer.
 //
-//   effective = (roleFlags ∪ additionalFlags) \ excludedFlags
+//   effective = (roleFlags ∪ serverEffective ∪ additionalFlags) \ excludedFlags
 //
-// - roleFlags: server-computed at the User.currentUserWorkspace.permissionFlags
-//   field (Twenty native — derived from the user's role's
-//   permissionFlagUniversalIdentifiers). Includes built-in Twenty flag keys
-//   AND the propel app's flag keys (PROPEL_INBOX, PROPEL_MARKETING_HUB, …).
+// - serverEffective: currentUserWorkspace.propelEffectiveFlags — computed
+//   SERVER-SIDE (permissions.service.ts → computePropelEffectiveFlags): the
+//   role's APP flag keys (PROPEL_INBOX, …) folded with this member's
+//   additionalFlags/excludedFlags, exclude-wins. This is the ONLY transport
+//   for role-granted PROPEL_* keys: the native permissionFlags field is the
+//   core PermissionFlagType enum and silently drops custom app flags —
+//   2026-07-31 lesson: for a month only members with hand-set additionalFlags
+//   saw any gated hero, because this field was missing from the engine.
+// - roleFlags: the native permissionFlags (built-in Twenty keys) — kept in the
+//   union for any built-in-keyed gates.
 // - additionalFlags / excludedFlags: propel-custom MULTI_SELECT fields on
 //   the workspaceMember OBJECT (workspace schema — see
 //   workspace-member-additional-flags.field.ts). ROOT-CAUSE NOTE (2026-07-08):
@@ -86,12 +92,19 @@ export const usePropelEffectiveFlags = (): ReadonlySet<string> => {
 
   return useMemo(() => {
     const roleFlags = currentUserWorkspace?.permissionFlags ?? [];
+    // Server-computed effective set (role app-flags + per-member overrides,
+    // exclude-wins already applied). Empty on a server predating the field —
+    // the member-override fallback below still carries hand-set flags then.
+    const serverEffective =
+      (currentUserWorkspace as { propelEffectiveFlags?: string[] | null } | null)
+        ?.propelEffectiveFlags ?? [];
     // MULTI_SELECT custom fields → string[] of option values (the flag KEY
     // strings), or null/undefined when unset or the propel app is absent.
     const additional = data?.workspaceMember?.additionalFlags ?? [];
     const excluded = data?.workspaceMember?.excludedFlags ?? [];
 
     const merged = new Set<string>(roleFlags);
+    for (const f of serverEffective) merged.add(f);
     for (const f of additional) merged.add(f);
     for (const f of excluded) merged.delete(f); // exclude wins
 
