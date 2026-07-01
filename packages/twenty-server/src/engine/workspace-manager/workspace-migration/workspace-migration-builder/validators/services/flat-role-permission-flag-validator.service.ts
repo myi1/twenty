@@ -232,6 +232,7 @@ export class FlatRolePermissionFlagValidatorService {
       flatRolePermissionFlagMaps: optimisticFlatRolePermissionFlagMaps,
       flatRoleMaps,
     },
+    buildOptions,
   }: UniversalFlatEntityValidationArgs<
     typeof ALL_METADATA_NAME.rolePermissionFlag
   >): FailedFlatEntityValidation<'rolePermissionFlag', 'delete'> {
@@ -261,7 +262,24 @@ export class FlatRolePermissionFlagValidatorService {
         flatEntityMaps: flatRoleMaps,
       });
 
-      if (isDefined(referencedRole) && !referencedRole.isEditable) {
+      // Propel: allow the installer to reconcile (prune) an app-owned permission
+      // flag off a system (non-editable) role. app:install runs its reconciliation
+      // with inferDeletionFromMissingEntities set; in that context a
+      // rolePermissionFlag that is absent from the manifest MUST be prunable even
+      // on Admin / standard roles — otherwise a flag that got attached to a system
+      // role (e.g. directly, outside the manifest) strands the whole app in an
+      // un-installable state (every subsequent app:install aborts with
+      // ROLE_NOT_EDITABLE). Explicit, user-initiated deletions (no inferDeletion)
+      // remain blocked, preserving the guard against editing system roles by hand.
+      const isInstallerReconciliation = isDefined(
+        buildOptions.inferDeletionFromMissingEntities,
+      );
+
+      if (
+        isDefined(referencedRole) &&
+        !referencedRole.isEditable &&
+        !isInstallerReconciliation
+      ) {
         validationResult.errors.push({
           code: PermissionsExceptionCode.ROLE_NOT_EDITABLE,
           message: t`Role is not editable`,
