@@ -33,6 +33,24 @@ import { WorkspaceScopedRepository } from 'src/engine/twenty-orm/workspace-scope
 import { WorkspaceCacheService } from 'src/engine/workspace-cache/services/workspace-cache.service';
 import { type WorkspaceMemberWorkspaceEntity } from 'src/modules/workspace-member/standard-objects/workspace-member.workspace-entity';
 
+// Propel: the full set of hero permission flags (the PROPEL_* keys the front-end
+// gates the hero nav / launchers on). Admins (canUpdateAllSettings) are granted
+// all of these in propelEffectiveFlags so admin hero-access never depends on the
+// role's (prunable) permission-flag rows. Keep in sync with the front-end
+// route→flag map and the app-side PROPEL_FLAG_KEYS list.
+const PROPEL_HERO_FLAG_KEYS = [
+  'PROPEL_INBOX',
+  'PROPEL_LISTING_STUDIO',
+  'PROPEL_A2A_STUDIO',
+  'PROPEL_ONE_ON_ONE_RUNNER',
+  'PROPEL_MARKETING_HUB',
+  'PROPEL_CAMPAIGN_BUILDER',
+  'PROPEL_SEQUENCE_EDITOR',
+  'PROPEL_SOCIAL_CALENDAR',
+  'PROPEL_SETTINGS_HUB',
+  'PROPEL_NUMBER_HUB',
+];
+
 @Injectable()
 export class PermissionsService {
   constructor(
@@ -147,6 +165,18 @@ export class PermissionsService {
         });
 
       const effective = new Set<string>(roleAppFlags);
+
+      // Admins (canUpdateAllSettings — held ONLY by the built-in Admin role) see
+      // EVERY hero, independent of the role's permission-flag rows. This keeps
+      // admin hero-access bulletproof: app:install may prune the PROPEL_* flags
+      // that were attached to the (non-editable) Admin role out-of-manifest, and
+      // admins still see every hero. New admins need zero per-member setup. The
+      // per-role config screen governs Manager/Agent/Member; Admin is always-all.
+      if (roleOfUserWorkspace.canUpdateAllSettings === true) {
+        for (const flag of PROPEL_HERO_FLAG_KEYS) {
+          effective.add(flag);
+        }
+      }
 
       for (const flag of additionalFlags) {
         effective.add(flag);
