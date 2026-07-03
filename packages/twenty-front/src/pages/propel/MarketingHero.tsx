@@ -9,6 +9,7 @@ import {
   IconFileText,
   IconPhone,
   IconSend,
+  IconWorld,
 } from 'twenty-ui/display';
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
@@ -18,6 +19,7 @@ import { MarketingHomeTab } from '@/propel/components/marketingHero/MarketingHom
 import { NumbersTab } from '@/propel/components/marketingHero/NumbersTab';
 import { SocialCalendarTab } from '@/propel/components/marketingHero/SocialCalendarTab';
 import { TemplatesTab } from '@/propel/components/marketingHero/TemplatesTab';
+import { WebsiteTab } from '@/propel/components/website/WebsiteTab';
 import { PropelMantineProvider } from '@/propel/components/PropelMantineProvider';
 import { useMarketingHub } from '@/propel/hooks/useMarketingHub';
 import { isManagerRole, useViewerRole } from '@/propel/hooks/useViewerRole';
@@ -29,10 +31,11 @@ import { isManagerRole, useViewerRole } from '@/propel/hooks/useViewerRole';
 // header (title + tab strip) and the active tab body, wrapped in its own Mantine
 // scope (PropelMantineProvider).
 //
-// Tab order: Home · Campaigns · Templates · Social · Numbers · Lead Routing. The
-// active tab is URL-synced via ?tab= so a tab is linkable / survives reload /
-// back-forward navigates between tabs. (Inbox graduated OUT of this hero to its own
-// top-level /inbox route — see InboxPage; ?tab=inbox redirects there for old links.)
+// Tab order: Home · Campaigns · Templates · Social · Numbers · Website ·
+// Lead Routing. The active tab is URL-synced via ?tab= so a tab is linkable /
+// survives reload / back-forward navigates between tabs. (Inbox graduated OUT
+// of this hero to its own top-level /inbox route — see InboxPage; ?tab=inbox
+// redirects there for old links.)
 //
 // Tab status:
 //   • Home         — full (the graduated dashboard, formerly MarketingHomePage)
@@ -40,6 +43,10 @@ import { isManagerRole, useViewerRole } from '@/propel/hooks/useViewerRole';
 //   • Templates    — full catalog + editor modals (merge-tags sub-tab deferred)
 //   • Social       — full (the social calendar, formerly SocialCalendarPage)
 //   • Numbers      — full (the telephony number hub)
+//   • Website      — mock-data UI only this wave (5 sub-tabs: Overview, Blog,
+//                    Landing pages, Site leads, SEO and AI — see
+//                    components/website/WebsiteTab.tsx + CONVENTIONS.md).
+//                    NOT role-gated, same audience as Home/Campaigns/etc.
 //   • Lead Routing — MANAGER/ADMIN ONLY (gated by useViewerRole). Full-width Mantine
 //                    port of the legacy Cmd-K side-drawer lead-source-config panel.
 //
@@ -54,6 +61,7 @@ type HeroTab =
   | 'templates'
   | 'social'
   | 'numbers'
+  | 'website'
   | 'lead-routing';
 
 const TAB_VALUES: HeroTab[] = [
@@ -62,6 +70,7 @@ const TAB_VALUES: HeroTab[] = [
   'templates',
   'social',
   'numbers',
+  'website',
   'lead-routing',
 ];
 
@@ -148,6 +157,9 @@ export const MarketingHero = () => {
         <Tabs.Panel value="numbers">
           {activeTab === 'numbers' ? <NumbersTab /> : null}
         </Tabs.Panel>
+        <Tabs.Panel value="website">
+          {activeTab === 'website' ? <WebsiteTab /> : null}
+        </Tabs.Panel>
         {canSeeLeadRouting ? (
           <Tabs.Panel value="lead-routing">
             {activeTab === 'lead-routing' ? <LeadRoutingTab /> : null}
@@ -204,6 +216,9 @@ export const MarketingHero = () => {
             </Tabs.Tab>
             <Tabs.Tab value="numbers" leftSection={<IconPhone size={15} />}>
               Numbers
+            </Tabs.Tab>
+            <Tabs.Tab value="website" leftSection={<IconWorld size={15} />}>
+              Website
             </Tabs.Tab>
             {canSeeLeadRouting ? (
               <Tabs.Tab
