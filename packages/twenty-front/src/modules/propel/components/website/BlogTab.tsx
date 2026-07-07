@@ -334,6 +334,37 @@ export const BlogTab = () => {
         </Group>
       </Group>
 
+      {/* Honest state marker: the pipeline board below is sample data — the AI
+          writer bench (Ideas → Draft → Schedule) is designed but not yet built.
+          The blog ITSELF is live and real (Ghost-backed /blog on the site). */}
+      <Paper
+        withBorder
+        radius="md"
+        p="sm"
+        mb="md"
+        style={{ borderColor: 'var(--mantine-color-yellow-4)' }}
+      >
+        <Group gap={8} align="flex-start" wrap="nowrap">
+          <IconAlertTriangle
+            size={16}
+            style={{ color: 'var(--mantine-color-yellow-6)', marginTop: 2, flexShrink: 0 }}
+          />
+          <Text size="xs" c="dimmed">
+            <Text span fw={600} c="var(--mantine-color-yellow-7)">
+              Preview.
+            </Text>{' '}
+            The Ideas, Drafting and Scheduled cards below are sample data showing
+            how the AI writer bench will run — that automation is designed, not
+            yet built. The blog itself is live: real published articles render on
+            the site at{' '}
+            <Text span fw={600}>
+              remaxhub.ae/blog
+            </Text>
+            .
+          </Text>
+        </Group>
+      </Paper>
+
       <AgentStatusChips />
 
       <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md">
