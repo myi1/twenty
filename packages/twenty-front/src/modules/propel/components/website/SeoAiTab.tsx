@@ -3,7 +3,9 @@ import {
   Badge,
   Box,
   Button,
+  Center,
   Group,
+  Loader,
   Paper,
   RingProgress,
   SimpleGrid,
@@ -30,22 +32,38 @@ import {
   IconSparkles,
   IconTarget,
   IconWand,
+  IconWorld,
 } from 'twenty-ui/display';
 import {
   getSeoAiData,
   type AiVisibilityEngineResult,
   type AiVisibilityPromptRow,
   type SeoAiAutomationToggles,
-  type SeoIssueRow,
-  type SeoIssueSeverity,
 } from '@/propel/mocks/websiteMockData';
+import {
+  DEFAULT_SEO_BASE_URL,
+  relativeScanAge,
+  type SeoAuditIssue,
+  type SeoIssueSeverity,
+} from '@/propel/lib/websiteSeoCrm';
+import { useWebsiteSeo } from '@/propel/hooks/useWebsiteSeo';
 
 // SEO and AI sub-tab of the Website tab (WEBSITE-REBUILD-DESIGN.md §6 "SEO and AI").
-// Mock-data wave (see CONVENTIONS.md "Data-fetching pattern") — no route exists yet,
-// so every "action" here (Fix with AI, add a tracked prompt, flip an automation
-// toggle) mutates LOCAL component state only. Nothing persists across a reload; a
-// clear inline comment marks each stub so a future pass wiring `callPropelRoute`
-// knows exactly what to replace.
+//
+// REAL: the SEO-audit half. "Run audit" hits POST /website/seo-audit (a
+// Manager/Admin-gated CRM logic-function route on develop) via useWebsiteSeo →
+// websiteSeoCrm.ts. The metric rings and issue list are derived purely from what
+// the crawler actually found — no invented scores. "Fix with AI" is surfaced as
+// an HONEST per-issue flag: the route reports whether an automated fix WILL be
+// available, but no remediation endpoint exists yet, so nothing here simulates a
+// fix.
+//
+// PREVIEW (mock, clearly labelled): the AI-visibility monitor and the automation
+// toggles. Those depend on a visibility-check route + tracked-prompt store and a
+// config/cron surface that don't exist yet (net-new, gated — see
+// WEBSITE-MARKETING-TAB-PLAN.md R2). They read getSeoAiData() and mutate local
+// state only, marked as previews so a future wiring pass knows exactly what to
+// replace.
 
 const SEVERITY_META: Record<
   SeoIssueSeverity,
@@ -65,9 +83,9 @@ const ENGINE_META: Record<
   GEMINI: { label: 'Gemini', Icon: IconBrandGoogle },
 };
 
-// One score card: a ring gauge + label, used for the 4 top-of-tab scores. Plain
-// Paper per CONVENTIONS.md (not WidgetCard — that shell is for the draggable Home
-// dashboard grid, not a static score strip).
+// A ring gauge + label, for the two derived scores at the top of the audit
+// result. Plain Paper per CONVENTIONS.md (not WidgetCard — that shell is for the
+// draggable Home dashboard grid).
 const ScoreCard = ({
   label,
   valuePct,
@@ -96,7 +114,7 @@ const ScoreCard = ({
         <Text size="sm" fw={600} truncate>
           {label}
         </Text>
-        <Text size="xs" c="dimmed" truncate>
+        <Text size="xs" c="dimmed">
           {detail}
         </Text>
       </Stack>
@@ -104,67 +122,62 @@ const ScoreCard = ({
   </Paper>
 );
 
-// Fix-with-AI button + inline state machine per issue row: idle -> fixing (spinner,
-// optimistic) -> fixed (checkmark, disabled). STUB: no real remediation runs; this
-// simulates the eventual `/website/seo/fix-issue` call with a short timeout so the
-// interaction reads correctly in a demo/QA pass. Real persistence is a follow-up —
-// swapping the setTimeout body for a callPropelRoute call is the only change needed.
-type FixState = 'idle' | 'fixing' | 'fixed';
-
-const FixWithAiButton = ({
-  issueId,
-  available,
-  state,
-  onFix,
+// A plain count tile (crawl issue counts) — no fake percentage.
+const CountCard = ({
+  label,
+  value,
+  color,
+  detail,
 }: {
-  issueId: string;
-  available: boolean;
-  state: FixState;
-  onFix: (issueId: string) => void;
-}) => {
-  if (!available) {
+  label: string;
+  value: number;
+  color?: string;
+  detail: string;
+}) => (
+  <Paper withBorder radius="md" p="md">
+    <Stack gap={2}>
+      <Text size="xs" c="dimmed">
+        {label}
+      </Text>
+      <Text size="xl" fw={700} c={value > 0 ? color : undefined}>
+        {value}
+      </Text>
+      <Text size="xs" c="dimmed" truncate>
+        {detail}
+      </Text>
+    </Stack>
+  </Paper>
+);
+
+// Honest per-issue "Fix with AI" affordance. The route flags whether an automated
+// fix WILL be available for this issue type, but no remediation endpoint exists
+// yet — so this reports the flag, it never simulates a fix.
+const FixAffordance = ({ issue }: { issue: SeoAuditIssue }) => {
+  if (!issue.fixWithAiAvailable) {
     return (
-      <Tooltip label="No automated fix available for this issue yet">
+      <Tooltip label="This issue needs a manual fix — no safe automated fix.">
         <Text size="xs" c="dimmed">
-          Manual fix required
+          Manual fix
         </Text>
       </Tooltip>
     );
   }
-  if (state === 'fixed') {
-    return (
+  return (
+    <Tooltip label="An automated AI fix for this issue type is planned but not wired yet.">
       <Badge
         size="sm"
         variant="light"
-        color="teal"
-        leftSection={<IconCheck size={12} />}
+        color="grape"
+        leftSection={<IconWand size={12} />}
       >
-        Fixed
+        AI-fixable
       </Badge>
-    );
-  }
-  return (
-    <Button
-      size="compact-xs"
-      variant="light"
-      color="red"
-      loading={state === 'fixing'}
-      leftSection={state === 'fixing' ? undefined : <IconWand size={13} />}
-      onClick={() => onFix(issueId)}
-    >
-      {state === 'fixing' ? 'Fixing…' : 'Fix with AI'}
-    </Button>
+    </Tooltip>
   );
 };
 
-// Add-prompt row for the AI visibility monitor. Appends a mock row (all engines
-// "not checked yet") to local state — no real ChatGPT/Perplexity/Gemini calls fire
-// this wave. STUB, follow-up = wire a scheduled visibility-checker job per §5.
-const AddPromptRow = ({
-  onAdd,
-}: {
-  onAdd: (prompt: string) => void;
-}) => {
+// ── Preview: AI visibility monitor (mock, not wired) ─────────────────────────
+const AddPromptRow = ({ onAdd }: { onAdd: (prompt: string) => void }) => {
   const [value, setValue] = useState('');
   const submit = () => {
     const trimmed = value.trim();
@@ -196,11 +209,7 @@ const AddPromptRow = ({
   );
 };
 
-const EngineResultCell = ({
-  result,
-}: {
-  result: AiVisibilityEngineResult;
-}) => {
+const EngineResultCell = ({ result }: { result: AiVisibilityEngineResult }) => {
   const meta = ENGINE_META[result.engine];
   if (result.cited) {
     return (
@@ -271,25 +280,31 @@ const AUTOMATION_LABELS: Record<
 };
 
 export const SeoAiTab = () => {
-  // Mock-backed local state. Per CONVENTIONS.md "Data-fetching pattern": this is a
-  // plain `getSeoAiData()` read seeded into useState so actions (fix, add prompt,
-  // toggle) can mutate it locally — no useEffect/fetch cycle against nothing.
-  const [{ scores, issues, visibilityPrompts, automation }, setData] = useState(
-    () => getSeoAiData(),
-  );
-  const [fixStates, setFixStates] = useState<Record<string, FixState>>({});
-  const [auditRunning, setAuditRunning] = useState(false);
+  // ── Real SEO audit ──────────────────────────────────────────────────────────
+  // `baseUrlInput` is what the user is typing; `target` is the committed URL the
+  // hook crawls (a live crawl runs on mount + when the target changes / Retry).
+  const [baseUrlInput, setBaseUrlInput] = useState(DEFAULT_SEO_BASE_URL);
+  const [target, setTarget] = useState(DEFAULT_SEO_BASE_URL);
+  const { phase, error, data, reload } = useWebsiteSeo(target);
 
-  // STUB: optimistic "fixing" -> "fixed" transition, no real remediation. Follow-up:
-  // replace the setTimeout with a callPropelRoute('/website/seo/fix-issue', {...}).
-  const handleFixWithAi = (issueId: string) => {
-    setFixStates((prev) => ({ ...prev, [issueId]: 'fixing' }));
-    setTimeout(() => {
-      setFixStates((prev) => ({ ...prev, [issueId]: 'fixed' }));
-    }, 1400);
+  const runAudit = () => {
+    const next = baseUrlInput.trim();
+    if (next === '') return;
+    if (next === target) reload();
+    else setTarget(next);
   };
 
-  // STUB: appends a mock "not checked yet" row — no engine is actually queried.
+  // ── Preview: AI-visibility monitor + automations (mock, local state only) ────
+  const [{ visibilityPrompts, automation }, setPreview] = useState(() => {
+    const seed = getSeoAiData();
+    return {
+      visibilityPrompts: seed.visibilityPrompts,
+      automation: seed.automation,
+    };
+  });
+
+  // PREVIEW STUB: appends a "not checked yet" row — no engine is queried. A real
+  // wiring pass replaces this with a tracked-prompt store + visibility-check job.
   const handleAddPrompt = (prompt: string) => {
     const newRow: AiVisibilityPromptRow = {
       id: `prompt-${Date.now()}`,
@@ -301,30 +316,18 @@ export const SeoAiTab = () => {
         { engine: 'GEMINI', mentioned: false, cited: false, rivalCited: null },
       ],
     };
-    setData((prev) => ({
+    setPreview((prev) => ({
       ...prev,
       visibilityPrompts: [newRow, ...prev.visibilityPrompts],
     }));
   };
 
-  // STUB: local-only toggle flip. Comment per CONVENTIONS.md: real persistence
-  // (a `/website/seo/automation` upsert route) is a follow-up, not built this wave.
+  // PREVIEW STUB: local toggle flip only — no automation job is wired yet.
   const handleToggleAutomation = (key: keyof SeoAiAutomationToggles) => {
-    setData((prev) => ({
+    setPreview((prev) => ({
       ...prev,
       automation: { ...prev.automation, [key]: !prev.automation[key] },
     }));
-  };
-
-  // STUB: "Run full audit" just re-seeds from the mock module after a short delay
-  // to simulate a crawl — no real crawler runs this wave.
-  const handleRunAudit = () => {
-    setAuditRunning(true);
-    setTimeout(() => {
-      setData(getSeoAiData());
-      setFixStates({});
-      setAuditRunning(false);
-    }, 1600);
   };
 
   return (
@@ -336,129 +339,189 @@ export const SeoAiTab = () => {
             <Title order={4}>SEO and AI</Title>
           </Group>
           <Text c="dimmed" size="sm" mt={2}>
-            Technical health, on-page fixes, and how AI engines see remaxhub.ae.
+            Technical health, on-page fixes, and how AI engines see the site.
           </Text>
         </Box>
-        <Button
-          size="xs"
-          color="red"
-          leftSection={
-            auditRunning ? undefined : <IconRefresh size={14} />
-          }
-          loading={auditRunning}
-          onClick={handleRunAudit}
-        >
-          {auditRunning ? 'Running audit…' : 'Run full audit'}
-        </Button>
+        <Group gap="xs" wrap="nowrap" align="flex-end">
+          <TextInput
+            size="xs"
+            w={220}
+            label="Site to audit"
+            placeholder={DEFAULT_SEO_BASE_URL}
+            value={baseUrlInput}
+            onChange={(e) => setBaseUrlInput(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') runAudit();
+            }}
+            leftSection={<IconWorld size={14} />}
+          />
+          <Button
+            size="xs"
+            color="red"
+            mt={20}
+            leftSection={
+              phase === 'loading' ? undefined : <IconRefresh size={14} />
+            }
+            loading={phase === 'loading'}
+            onClick={runAudit}
+          >
+            {phase === 'loading' ? 'Auditing…' : 'Run audit'}
+          </Button>
+        </Group>
       </Group>
 
-      <Alert
-        color="gray"
-        variant="light"
-        icon={<IconInfoCircle size={16} />}
-        mb="md"
-      >
-        This tab runs on mock data for now — issues, prompts, and toggles are demo
-        state only and reset on reload. No real crawl, AI query, or automation is
-        wired yet.
-      </Alert>
+      {/* ── Real SEO audit result ── */}
+      {phase === 'error' ? (
+        <Alert
+          color="red"
+          icon={<IconAlertTriangle size={16} />}
+          variant="light"
+          mb="lg"
+          title="Couldn't run the SEO audit"
+        >
+          <Stack gap="sm" align="flex-start">
+            <Text size="sm">{error}</Text>
+            <Button
+              size="compact-sm"
+              variant="light"
+              color="red"
+              leftSection={<IconRefresh size={13} />}
+              onClick={reload}
+            >
+              Retry
+            </Button>
+          </Stack>
+        </Alert>
+      ) : phase === 'loading' ? (
+        <Center h={200} mb="lg">
+          <Loader color="red" />
+        </Center>
+      ) : data !== null ? (
+        <>
+          <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md" mb="md">
+            <ScoreCard
+              label="SEO health"
+              valuePct={data.seoHealthPct}
+              color={data.seoHealthPct >= 70 ? 'teal' : 'yellow'}
+              detail={
+                data.pagesWithIssues === 0
+                  ? 'All crawled pages are clean'
+                  : `${data.pagesWithIssues} of ${data.pagesAudited} pages have issues`
+              }
+            />
+            <ScoreCard
+              label="AI readiness"
+              valuePct={data.aiReadinessPct}
+              color="grape"
+              detail="Pages carrying JSON-LD structured data"
+            />
+            <CountCard
+              label="Critical issues"
+              value={data.criticalCount}
+              color="red"
+              detail="Missing structured data, etc."
+            />
+            <CountCard
+              label="Warnings"
+              value={data.warningCount}
+              color="yellow"
+              detail={`${data.infoCount} info · ${data.pagesReachable}/${data.pagesAudited} pages reached`}
+            />
+          </SimpleGrid>
 
-      <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md" mb="lg">
-        <ScoreCard
-          label="SEO health"
-          valuePct={scores.seoHealthPct}
-          color="teal"
-          detail={`${issues.length} open issue${issues.length === 1 ? '' : 's'}`}
-        />
-        <ScoreCard
-          label="AI readiness"
-          valuePct={scores.aiReadinessPct}
-          color="grape"
-          detail="Schema, llms.txt, structured data"
-        />
-        <ScoreCard
-          label="Indexed"
-          valuePct={scores.indexedPct}
-          color="blue"
-          detail="Share of live pages indexed"
-        />
-        <ScoreCard
-          label="Citations"
-          valuePct={Math.min(100, scores.citationCount * 10)}
-          color="orange"
-          detail={`${scores.citationCount} AI citations tracked`}
-        />
-      </SimpleGrid>
-
-      <Paper withBorder radius="md" p="md" mb="lg">
-        <Group gap={8} mb="sm">
-          <IconAlertTriangle size={16} />
-          <Title order={5}>Issues</Title>
-        </Group>
-        {issues.length === 0 ? (
-          <Text c="dimmed" size="sm">
-            No open issues — nice.
+          <Text size="xs" c="dimmed" mb="lg">
+            Crawled {data.pagesReachable} of {data.pagesAudited} representative
+            pages on {data.baseUrl}
+            {data.scannedAt ? ` · ${relativeScanAge(data.scannedAt)}` : ''}.
           </Text>
-        ) : (
-          <Table verticalSpacing="sm" horizontalSpacing="md" layout="auto">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Severity</Table.Th>
-                <Table.Th>Issue</Table.Th>
-                <Table.Th>Page</Table.Th>
-                <Table.Th w={140}>Action</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {issues.map((issue: SeoIssueRow) => {
-                const sev = SEVERITY_META[issue.severity];
-                const state = fixStates[issue.id] ?? 'idle';
-                return (
-                  <Table.Tr key={issue.id}>
-                    <Table.Td>
-                      <Badge size="sm" variant="light" color={sev.color}>
-                        {sev.label}
-                      </Badge>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="sm" fw={600}>
-                        {issue.title}
-                      </Text>
-                      <Text size="xs" c="dimmed">
-                        {issue.detail}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="xs" ff="monospace" c="dimmed">
-                        {issue.pageSlug}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <FixWithAiButton
-                        issueId={issue.id}
-                        available={issue.fixWithAiAvailable}
-                        state={state}
-                        onFix={handleFixWithAi}
-                      />
-                    </Table.Td>
-                  </Table.Tr>
-                );
-              })}
-            </Table.Tbody>
-          </Table>
-        )}
-      </Paper>
 
+          {data.pagesUnreachable > 0 ? (
+            <Alert
+              color="yellow"
+              variant="light"
+              icon={<IconAlertTriangle size={16} />}
+              mb="lg"
+            >
+              {data.pagesUnreachable} of {data.pagesAudited} pages could not be
+              crawled — they may not be deployed yet at {data.baseUrl}. Each is
+              listed below as an info-level issue.
+            </Alert>
+          ) : null}
+
+          <Paper withBorder radius="md" p="md" mb="lg">
+            <Group gap={8} mb="sm">
+              <IconAlertTriangle size={16} />
+              <Title order={5}>Issues</Title>
+              <Badge size="sm" variant="light" color="gray">
+                {data.issues.length}
+              </Badge>
+            </Group>
+            {data.issues.length === 0 ? (
+              <Text c="dimmed" size="sm">
+                No on-page issues found across the crawled pages — nice.
+              </Text>
+            ) : (
+              <Table verticalSpacing="sm" horizontalSpacing="md" layout="auto">
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Severity</Table.Th>
+                    <Table.Th>Issue</Table.Th>
+                    <Table.Th>Page</Table.Th>
+                    <Table.Th w={140}>Fix</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {data.issues.map((issue) => {
+                    const sev = SEVERITY_META[issue.severity];
+                    return (
+                      <Table.Tr key={issue.id}>
+                        <Table.Td>
+                          <Badge size="sm" variant="light" color={sev.color}>
+                            {sev.label}
+                          </Badge>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="sm" fw={600}>
+                            {issue.title}
+                          </Text>
+                          <Text size="xs" c="dimmed">
+                            {issue.detail}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="xs" ff="monospace" c="dimmed">
+                            {issue.pageSlug}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <FixAffordance issue={issue} />
+                        </Table.Td>
+                      </Table.Tr>
+                    );
+                  })}
+                </Table.Tbody>
+              </Table>
+            )}
+          </Paper>
+        </>
+      ) : null}
+
+      {/* ── Preview: AI visibility monitor (no backend yet) ── */}
       <Paper withBorder radius="md" p="md" mb="lg">
         <Group justify="space-between" align="flex-start" mb="sm" wrap="nowrap">
           <Group gap={8}>
             <IconSparkles size={16} />
             <Title order={5}>AI visibility monitor</Title>
           </Group>
+          <Badge color="gray" variant="light" size="xs">
+            Preview
+          </Badge>
         </Group>
         <Text c="dimmed" size="sm" mb="sm">
-          Tracked buyer prompts, checked weekly against ChatGPT, Perplexity, and
-          Gemini for a remaxhub.ae mention or citation.
+          Preview of the tracked-prompt monitor: buyer prompts checked against
+          ChatGPT, Perplexity, and Gemini for a remaxhub.ae mention or citation.
+          Not wired to a live checker yet — rows and results below are sample data
+          and reset on reload.
         </Text>
         <Box mb="md">
           <AddPromptRow onAdd={handleAddPrompt} />
@@ -507,14 +570,21 @@ export const SeoAiTab = () => {
         </Table>
       </Paper>
 
+      {/* ── Preview: automations (no backend yet) ── */}
       <Paper withBorder radius="md" p="md">
-        <Group gap={8} mb="sm">
-          <IconLoader size={16} />
-          <Title order={5}>Automations</Title>
+        <Group justify="space-between" align="flex-start" mb="sm" wrap="nowrap">
+          <Group gap={8}>
+            <IconLoader size={16} />
+            <Title order={5}>Automations</Title>
+          </Group>
+          <Badge color="gray" variant="light" size="xs">
+            Preview
+          </Badge>
         </Group>
         <Text c="dimmed" size="sm" mb="md">
-          Toggle state only — nothing here is wired to a real job yet (see banner
-          above). Flip freely to preview the surface.
+          Preview of the automation controls — toggle state is local only and
+          resets on reload. None of these is wired to a real job yet (each needs a
+          gated cron logic-function).
         </Text>
         <Stack gap="sm">
           {(Object.keys(AUTOMATION_LABELS) as (keyof SeoAiAutomationToggles)[]).map(
