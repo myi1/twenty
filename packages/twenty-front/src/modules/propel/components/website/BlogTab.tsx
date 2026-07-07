@@ -1,77 +1,77 @@
 import {
+  Alert,
   Badge,
   Box,
   Button,
+  Center,
   Group,
+  Loader,
   Paper,
-  Progress,
   SimpleGrid,
   Stack,
   Text,
+  TextInput,
   Title,
   Tooltip,
 } from '@mantine/core';
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   IconAlertTriangle,
   IconCalendar,
   IconCheck,
-  IconDownload,
-  IconEye,
   IconFileText,
   IconLanguage,
   IconPencil,
+  IconRefresh,
+  IconSend,
   IconSparkles,
   IconTarget,
   IconTrendingUp,
-  IconUsers,
+  IconX,
   type IconComponent,
 } from 'twenty-ui/display';
+import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import {
-  getBlogPipeline,
-  type AgentJobKey,
-  type BlogDraftingItem,
-  type BlogIdeaItem,
-  type BlogPipelineColumns,
-  type BlogPublishedItem,
-  type BlogScheduledItem,
-} from '@/propel/mocks/websiteMockData';
+  useBlogPipeline,
+  type BlogAgentKey,
+  type BlogColumns,
+} from '@/propel/hooks/useBlogPipeline';
+import { decideBlogPost, generateBlogDraft, type BlogPost } from '@/propel/lib/blogCrm';
 
-// Blog sub-tab of the Website tab (WEBSITE-REBUILD-DESIGN.md §6 "Blog"). Mock-data
-// wave (CONVENTIONS.md "Data-fetching pattern") — a 4-column pipeline board (Ideas ->
-// Drafting -> Scheduled -> Published) seeded from getBlogPipeline(). The only
-// interactive action is "Approve" on an idea card, which moves it client-side into
-// Drafting to demo the flow — no route call, no persistence (comment on the handler).
+// Blog sub-tab of the Website tab (WEBSITE-REBUILD-DESIGN.md §6 "Blog"). LIVE wave:
+// a 4-column pipeline board (In progress → Needs approval → Scheduled → Published)
+// fed from real `blogPost` rows via blog-queue-route. The HumanGate lives here —
+// Approve (→ scheduled → Ghost) / Reject (→ rejected) call blog-approve-route with
+// an optimistic update + toast + refetch. A "Draft a topic" seed calls
+// blog-generate-route. All three routes are Manager/Admin-gated and ship behind the
+// gated CRM deploy; until then the tab drops to a clean preview state (empty board +
+// honest banner) — it never crashes the hero (see useBlogPipeline graceful degrade).
 
-// Agent-status chips row: a compact summary strip above the board (distinct from
-// Overview's full AgentActivityFeed — this is just "which agents touch the blog
-// pipeline and are they idle/active right now"). Demo state only: a fixed active
-// set chosen to match the mock pipeline's busiest lanes (Ideas has 4 pending,
-// Writer has 2 drafts in flight) — not wired to any real job queue.
-const BLOG_AGENTS: { key: AgentJobKey; label: string; Icon: IconComponent }[] = [
+// ── agent status chips ───────────────────────────────────────────────────────
+// A compact "which pipeline agents are working right now" strip. Real: `active`
+// is derived from which stages currently hold work (useBlogPipeline.activeAgents),
+// not a fixed demo set.
+const BLOG_AGENTS: { key: BlogAgentKey; label: string; Icon: IconComponent }[] = [
   { key: 'ideas', label: 'Ideas', Icon: IconSparkles },
   { key: 'writer', label: 'Writer', Icon: IconPencil },
   { key: 'seoReviewer', label: 'SEO reviewer', Icon: IconTarget },
-  { key: 'translator', label: 'Translator', Icon: IconLanguage },
   { key: 'scheduler', label: 'Scheduler', Icon: IconCalendar },
 ];
 
-const ACTIVE_AGENT_KEYS = new Set<AgentJobKey>(['ideas', 'writer']);
-
-const AgentStatusChips = () => (
+const AgentStatusChips = ({ active }: { active: Set<BlogAgentKey> }) => (
   <Group gap="xs" mb="lg">
     {BLOG_AGENTS.map((agent) => {
-      const active = ACTIVE_AGENT_KEYS.has(agent.key);
+      const isActive = active.has(agent.key);
       return (
         <Badge
           key={agent.key}
           size="lg"
           variant="light"
-          color={active ? 'red' : 'gray'}
+          color={isActive ? 'red' : 'gray'}
           leftSection={<agent.Icon size={13} />}
           radius="sm"
         >
-          {agent.label} · {active ? 'active' : 'idle'}
+          {agent.label} · {isActive ? 'active' : 'idle'}
         </Badge>
       );
     })}
@@ -113,32 +113,117 @@ const KanbanColumn = ({
   </Stack>
 );
 
-const IdeaCard = ({
-  item,
-  approving,
-  onApprove,
-}: {
-  item: BlogIdeaItem;
-  approving: boolean;
-  onApprove: (id: string) => void;
-}) => (
-  <Paper withBorder radius="md" p="md">
-    <Stack gap="xs">
-      <Text size="sm" fw={600}>
-        {item.title}
-      </Text>
-      <Group gap={6} wrap="nowrap" align="flex-start">
-        <IconSparkles size={13} style={{ marginTop: 2, flexShrink: 0 }} />
-        <Text size="xs" c="dimmed">
-          {item.justification}
+const STAGE_META: Record<string, { color: string; label: string }> = {
+  idea: { color: 'gray', label: 'Idea' },
+  grounding: { color: 'blue', label: 'Grounding' },
+  drafting: { color: 'indigo', label: 'Drafting' },
+  seo_review: { color: 'teal', label: 'SEO review' },
+  failed: { color: 'red', label: 'Failed' },
+};
+
+const localeBadge = (locale: string): ReactNode =>
+  locale ? (
+    <Badge size="xs" variant="light" color="gray" leftSection={<IconLanguage size={11} />}>
+      {locale.toUpperCase()}
+    </Badge>
+  ) : null;
+
+const formatWhen = (iso: string | null): string => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+// In-progress + failed cards: title, stage badge, locale.
+const InProgressCard = ({ item }: { item: BlogPost }) => {
+  const meta = STAGE_META[item.status] ?? { color: 'gray', label: item.status };
+  return (
+    <Paper withBorder radius="md" p="md">
+      <Stack gap="xs">
+        <Text size="sm" fw={600}>
+          {item.title}
         </Text>
+        {item.topicSeed ? (
+          <Text size="xs" c="dimmed" lineClamp={2}>
+            {item.topicSeed}
+          </Text>
+        ) : null}
+        <Group gap={6}>
+          <Badge
+            size="xs"
+            variant="light"
+            color={meta.color}
+            leftSection={item.status === 'failed' ? <IconAlertTriangle size={11} /> : undefined}
+            style={{ alignSelf: 'flex-start' }}
+          >
+            {meta.label}
+          </Badge>
+          {localeBadge(item.locale)}
+        </Group>
+        {item.status === 'failed' && item.lastError ? (
+          <Tooltip label={item.lastError} multiline w={260}>
+            <Text size="xs" c="red" lineClamp={1}>
+              {item.lastError}
+            </Text>
+          </Tooltip>
+        ) : null}
+      </Stack>
+    </Paper>
+  );
+};
+
+// The HumanGate card: full context + Approve / Reject.
+const NeedsApprovalCard = ({
+  item,
+  busy,
+  onApprove,
+  onReject,
+}: {
+  item: BlogPost;
+  busy: boolean;
+  onApprove: (id: string) => void;
+  onReject: (id: string) => void;
+}) => (
+  <Paper withBorder radius="md" p="md" style={{ borderColor: 'var(--mantine-color-red-3)' }}>
+    <Stack gap="xs">
+      <Group justify="space-between" align="flex-start" wrap="nowrap">
+        <Text size="sm" fw={600} style={{ flex: 1 }}>
+          {item.title}
+        </Text>
+        {typeof item.criticScore === 'number' ? (
+          <Tooltip label="AI critic score (0–100)">
+            <Badge
+              size="xs"
+              variant="light"
+              color={item.criticScore >= 80 ? 'teal' : item.criticScore >= 60 ? 'yellow' : 'red'}
+            >
+              {item.criticScore}
+            </Badge>
+          </Tooltip>
+        ) : null}
       </Group>
-      <Group justify="flex-end" mt={4}>
+      {item.excerpt ? (
+        <Text size="xs" c="dimmed" lineClamp={3}>
+          {item.excerpt}
+        </Text>
+      ) : null}
+      <Group gap={6}>{localeBadge(item.locale)}</Group>
+      <Group justify="flex-end" gap="xs" mt={4}>
+        <Button
+          size="compact-xs"
+          variant="default"
+          leftSection={<IconX size={13} />}
+          disabled={busy}
+          onClick={() => onReject(item.id)}
+        >
+          Reject
+        </Button>
         <Button
           size="compact-xs"
           color="red"
           leftSection={<IconCheck size={13} />}
-          loading={approving}
+          loading={busy}
           onClick={() => onApprove(item.id)}
         >
           Approve
@@ -148,62 +233,7 @@ const IdeaCard = ({
   </Paper>
 );
 
-const SEO_REVIEW_META: Record<
-  BlogDraftingItem['seoReviewStatus'],
-  { color: string; label: string }
-> = {
-  PENDING: { color: 'gray', label: 'SEO review pending' },
-  PASSED: { color: 'teal', label: 'SEO review passed' },
-  FLAGGED: { color: 'yellow', label: 'SEO issues flagged' },
-};
-
-const DraftingCard = ({ item }: { item: BlogDraftingItem }) => {
-  const seoMeta = SEO_REVIEW_META[item.seoReviewStatus];
-  return (
-    <Paper withBorder radius="md" p="md">
-      <Stack gap="xs">
-        <Text size="sm" fw={600}>
-          {item.title}
-        </Text>
-        <Box>
-          <Group justify="space-between" mb={4}>
-            <Text size="xs" c="dimmed">
-              Writer progress
-            </Text>
-            <Text size="xs" c="dimmed">
-              {item.writerPct}%
-            </Text>
-          </Group>
-          <Progress value={item.writerPct} color="red" size="sm" radius="sm" />
-        </Box>
-        <Tooltip
-          label={
-            item.seoReviewStatus === 'FLAGGED'
-              ? `${item.seoIssueCount} issue${item.seoIssueCount === 1 ? '' : 's'} flagged`
-              : seoMeta.label
-          }
-        >
-          <Badge
-            size="xs"
-            variant="light"
-            color={seoMeta.color}
-            leftSection={
-              item.seoReviewStatus === 'FLAGGED' ? (
-                <IconAlertTriangle size={11} />
-              ) : undefined
-            }
-            style={{ alignSelf: 'flex-start' }}
-          >
-            {seoMeta.label}
-            {item.seoReviewStatus === 'FLAGGED' ? ` (${item.seoIssueCount})` : ''}
-          </Badge>
-        </Tooltip>
-      </Stack>
-    </Paper>
-  );
-};
-
-const ScheduledCard = ({ item }: { item: BlogScheduledItem }) => (
+const ScheduledCard = ({ item }: { item: BlogPost }) => (
   <Paper withBorder radius="md" p="md">
     <Stack gap="xs">
       <Text size="sm" fw={600}>
@@ -212,106 +242,85 @@ const ScheduledCard = ({ item }: { item: BlogScheduledItem }) => (
       <Group gap={6} wrap="nowrap">
         <IconCalendar size={13} style={{ color: 'var(--mantine-color-dimmed)' }} />
         <Text size="xs" c="dimmed">
-          {item.scheduledDateLabel}
+          {formatWhen(item.scheduledAt) || 'Publishing next tick'}
         </Text>
       </Group>
-      <Group gap={6}>
-        {item.languages.map((lang) => (
-          <Badge key={lang} size="xs" variant="light" color="gray">
-            {lang}
-          </Badge>
-        ))}
-        {item.gatedPdf ? (
-          <Badge
-            size="xs"
-            variant="light"
-            color="grape"
-            leftSection={<IconDownload size={11} />}
-          >
-            Gated PDF
-          </Badge>
-        ) : null}
-      </Group>
+      <Group gap={6}>{localeBadge(item.locale)}</Group>
     </Stack>
   </Paper>
 );
 
-const PublishedCard = ({ item }: { item: BlogPublishedItem }) => (
+const PublishedCard = ({ item }: { item: BlogPost }) => (
   <Paper withBorder radius="md" p="md">
     <Stack gap="xs">
-      <Group justify="space-between" align="flex-start" wrap="nowrap">
-        <Text size="sm" fw={600} style={{ flex: 1 }}>
-          {item.title}
-        </Text>
-        {item.aiCited ? (
-          <Tooltip label="Cited by at least one tracked AI engine">
-            <Badge
-              size="xs"
-              variant="light"
-              color="grape"
-              leftSection={<IconSparkles size={11} />}
-            >
-              AI-cited
-            </Badge>
-          </Tooltip>
-        ) : null}
-      </Group>
-      <Text size="xs" c="dimmed">
-        Published {item.publishedDateLabel}
+      <Text size="sm" fw={600}>
+        {item.title}
       </Text>
-      <Group gap="md">
-        <Group gap={4} wrap="nowrap">
-          <IconEye size={13} style={{ color: 'var(--mantine-color-dimmed)' }} />
-          <Text size="xs" c="dimmed">
-            {item.views.toLocaleString()} views
-          </Text>
-        </Group>
-        <Group gap={4} wrap="nowrap">
-          <IconUsers size={13} style={{ color: 'var(--mantine-color-dimmed)' }} />
-          <Text size="xs" c="dimmed">
-            {item.leads} leads
-          </Text>
-        </Group>
-      </Group>
+      {item.excerpt ? (
+        <Text size="xs" c="dimmed" lineClamp={2}>
+          {item.excerpt}
+        </Text>
+      ) : null}
+      <Group gap={6}>{localeBadge(item.locale)}</Group>
     </Stack>
   </Paper>
 );
 
 export const BlogTab = () => {
-  // Mock-backed local state, per CONVENTIONS.md: a plain getBlogPipeline() read
-  // seeded into useState so "Approve" can mutate the columns client-side. No
-  // useEffect/fetch cycle — there is no route to call yet.
-  const [columns, setColumns] = useState<BlogPipelineColumns>(() =>
-    getBlogPipeline(),
-  );
-  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const notify = usePropelToast();
+  const { phase, error, preview, columns, activeAgents, total, reload } = useBlogPipeline();
 
-  // STUB: "Approve" moves the idea into Drafting client-side to demo the flow. Real
-  // approval will call a `/website/blog/approve-idea` route (writer agent picks it
-  // up server-side) — follow-up, not built this wave. The short delay + loading
-  // state on the button is purely cosmetic so the action reads as real.
-  const handleApprove = (id: string) => {
-    setApprovingId(id);
-    setTimeout(() => {
-      setColumns((prev) => {
-        const idea = prev.ideas.find((i) => i.id === id);
-        if (!idea) return prev;
-        const promoted: BlogDraftingItem = {
-          id: idea.id,
-          stage: 'DRAFTING',
-          title: idea.title,
-          writerPct: 0,
-          seoReviewStatus: 'PENDING',
-          seoIssueCount: 0,
-        };
-        return {
-          ...prev,
-          ideas: prev.ideas.filter((i) => i.id !== id),
-          drafting: [promoted, ...prev.drafting],
-        };
+  // Optimistic overlay: ids the coordinator just approved/rejected, hidden from
+  // the Needs-approval column immediately; the reload replaces this with truth.
+  const [decidedIds, setDecidedIds] = useState<Set<string>>(new Set());
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [topicSeed, setTopicSeed] = useState('');
+  const [seeding, setSeeding] = useState(false);
+
+  const visibleColumns: BlogColumns = useMemo(
+    () => ({
+      ...columns,
+      needsApproval: columns.needsApproval.filter((p) => !decidedIds.has(p.id)),
+    }),
+    [columns, decidedIds],
+  );
+
+  const decide = async (id: string, action: 'approve' | 'reject') => {
+    setBusyId(id);
+    // optimistic: hide the card now
+    setDecidedIds((prev) => new Set(prev).add(id));
+    const res = await decideBlogPost(id, action);
+    setBusyId(null);
+    if (res.ok) {
+      notify(action === 'approve' ? 'Approved → scheduled to publish' : 'Draft rejected', 'success');
+      reload();
+    } else {
+      // rollback the optimistic hide, surface the reason
+      setDecidedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
       });
-      setApprovingId(null);
-    }, 700);
+      notify(res.error, 'error');
+    }
+  };
+
+  const seedTopic = async () => {
+    const seed = topicSeed.trim();
+    if (!seed) {
+      notify('Enter a topic to draft.', 'error');
+      return;
+    }
+    setSeeding(true);
+    const res = await generateBlogDraft({ topicSeed: seed });
+    setSeeding(false);
+    if (res.ok) {
+      notify('Draft queued — the writer bench will run it to approval.', 'success');
+      setTopicSeed('');
+      reload();
+    } else {
+      notify(res.error, 'error');
+    }
   };
 
   return (
@@ -326,89 +335,130 @@ export const BlogTab = () => {
             Idea → draft → schedule → publish, run by the AI writer bench.
           </Text>
         </Box>
-        <Group gap={4} wrap="nowrap">
-          <IconTrendingUp size={14} style={{ color: 'var(--mantine-color-dimmed)' }} />
-          <Text size="xs" c="dimmed">
-            {columns.published.length} published this quarter
-          </Text>
+        <Group gap="md" wrap="nowrap">
+          <Group gap={4} wrap="nowrap">
+            <IconTrendingUp size={14} style={{ color: 'var(--mantine-color-dimmed)' }} />
+            <Text size="xs" c="dimmed">
+              {visibleColumns.published.length} published
+            </Text>
+          </Group>
+          <Button
+            size="compact-sm"
+            variant="default"
+            leftSection={<IconRefresh size={14} />}
+            onClick={reload}
+            loading={phase === 'loading'}
+          >
+            Refresh
+          </Button>
         </Group>
       </Group>
 
-      {/* Honest state marker: the pipeline board below is sample data — the AI
-          writer bench (Ideas → Draft → Schedule) is designed but not yet built.
-          The blog ITSELF is live and real (Ghost-backed /blog on the site). */}
-      <Paper
-        withBorder
-        radius="md"
-        p="sm"
-        mb="md"
-        style={{ borderColor: 'var(--mantine-color-yellow-4)' }}
-      >
-        <Group gap={8} align="flex-start" wrap="nowrap">
-          <IconAlertTriangle
-            size={16}
-            style={{ color: 'var(--mantine-color-yellow-6)', marginTop: 2, flexShrink: 0 }}
-          />
-          <Text size="xs" c="dimmed">
-            <Text span fw={600} c="var(--mantine-color-yellow-7)">
-              Preview.
-            </Text>{' '}
-            The Ideas, Drafting and Scheduled cards below are sample data showing
-            how the AI writer bench will run — that automation is designed, not
-            yet built. The blog itself is live: real published articles render on
-            the site at{' '}
-            <Text span fw={600}>
-              remaxhub.ae/blog
-            </Text>
-            .
+      {/* Honest state marker: preview mode = the gated blog routes aren't deployed
+          to this workspace yet, so the board is empty and actions are disabled.
+          The blog ITSELF is live (Ghost-backed /blog on the site). */}
+      {preview ? (
+        <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="md">
+          <Text span fw={600} c="var(--mantine-color-yellow-7)">
+            Preview.
+          </Text>{' '}
+          The approval queue goes live when the blog pipeline is deployed to this workspace. Until
+          then the board is empty and Approve/Reject/Draft are disabled. The blog itself is live —
+          real published articles render at{' '}
+          <Text span fw={600}>
+            remaxhub.ae/blog
           </Text>
+          .{error ? ` (${error})` : ''}
+        </Alert>
+      ) : null}
+
+      {/* Draft-a-topic seed (blog-generate-route). Disabled in preview. */}
+      <Paper withBorder radius="md" p="md" mb="md">
+        <Group gap="xs" mb="xs">
+          <IconSparkles size={16} />
+          <Text fw={600}>Draft a topic</Text>
+          <Badge size="xs" variant="light" color="gray">
+            AI writer
+          </Badge>
+        </Group>
+        <Group gap="xs" wrap="nowrap">
+          <TextInput
+            style={{ flex: 1 }}
+            placeholder="e.g. Palm Jumeirah 2-bed rental yields, 2026 outlook"
+            value={topicSeed}
+            onChange={(e) => setTopicSeed(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !preview && !seeding) void seedTopic();
+            }}
+            disabled={preview || seeding}
+          />
+          <Button
+            color="red"
+            leftSection={<IconSend size={16} />}
+            onClick={() => void seedTopic()}
+            loading={seeding}
+            disabled={preview}
+          >
+            Draft
+          </Button>
         </Group>
       </Paper>
 
-      <AgentStatusChips />
+      <AgentStatusChips active={activeAgents} />
 
-      <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md">
-        <KanbanColumn title="Ideas" count={columns.ideas.length} Icon={IconSparkles}>
-          {columns.ideas.map((item) => (
-            <IdeaCard
-              key={item.id}
-              item={item}
-              approving={approvingId === item.id}
-              onApprove={handleApprove}
-            />
-          ))}
-        </KanbanColumn>
+      {phase === 'loading' && total === 0 && !preview ? (
+        <Center py="xl">
+          <Loader color="red" />
+        </Center>
+      ) : (
+        <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md">
+          <KanbanColumn
+            title="In progress"
+            count={visibleColumns.inProgress.length + visibleColumns.failed.length}
+            Icon={IconPencil}
+          >
+            {[...visibleColumns.failed, ...visibleColumns.inProgress].map((item) => (
+              <InProgressCard key={item.id} item={item} />
+            ))}
+          </KanbanColumn>
 
-        <KanbanColumn
-          title="Drafting"
-          count={columns.drafting.length}
-          Icon={IconPencil}
-        >
-          {columns.drafting.map((item) => (
-            <DraftingCard key={item.id} item={item} />
-          ))}
-        </KanbanColumn>
+          <KanbanColumn
+            title="Needs approval"
+            count={visibleColumns.needsApproval.length}
+            Icon={IconCheck}
+          >
+            {visibleColumns.needsApproval.map((item) => (
+              <NeedsApprovalCard
+                key={item.id}
+                item={item}
+                busy={busyId === item.id}
+                onApprove={(id) => void decide(id, 'approve')}
+                onReject={(id) => void decide(id, 'reject')}
+              />
+            ))}
+          </KanbanColumn>
 
-        <KanbanColumn
-          title="Scheduled"
-          count={columns.scheduled.length}
-          Icon={IconCalendar}
-        >
-          {columns.scheduled.map((item) => (
-            <ScheduledCard key={item.id} item={item} />
-          ))}
-        </KanbanColumn>
+          <KanbanColumn
+            title="Scheduled"
+            count={visibleColumns.scheduled.length}
+            Icon={IconCalendar}
+          >
+            {visibleColumns.scheduled.map((item) => (
+              <ScheduledCard key={item.id} item={item} />
+            ))}
+          </KanbanColumn>
 
-        <KanbanColumn
-          title="Published"
-          count={columns.published.length}
-          Icon={IconFileText}
-        >
-          {columns.published.map((item) => (
-            <PublishedCard key={item.id} item={item} />
-          ))}
-        </KanbanColumn>
-      </SimpleGrid>
+          <KanbanColumn
+            title="Published"
+            count={visibleColumns.published.length}
+            Icon={IconFileText}
+          >
+            {visibleColumns.published.map((item) => (
+              <PublishedCard key={item.id} item={item} />
+            ))}
+          </KanbanColumn>
+        </SimpleGrid>
+      )}
     </Box>
   );
 };
