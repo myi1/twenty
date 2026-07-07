@@ -1,7 +1,11 @@
 import {
+  Alert,
   Badge,
   Box,
+  Button,
+  Center,
   Group,
+  Loader,
   Paper,
   Progress,
   SimpleGrid,
@@ -9,44 +13,52 @@ import {
   Text,
   Title,
 } from '@mantine/core';
+import { useMemo } from 'react';
 import {
+  IconAlertTriangle,
   IconChartBar,
+  IconFileText,
+  IconRefresh,
   IconRobot,
   IconSearch,
   IconTrendingDown,
   IconTrendingUp,
+  IconWorld,
 } from 'twenty-ui/display';
 import { getWebsiteOverview } from '@/propel/mocks/websiteMockData';
 import { AgentActivityFeed } from '@/propel/components/website/AgentActivityFeed';
+import { useSiteLeads } from '@/propel/hooks/useSiteLeads';
+import { countBy, type CountBucket } from '@/propel/lib/websiteCrm';
 
-// Overview sub-tab (Website tab, spec §6): metric strip + "Agents at work" feed +
-// search-visibility panel. Mock-data only this wave — a plain `const data = ...`
-// at the top per CONVENTIONS.md (no fetch hook needed; nothing here holds local UI
-// state).
-
-const formatMetricValue = (value: number): string =>
-  value >= 1000 ? value.toLocaleString('en-US') : String(value);
+// Overview sub-tab (Website tab, spec §6). The top-line strip + the two
+// breakdowns are REAL — derived from the same website-lead data as the Site leads
+// queue (useSiteLeads → People where leadSource = WEBSITE). The "Agents at work"
+// feed and the search-visibility panel stay mock this wave: they preview the Blog
+// (Ghost) and SEO/AI agent backends that don't exist yet (see
+// WEBSITE-MARKETING-TAB-PLAN.md) and are visibly labelled as previews.
 
 const MetricCard = ({
   label,
   value,
   deltaPct,
+  tone,
 }: {
   label: string;
-  value: number;
-  deltaPct: number | null;
+  value: string;
+  deltaPct?: number | null;
+  tone?: 'red' | 'teal';
 }) => {
-  const isUp = deltaPct !== null && deltaPct >= 0;
+  const isUp = deltaPct !== null && deltaPct !== undefined && deltaPct >= 0;
   return (
     <Paper withBorder radius="md" p="md">
       <Stack gap={4}>
         <Text size="xs" c="dimmed">
           {label}
         </Text>
-        <Text size="xl" fw={700}>
-          {formatMetricValue(value)}
+        <Text size="xl" fw={700} c={tone}>
+          {value}
         </Text>
-        {deltaPct !== null ? (
+        {deltaPct !== null && deltaPct !== undefined ? (
           <Group gap={4} align="center">
             {isUp ? (
               <IconTrendingUp size={14} color="var(--mantine-color-teal-6)" />
@@ -58,7 +70,7 @@ const MetricCard = ({
               {deltaPct}%
             </Text>
             <Text size="xs" c="dimmed">
-              vs prior 30d
+              vs prior 7d
             </Text>
           </Group>
         ) : null}
@@ -66,6 +78,51 @@ const MetricCard = ({
     </Paper>
   );
 };
+
+const BreakdownPanel = ({
+  title,
+  icon,
+  buckets,
+  total,
+  emptyLabel,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  buckets: CountBucket[];
+  total: number;
+  emptyLabel: string;
+}) => (
+  <Paper withBorder radius="md" p="md">
+    <Group gap={8} align="center" mb="md">
+      {icon}
+      <Title order={5}>{title}</Title>
+    </Group>
+    {buckets.length === 0 ? (
+      <Text c="dimmed" size="sm">
+        {emptyLabel}
+      </Text>
+    ) : (
+      <Stack gap="sm">
+        {buckets.slice(0, 6).map((b) => {
+          const pct = total > 0 ? Math.round((b.count / total) * 100) : 0;
+          return (
+            <Box key={b.key}>
+              <Group justify="space-between" mb={2} wrap="nowrap">
+                <Text size="sm" truncate>
+                  {b.label}
+                </Text>
+                <Text size="sm" fw={600}>
+                  {b.count}
+                </Text>
+              </Group>
+              <Progress value={pct} color="red" size="sm" radius="xl" />
+            </Box>
+          );
+        })}
+      </Stack>
+    )}
+  </Paper>
+);
 
 const SearchVisibilityPanel = ({
   indexedPages,
@@ -85,9 +142,14 @@ const SearchVisibilityPanel = ({
 
   return (
     <Paper withBorder radius="md" p="md">
-      <Group gap={8} align="center" mb="md">
-        <IconSearch size={18} />
-        <Title order={5}>Search visibility</Title>
+      <Group justify="space-between" mb="md">
+        <Group gap={8} align="center">
+          <IconSearch size={18} />
+          <Title order={5}>Search visibility</Title>
+        </Group>
+        <Badge color="gray" variant="light" size="xs">
+          Preview
+        </Badge>
       </Group>
       <Stack gap="md">
         <Box>
@@ -134,7 +196,24 @@ const SearchVisibilityPanel = ({
 };
 
 export const OverviewTab = () => {
-  const data = getWebsiteOverview();
+  const mock = getWebsiteOverview();
+  const { phase, error, leads, metrics, reload } = useSiteLeads();
+
+  const byPage = useMemo(
+    () =>
+      countBy(leads, (l) =>
+        l.pageSlug ? { key: l.pageSlug, label: l.pageSlug } : null,
+      ),
+    [leads],
+  );
+
+  const byFormType = useMemo(
+    () =>
+      countBy(leads, (l) =>
+        l.formType ? { key: l.formType, label: l.formTypeLabel } : null,
+      ),
+    [leads],
+  );
 
   return (
     <Box p="md">
@@ -145,32 +224,88 @@ export const OverviewTab = () => {
             <Title order={4}>Overview</Title>
           </Group>
           <Text c="dimmed" size="sm" mt={2}>
-            How the site is performing and what the site agents did recently.
+            How the site is performing — live lead numbers, plus a preview of the
+            content and SEO agents.
           </Text>
         </Box>
+        <Button
+          size="xs"
+          variant="default"
+          leftSection={<IconRefresh size={14} />}
+          onClick={reload}
+        >
+          Refresh
+        </Button>
       </Group>
 
-      <SimpleGrid cols={{ base: 2, md: 4 }} spacing="md" mb="lg">
-        {data.metrics.map((m) => (
-          <MetricCard
-            key={m.key}
-            label={m.label}
-            value={m.value}
-            deltaPct={m.deltaPct}
-          />
-        ))}
-      </SimpleGrid>
+      {error !== null ? (
+        <Alert
+          color="red"
+          icon={<IconAlertTriangle size={16} />}
+          variant="light"
+          mb="md"
+        >
+          Couldn&apos;t load website metrics: {error}
+        </Alert>
+      ) : null}
+
+      {phase === 'loading' ? (
+        <Center h={140}>
+          <Loader color="red" />
+        </Center>
+      ) : (
+        <>
+          <SimpleGrid cols={{ base: 2, md: 4 }} spacing="md" mb="lg">
+            <MetricCard label="Site leads (total)" value={String(metrics.total)} />
+            <MetricCard
+              label="This week"
+              value={String(metrics.thisWeek)}
+              deltaPct={metrics.last7dVsPrior7dPct}
+            />
+            <MetricCard
+              label="Unassigned"
+              value={String(metrics.unassigned)}
+              tone={metrics.unassigned > 0 ? 'red' : 'teal'}
+            />
+            <MetricCard
+              label="SLA breaches"
+              value={String(metrics.slaBreaches)}
+              tone={metrics.slaBreaches > 0 ? 'red' : 'teal'}
+            />
+          </SimpleGrid>
+
+          <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md" mb="lg">
+            <BreakdownPanel
+              title="Leads by source page"
+              icon={<IconWorld size={18} />}
+              buckets={byPage}
+              total={metrics.total}
+              emptyLabel="No website leads yet — pages appear here as forms are submitted."
+            />
+            <BreakdownPanel
+              title="Leads by form type"
+              icon={<IconFileText size={18} />}
+              buckets={byFormType}
+              total={metrics.total}
+              emptyLabel="No website leads yet — form types appear here as forms are submitted."
+            />
+          </SimpleGrid>
+        </>
+      )}
 
       <SimpleGrid cols={{ base: 1, lg: 3 }} spacing="md">
         <Box style={{ gridColumn: 'span 2' }}>
           <Group gap={8} align="center" mb="md">
             <IconRobot size={18} />
             <Title order={5}>Agents at work</Title>
+            <Badge color="gray" variant="light" size="xs">
+              Preview
+            </Badge>
           </Group>
-          <AgentActivityFeed rows={data.agentActivity} />
+          <AgentActivityFeed rows={mock.agentActivity} />
         </Box>
 
-        <SearchVisibilityPanel {...data.searchVisibility} />
+        <SearchVisibilityPanel {...mock.searchVisibility} />
       </SimpleGrid>
     </Box>
   );
