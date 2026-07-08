@@ -16,6 +16,10 @@ import {
 import { IconCheck, IconSparkles } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import {
+  AddSourcesControl,
+  type SelectedSource,
+} from '@/propel/components/website/AddSourcesControl';
+import {
   type GeneratePlanWindow,
   generatePlan,
 } from '@/propel/lib/socialCrm';
@@ -102,6 +106,9 @@ export const SocialCampaignPanel = ({
   const [networks, setNetworks] = useState<SocialNetwork[]>(ALL_NETWORKS);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  // Sources grounding (SRC-1 / plan SM6): ≤8 library sources picked via the
+  // "Add sources" popover; their ids ride the generatePlan call (SM3).
+  const [planSources, setPlanSources] = useState<SelectedSource[]>([]);
   // Bench run state. `generating` = a run is in flight; `stage` (0–4) drives the
   // agent strip; `featureOff` dims the box when the route reports the LLM key unset.
   const [generating, setGenerating] = useState(false);
@@ -113,6 +120,7 @@ export const SocialCampaignPanel = ({
     setNetworks(ALL_NETWORKS);
     setStartDate('');
     setEndDate('');
+    setPlanSources([]);
     setStage(0);
   };
 
@@ -149,7 +157,12 @@ export const SocialCampaignPanel = ({
       setStage((s) => (s < AGENT_STAGES.length - 1 ? s + 1 : s));
     }, 10_000);
 
-    const res = await generatePlan(trimmed, networks, campaignWindow);
+    const res = await generatePlan(
+      trimmed,
+      networks,
+      campaignWindow,
+      planSources.length > 0 ? planSources.map((s) => s.id) : undefined,
+    );
     window.clearInterval(timer);
     setStage(AGENT_STAGES.length); // all four done
 
@@ -206,6 +219,12 @@ export const SocialCampaignPanel = ({
           maxRows={8}
           value={brief}
           onChange={(e) => setBrief(e.currentTarget.value)}
+          disabled={generating || featureOff}
+        />
+
+        <AddSourcesControl
+          value={planSources}
+          onChange={setPlanSources}
           disabled={generating || featureOff}
         />
 

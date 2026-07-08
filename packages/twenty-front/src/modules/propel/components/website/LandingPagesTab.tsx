@@ -57,6 +57,10 @@ import {
   type LandingSectionType,
 } from '@/propel/lib/landingSectionDefs';
 import { type SectionActionKind } from '@/propel/lib/landingPreviewBridge';
+import {
+  AddSourcesControl,
+  type SelectedSource,
+} from '@/propel/components/website/AddSourcesControl';
 import { LandingPreviewPane } from '@/propel/components/website/LandingPreviewPane';
 import { ProjectAssetsProvider } from '@/propel/components/website/MediaStudioModal';
 import {
@@ -286,6 +290,9 @@ export const LandingPagesTab = () => {
   const [drafting, setDrafting] = useState(false);
   const [draftStage, setDraftStage] = useState(0);
   const [briefTheme, setBriefTheme] = useState<LandingTheme | null>(null);
+  // Sources grounding (SRC-1 / plan SM6): ≤8 library sources picked via the
+  // "Add sources" popover; their ids ride the draftFromBrief call (SM3).
+  const [briefSources, setBriefSources] = useState<SelectedSource[]>([]);
   const [aiFeatureOff, setAiFeatureOff] = useState(false);
   // Live-preview selection (B1) — synced BOTH directions: a left-rail card click
   // and a preview `sectionClick` both set this; it highlights the card + the
@@ -363,12 +370,20 @@ export const LandingPagesTab = () => {
     const timer = window.setInterval(() => {
       setDraftStage((s) => (s < AGENT_STAGES.length - 1 ? s + 1 : s));
     }, 9000);
-    const res = await draftFromBrief(brief, briefTheme ? { theme: briefTheme } : undefined);
+    const overrides = {
+      ...(briefTheme ? { theme: briefTheme } : {}),
+      ...(briefSources.length > 0 ? { sourceIds: briefSources.map((s) => s.id) } : {}),
+    };
+    const res = await draftFromBrief(
+      brief,
+      Object.keys(overrides).length > 0 ? overrides : undefined,
+    );
     window.clearInterval(timer);
     setDraftStage(AGENT_STAGES.length); // all four done
     if (res.ok) {
       setDrafting(false);
       setPrompt('');
+      setBriefSources([]);
       await openEdit(res.id); // land the founder on the split-pane editor
       return;
     }
@@ -1024,6 +1039,13 @@ export const LandingPagesTab = () => {
             Draft it
           </Button>
         </Group>
+        <Box mt="xs">
+          <AddSourcesControl
+            value={briefSources}
+            onChange={setBriefSources}
+            disabled={drafting || aiFeatureOff}
+          />
+        </Box>
         {drafting ? <AgentStrip stage={draftStage} /> : null}
         {aiFeatureOff ? (
           <Text size="xs" c="dimmed" mt="xs">
