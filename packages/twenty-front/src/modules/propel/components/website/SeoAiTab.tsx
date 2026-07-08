@@ -51,7 +51,7 @@ import { useWebsiteSeo } from '@/propel/hooks/useWebsiteSeo';
 
 // Visible build tag (footer) — bump on user-visible fixes so stale-cache
 // debates end with a glance.
-const HERO_UI_BUILD = 'r2-ringfix';
+const HERO_UI_BUILD = 'r3-capfix';
 
 // SEO and AI sub-tab of the Website tab (WEBSITE-REBUILD-DESIGN.md §6 "SEO and AI").
 //
@@ -124,7 +124,10 @@ const ScoreCard = ({
         <RingProgress
           size={64}
           thickness={6}
-          roundCaps
+          // roundCaps ONLY for partial arcs: at 100% the start/end caps
+          // overlap at 12 o'clock and render a visible seam/bulge — the last
+          // "circles look off" artifact (verified by zoomed screenshot).
+          roundCaps={valuePct > 0 && valuePct < 100}
           sections={[{ value: valuePct, color }]}
         />
         <Box
