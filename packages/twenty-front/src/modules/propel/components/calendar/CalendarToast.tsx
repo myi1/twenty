@@ -8,7 +8,7 @@ import {
   IconAlertTriangle,
   IconCheck,
   IconX,
-} from 'twenty-ui/display';
+} from 'twenty-ui-deprecated/display';
 
 // A lightweight inline toast for the Social Posting Calendar (S4). Twenty has no
 // global toast host and @mantine/notifications isn't installed, so the hero owns a

@@ -11,7 +11,7 @@ import {
   Text,
 } from '@mantine/core';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { IconCheck, IconClock } from 'twenty-ui/display';
+import { IconCheck, IconClock } from 'twenty-ui-deprecated/display';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import {
   currentWeekMonday,

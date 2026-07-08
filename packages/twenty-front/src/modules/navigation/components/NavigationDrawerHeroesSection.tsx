@@ -1,7 +1,7 @@
 import { useLingui } from '@lingui/react/macro';
 import { SettingsPath } from 'twenty-shared/types';
-import { IconHelpCircle, IconSettings, useIcons } from 'twenty-ui/display';
-import { AnimatedExpandableContainer } from 'twenty-ui/layout';
+import { IconHelpCircle, IconSettings, useIcons } from 'twenty-ui-deprecated/display';
+import { AnimatedExpandableContainer } from 'twenty-ui-deprecated/layout';
 
 // Propel: the graduated hero hub nav entries (Inbox, Marketing, Weekly 1:1,
 // Listing Studio, …) render from the runtime nav registry (baked defaults ∪

@@ -1,5 +1,5 @@
 import { type EventProps } from 'react-big-calendar';
-import { IconPhoto } from 'twenty-ui/display';
+import { IconPhoto } from 'twenty-ui-deprecated/display';
 import {
   CHANNEL_META,
   FAILED_FILL,

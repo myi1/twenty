@@ -1,6 +1,6 @@
 import { Box, Button, Group, Stack } from '@mantine/core';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { IconPlus } from 'twenty-ui/display';
+import { IconPlus } from 'twenty-ui-deprecated/display';
 import { CalendarFilters } from '@/propel/components/calendar/CalendarFilters';
 import {
   CalendarEmptyNoChannels,

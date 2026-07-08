@@ -1,9 +1,9 @@
 import { ResponsivePie } from '@nivo/pie';
-import { IconChartPie } from 'twenty-ui/display';
+import { IconChartPie } from 'twenty-ui-deprecated/display';
 import { type MarketingAnalyticsPayload } from '@/propel/types/marketingHome';
 import { WidgetCard } from '@/propel/components/WidgetCard';
 import { channelColor, propelNivoTheme } from '@/propel/lib/nivoTheme';
-import { themeCssVariables } from 'twenty-ui/theme-constants';
+import { themeCssVariables } from 'twenty-ui-deprecated/theme-constants';
 import { EmptyState } from '@/propel/widgets/EmptyState';
 
 // Donut of sends split by channel (analytics.channels — only channels with

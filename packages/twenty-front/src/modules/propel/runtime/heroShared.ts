@@ -35,8 +35,8 @@ import * as ReactRouterDom from 'react-router-dom';
 import * as FramerMotion from 'framer-motion';
 
 // ── twenty-ui shared (theme-constants is CRITICAL — shared ThemeContext identity) ─
-import * as TwentyUiDisplay from 'twenty-ui/display';
-import * as TwentyUiThemeConstants from 'twenty-ui/theme-constants';
+import * as TwentyUiDisplay from 'twenty-ui-deprecated/display';
+import * as TwentyUiThemeConstants from 'twenty-ui-deprecated/theme-constants';
 
 // ── host-internal modules (shimmed so hero SOURCE stays unchanged) ────────────
 import { getTokenPair } from '@/apollo/utils/getTokenPair';

@@ -24,7 +24,7 @@ import {
   IconFileUpload,
   IconFilter,
   IconUpload,
-} from 'twenty-ui/display';
+} from 'twenty-ui-deprecated/display';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import {
   buildCriteriaV2,

@@ -68,7 +68,7 @@ import {
   IconSparkles,
   IconTag,
   IconX,
-} from 'twenty-ui/display';
+} from 'twenty-ui-deprecated/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import {

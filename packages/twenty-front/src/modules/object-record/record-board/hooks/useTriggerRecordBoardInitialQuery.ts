@@ -75,122 +75,127 @@ export const useTriggerRecordBoardInitialQuery = () => {
       objectMetadataItem,
     });
 
-  const triggerRecordBoardInitialQuery = useCallback(async () => {
-    store.set(recordIndexRecordGroupsAreInInitialLoading, true);
+  const triggerRecordBoardInitialQuery = useCallback(
+    async ({ shouldResetScroll }: { shouldResetScroll: boolean }) => {
+      store.set(recordIndexRecordGroupsAreInInitialLoading, true);
 
-    const cleanStateBeforeExit = () => {
-      store.set(recordIndexRecordGroupsAreInInitialLoading, false);
+      const cleanStateBeforeExit = () => {
+        store.set(recordIndexRecordGroupsAreInInitialLoading, false);
 
-      setLastRecordBoardQueryIdentifier(queryIdentifier);
+        setLastRecordBoardQueryIdentifier(queryIdentifier);
 
-      setRecordBoardCurrentGroupByQueryOffset(0);
+        setRecordBoardCurrentGroupByQueryOffset(0);
 
-      scrollWrapperHTMLElement?.scrollTo({ top: 0, left: 0 });
-    };
+        if (shouldResetScroll) {
+          scrollWrapperHTMLElement?.scrollTo({ top: 0, left: 0 });
+        }
+      };
 
-    let recordIndexGroupsRecordsGroupByLazyQueryResult;
+      let recordIndexGroupsRecordsGroupByLazyQueryResult;
 
-    try {
-      recordIndexGroupsRecordsGroupByLazyQueryResult =
-        await executeRecordIndexGroupsRecordsLazyGroupBy();
-    } catch {
-      // The in-flight groupBy can be aborted (e.g. StrictMode double-mount in dev,
-      // or any unmount/remount race). Reset the loading flag WITHOUT saving the
-      // query identifier, so the effect re-triggers and retries. Without this,
-      // the rejection skips cleanStateBeforeExit, the app-level loading flag stays
-      // stuck true across the remount, and the board hangs on skeletons forever.
-      store.set(recordIndexRecordGroupsAreInInitialLoading, false);
+      try {
+        recordIndexGroupsRecordsGroupByLazyQueryResult =
+          await executeRecordIndexGroupsRecordsLazyGroupBy();
+      } catch {
+        // The in-flight groupBy can be aborted (e.g. StrictMode double-mount in dev,
+        // or any unmount/remount race). Reset the loading flag WITHOUT saving the
+        // query identifier, so the effect re-triggers and retries. Without this,
+        // the rejection skips cleanStateBeforeExit, the app-level loading flag stays
+        // stuck true across the remount, and the board hangs on skeletons forever.
+        store.set(recordIndexRecordGroupsAreInInitialLoading, false);
 
-      return;
-    }
+        return;
+      }
 
-    if (!isDefined(recordIndexGroupsRecordsGroupByLazyQueryResult)) {
+      if (!isDefined(recordIndexGroupsRecordsGroupByLazyQueryResult)) {
+        cleanStateBeforeExit();
+
+        return;
+      }
+
+      const queryFieldName =
+        getGroupByQueryResultGqlFieldName(objectMetadataItem);
+
+      const groups =
+        recordIndexGroupsRecordsGroupByLazyQueryResult.data?.[queryFieldName];
+
+      if (!isDefined(groups)) {
+        cleanStateBeforeExit();
+
+        return;
+      }
+
+      for (const recordGroupDefinition of recordGroupDefinitions) {
+        const foundGroupInResult = groups?.find(
+          (recordGroup: any) =>
+            (recordGroup.groupByDimensionValues[0] as string) ===
+            recordGroupDefinition.value,
+        );
+
+        if (!isDefined(foundGroupInResult)) {
+          setRecordIdsForColumn(recordGroupDefinition.id, []);
+          store.set(
+            recordBoardShouldFetchMoreInColumnFamilyCallbackState(
+              recordGroupDefinition.id,
+            ),
+            false,
+          );
+          continue;
+        }
+
+        const records = getRecordsFromRecordConnection({
+          recordConnection: foundGroupInResult,
+        });
+
+        if (!isNonEmptyArray(records)) {
+          setRecordIdsForColumn(recordGroupDefinition.id, []);
+          store.set(
+            recordBoardShouldFetchMoreInColumnFamilyCallbackState(
+              recordGroupDefinition.id,
+            ),
+            false,
+          );
+          continue;
+        }
+
+        upsertRecordsInStore({ partialRecords: records });
+
+        setRecordIdsForColumn(recordGroupDefinition.id, records);
+
+        if (records.length < RECORD_BOARD_QUERY_PAGE_SIZE) {
+          store.set(
+            recordBoardShouldFetchMoreInColumnFamilyCallbackState(
+              recordGroupDefinition.id,
+            ),
+            false,
+          );
+        } else {
+          store.set(
+            recordBoardShouldFetchMoreInColumnFamilyCallbackState(
+              recordGroupDefinition.id,
+            ),
+            true,
+          );
+        }
+      }
+
       cleanStateBeforeExit();
-
-      return;
-    }
-
-    const queryFieldName =
-      getGroupByQueryResultGqlFieldName(objectMetadataItem);
-
-    const groups =
-      recordIndexGroupsRecordsGroupByLazyQueryResult.data?.[queryFieldName];
-
-    if (!isDefined(groups)) {
-      cleanStateBeforeExit();
-
-      return;
-    }
-
-    for (const recordGroupDefinition of recordGroupDefinitions) {
-      const foundGroupInResult = groups?.find(
-        (recordGroup: any) =>
-          (recordGroup.groupByDimensionValues[0] as string) ===
-          recordGroupDefinition.value,
-      );
-
-      if (!isDefined(foundGroupInResult)) {
-        setRecordIdsForColumn(recordGroupDefinition.id, []);
-        store.set(
-          recordBoardShouldFetchMoreInColumnFamilyCallbackState(
-            recordGroupDefinition.id,
-          ),
-          false,
-        );
-        continue;
-      }
-
-      const records = getRecordsFromRecordConnection({
-        recordConnection: foundGroupInResult,
-      });
-
-      if (!isNonEmptyArray(records)) {
-        setRecordIdsForColumn(recordGroupDefinition.id, []);
-        store.set(
-          recordBoardShouldFetchMoreInColumnFamilyCallbackState(
-            recordGroupDefinition.id,
-          ),
-          false,
-        );
-        continue;
-      }
-
-      upsertRecordsInStore({ partialRecords: records });
-
-      setRecordIdsForColumn(recordGroupDefinition.id, records);
-
-      if (records.length < RECORD_BOARD_QUERY_PAGE_SIZE) {
-        store.set(
-          recordBoardShouldFetchMoreInColumnFamilyCallbackState(
-            recordGroupDefinition.id,
-          ),
-          false,
-        );
-      } else {
-        store.set(
-          recordBoardShouldFetchMoreInColumnFamilyCallbackState(
-            recordGroupDefinition.id,
-          ),
-          true,
-        );
-      }
-    }
-
-    cleanStateBeforeExit();
-  }, [
-    recordIndexRecordGroupsAreInInitialLoading,
-    store,
-    executeRecordIndexGroupsRecordsLazyGroupBy,
-    objectMetadataItem,
-    setLastRecordBoardQueryIdentifier,
-    queryIdentifier,
-    setRecordBoardCurrentGroupByQueryOffset,
-    scrollWrapperHTMLElement,
-    recordGroupDefinitions,
-    upsertRecordsInStore,
-    setRecordIdsForColumn,
-    recordBoardShouldFetchMoreInColumnFamilyCallbackState,
-  ]);
+    },
+    [
+      recordIndexRecordGroupsAreInInitialLoading,
+      store,
+      executeRecordIndexGroupsRecordsLazyGroupBy,
+      objectMetadataItem,
+      setLastRecordBoardQueryIdentifier,
+      queryIdentifier,
+      setRecordBoardCurrentGroupByQueryOffset,
+      scrollWrapperHTMLElement,
+      recordGroupDefinitions,
+      upsertRecordsInStore,
+      setRecordIdsForColumn,
+      recordBoardShouldFetchMoreInColumnFamilyCallbackState,
+    ],
+  );
 
   return {
     triggerRecordBoardInitialQuery,

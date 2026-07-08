@@ -4,7 +4,7 @@ import {
   IconPlug,
   IconPlus,
   IconRefresh,
-} from 'twenty-ui/display';
+} from 'twenty-ui-deprecated/display';
 import { StyledSocialCalendarSkeleton } from '@/propel/components/calendar/socialCalendarStyles';
 
 // Loading — a calendar-shaped skeleton grid with a shimmer sweep, NOT a spinner

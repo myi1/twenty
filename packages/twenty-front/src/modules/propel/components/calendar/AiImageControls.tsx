@@ -6,7 +6,7 @@ import {
   IconSparkles,
   IconWand,
   IconX,
-} from 'twenty-ui/display';
+} from 'twenty-ui-deprecated/display';
 import { type SocialImageAspect } from '@/propel/types/socialAiImage';
 
 // The composer's GENERATIVE image affordance (§15), living in the Media area.

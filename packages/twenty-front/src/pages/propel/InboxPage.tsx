@@ -1,4 +1,4 @@
-import { IconInbox } from 'twenty-ui/display';
+import { IconInbox } from 'twenty-ui-deprecated/display';
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { InboxTab } from '@/propel/components/marketingHero/InboxTab';

@@ -1,5 +1,5 @@
 import { Badge, Group, Stack, Text } from '@mantine/core';
-import { IconTrendingDown, IconTrendingUp } from 'twenty-ui/display';
+import { IconTrendingDown, IconTrendingUp } from 'twenty-ui-deprecated/display';
 import { type Metric } from '@/propel/types/marketingHome';
 import { WidgetCard } from '@/propel/components/WidgetCard';
 

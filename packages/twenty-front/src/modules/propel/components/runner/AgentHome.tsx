@@ -12,7 +12,7 @@ import {
   IconArrowUpRight,
   IconPlayerPlay,
   IconPlus,
-} from 'twenty-ui/display';
+} from 'twenty-ui-deprecated/display';
 import { type AgentBlock } from '@/propel/types/oneOnOne';
 
 // The agent's own week: next 1:1 + open-lead count. "Open prep" / "Run" opens the

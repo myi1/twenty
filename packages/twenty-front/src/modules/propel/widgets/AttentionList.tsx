@@ -4,7 +4,7 @@ import {
   IconBolt,
   type IconComponent,
   IconMail,
-} from 'twenty-ui/display';
+} from 'twenty-ui-deprecated/display';
 import {
   type AttentionRow,
   type MarketingHubPayload,

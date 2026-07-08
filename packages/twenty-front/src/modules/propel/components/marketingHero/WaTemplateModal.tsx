@@ -22,7 +22,7 @@ import {
   IconExternalLink,
   IconPhone,
   IconTrash,
-} from 'twenty-ui/display';
+} from 'twenty-ui-deprecated/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import {

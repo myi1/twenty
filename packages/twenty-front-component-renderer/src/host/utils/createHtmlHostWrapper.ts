@@ -11,15 +11,14 @@ import React, { useContext } from 'react';
 import { isDefined } from 'twenty-shared/utils';
 
 import { EVENT_TO_REACT } from '@/constants/EventToReact';
-import {
-  type SerializedEventData,
-  type SerializedFileData,
-} from '@/constants/SerializedEventData';
+import { type SerializedEventData } from '@/types/SerializedEventData';
+import { type SerializedFileData } from '@/types/SerializedFileData';
 import {
   FrontComponentInputFocusContext,
   type SetEditableFocused,
 } from '@/host/contexts/FrontComponentInputFocusContext';
 import { registerFrontComponentFile } from '@/host/utils/frontComponentFileRegistry';
+import { sanitizeIframeSandbox } from '@/host/utils/sanitizeIframeSandbox';
 
 const INTERNAL_PROPS = new Set(['element', 'receiver', 'components']);
 
@@ -148,6 +147,12 @@ const serializeEvent = (event: unknown): SerializedEventData => {
   }
   if (isNumber(domEvent.clientY)) {
     serialized.clientY = domEvent.clientY;
+  }
+  if (isNumber(domEvent.x)) {
+    serialized.x = domEvent.x;
+  }
+  if (isNumber(domEvent.y)) {
+    serialized.y = domEvent.y;
   }
   if (isNumber(domEvent.pageX)) {
     serialized.pageX = domEvent.pageX;
@@ -346,12 +351,15 @@ const filterProps = <T extends object>(props: T): T => {
 
 type WrapperProps = { children?: React.ReactNode } & Record<string, unknown>;
 
-// Host that is allowed to run scripts / same-origin inside an embedded iframe.
-// WHY: Propel's in-sandbox Social tab embeds the Postiz calendar
-// (https://postiz.remaxhub.ae/launches), which is a real app that needs scripts
-// and same-origin to render. Every OTHER iframe stays locked to `sandbox=""`.
-// To extend the allowlist, add more hosts here and widen the check in
-// computeForcedIframeProps below — keep it host-exact, never a substring match.
+// Propel fork: host that is allowed same-origin inside an embedded iframe.
+// WHY: Propel's Social tab embeds the Postiz calendar
+// (https://postiz.remaxhub.ae/launches), a real app that needs scripts AND
+// same-origin to render — upstream's sanitizeIframeSandbox denylists
+// allow-same-origin for everyone, so this host-exact allowlist is the single
+// exception. Every OTHER iframe goes through upstream's sanitizer (the
+// component may request extra tokens; denylisted ones are stripped).
+// To extend the allowlist, add more hosts here — keep it host-exact, never a
+// substring match.
 const POSTIZ_EMBED_HOST = 'postiz.remaxhub.ae';
 
 // The relaxed sandbox we grant ONLY to the allowlisted embed host. Intentionally
@@ -370,21 +378,18 @@ const getIframeSrcHostname = (src: unknown): string | undefined => {
   }
 };
 
-// Compute the iframe's forced props per-instance from its own `src`. Default is
-// the strict `sandbox=''`; we only swap in the relaxed value when the src host
-// EXACTLY matches the allowlisted embed host. Any parse failure or non-matching
-// host keeps the strict sandbox.
+// Compute the iframe's forced sandbox per-instance from its own `src`. The
+// allowlisted embed host gets the relaxed Postiz sandbox; everything else gets
+// upstream's sanitized, component-requested sandbox (which never includes
+// allow-same-origin). Any URL parse failure falls through to the sanitizer.
 const computeForcedIframeProps = (
   reactProps: Record<string, unknown>,
 ): Record<string, unknown> => {
   const hostname = getIframeSrcHostname(reactProps.src);
-  const sandbox =
-    hostname === POSTIZ_EMBED_HOST ? POSTIZ_EMBED_SANDBOX : '';
-  return { sandbox };
-};
-
-const FORCED_PROPS_BY_TAG: Record<string, Record<string, unknown>> = {
-  iframe: { sandbox: '' },
+  if (hostname === POSTIZ_EMBED_HOST) {
+    return { sandbox: POSTIZ_EMBED_SANDBOX };
+  }
+  return { sandbox: sanitizeIframeSandbox(reactProps.sandbox) };
 };
 
 const TEXT_LIKE_INPUT_TYPES = new Set([
@@ -477,7 +482,6 @@ const createCaretPreservingElement = (
 };
 
 export const createHtmlHostWrapper = (htmlTag: string) => {
-  const staticForcedProps = FORCED_PROPS_BY_TAG[htmlTag];
   const isVoid = VOID_ELEMENTS.has(htmlTag);
   const isIframe = htmlTag === 'iframe';
 
@@ -485,11 +489,11 @@ export const createHtmlHostWrapper = (htmlTag: string) => {
     const setEditableFocused = useContext(FrontComponentInputFocusContext);
     const reactProps = filterProps(props);
 
-    // iframe's forced sandbox is per-instance: strict `''` unless the src host is
-    // the allowlisted embed host. Every other tag keeps its static forced props.
-    const forcedProps = isIframe
+    // iframe's forced sandbox is per-instance: the Postiz allowlist host gets
+    // the relaxed sandbox, everything else gets upstream's sanitized value.
+    const forcedProps: Record<string, unknown> | undefined = isIframe
       ? computeForcedIframeProps(reactProps)
-      : staticForcedProps;
+      : undefined;
 
     if (
       htmlTag === 'textarea' ||

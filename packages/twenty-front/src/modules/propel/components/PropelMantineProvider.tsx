@@ -6,7 +6,7 @@ import {
   MantineProvider,
 } from '@mantine/core';
 import { type ReactNode, useContext } from 'react';
-import { ThemeContext, themeCssVariables } from 'twenty-ui/theme-constants';
+import { ThemeContext, themeCssVariables } from 'twenty-ui-deprecated/theme-constants';
 
 // Twenty has NO global MantineProvider and does NOT import @mantine/core/styles.css
 // anywhere, so the Propel hero owns its own Mantine scope. We import the stylesheet

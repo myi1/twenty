@@ -10,8 +10,10 @@ import { VerifyLoginTokenEffect } from '@/auth/components/VerifyLoginTokenEffect
 
 import { VerifyEmailEffect } from '@/auth/components/VerifyEmailEffect';
 import indexAppPath from '@/navigation/utils/indexAppPath';
+import { RecordIndexSkeletonLoader } from '@/object-record/record-index/components/RecordIndexSkeletonLoader';
 import { BlankLayout } from '@/ui/layout/page/components/BlankLayout';
 import { DefaultLayout } from '@/ui/layout/page/components/DefaultLayout';
+import { MainAppLayoutWithSidePanel } from '@/ui/layout/page/components/MainAppLayoutWithSidePanel';
 import { AppPath } from 'twenty-shared/types';
 
 import { lazy } from 'react';
@@ -227,75 +229,77 @@ export const useCreateAppRouter = (
               </LazyRoute>
             }
           />
-          <Route path={indexAppPath.getIndexAppPath()} element={<></>} />
-          <Route
-            path={AppPath.RecordIndexPage}
-            element={
-              <LazyRoute>
-                <RecordIndexPage />
-              </LazyRoute>
-            }
-          />
-          <Route
-            path={AppPath.RecordShowPage}
-            element={
-              <LazyRoute>
-                <RecordShowPage />
-              </LazyRoute>
-            }
-          />
-          {/* Propel hero routes, config-driven (see comment above). Built from
-              the nav config available synchronously at router-construction time
-              (the baked default, which lists every known hero; a mounted
-              nav.config.json that only RELABELS/REORDERS existing heroes needs no
-              route change, and routes register unconditionally so nav-hidden
-              entries still resolve for deep-links). */}
-          {getAllNavEntries(getPropelNavConfig()).map((entry) => (
+          <Route element={<MainAppLayoutWithSidePanel />}>
+            <Route path={indexAppPath.getIndexAppPath()} element={<></>} />
             <Route
-              key={entry.key}
-              path={entry.route}
-              element={<HeroRoute name={entry.bundle} />}
+              path={AppPath.RecordIndexPage}
+              element={
+                <LazyRoute fallback={<RecordIndexSkeletonLoader />}>
+                  <RecordIndexPage />
+                </LazyRoute>
+              }
             />
-          ))}
-          {/* Catch-all hero route — closes the "new hero needs a rebuild" gap.
-              The explicit per-hero routes above are baked from the SYNC nav config
-              at router-construction time, so a hero added ONLY to the host-mounted
-              nav.config.json (which resolves asynchronously, after the router is
-              already built) would get a nav drawer item but NO route → 404. This
-              wildcard resolves ANY hero bundle from the runtime config AT
-              NAVIGATION TIME instead: a new hero's nav.config.json entry uses
-              route '/h/<bundle>' and HeroCatchAllRoute loads it with no rebuild.
-              Registered AFTER the explicit routes so those win by specificity
-              (back-compat). The :bundle param is sanitized in HeroCatchAllRoute. */}
-          <Route
-            path={AppPath.HeroCatchAll}
-            element={<HeroCatchAllRoute />}
-          />
-          <Route
-            path={AppPath.PageLayoutPage}
-            element={
-              <LazyRoute>
-                <StandalonePageLayoutPage />
-              </LazyRoute>
-            }
-          />
-          <Route
-            path={AppPath.SettingsCatchAll}
-            element={
-              <SettingsRoutes
-                isFunctionSettingsEnabled={isFunctionSettingsEnabled}
-                isAdminPageEnabled={isAdminPageEnabled}
+            <Route
+              path={AppPath.RecordShowPage}
+              element={
+                <LazyRoute>
+                  <RecordShowPage />
+                </LazyRoute>
+              }
+            />
+            {/* Propel hero routes, config-driven (see comment above). Built from
+                the nav config available synchronously at router-construction time
+                (the baked default, which lists every known hero; a mounted
+                nav.config.json that only RELABELS/REORDERS existing heroes needs no
+                route change, and routes register unconditionally so nav-hidden
+                entries still resolve for deep-links). */}
+            {getAllNavEntries(getPropelNavConfig()).map((entry) => (
+              <Route
+                key={entry.key}
+                path={entry.route}
+                element={<HeroRoute name={entry.bundle} />}
               />
-            }
-          />
-          <Route
-            path={AppPath.NotFoundWildcard}
-            element={
-              <LazyRoute>
-                <NotFound />
-              </LazyRoute>
-            }
-          />
+            ))}
+            {/* Catch-all hero route — closes the "new hero needs a rebuild" gap.
+                The explicit per-hero routes above are baked from the SYNC nav config
+                at router-construction time, so a hero added ONLY to the host-mounted
+                nav.config.json (which resolves asynchronously, after the router is
+                already built) would get a nav drawer item but NO route → 404. This
+                wildcard resolves ANY hero bundle from the runtime config AT
+                NAVIGATION TIME instead: a new hero's nav.config.json entry uses
+                route '/h/<bundle>' and HeroCatchAllRoute loads it with no rebuild.
+                Registered AFTER the explicit routes so those win by specificity
+                (back-compat). The :bundle param is sanitized in HeroCatchAllRoute. */}
+            <Route
+              path={AppPath.HeroCatchAll}
+              element={<HeroCatchAllRoute />}
+            />
+            <Route
+              path={AppPath.PageLayoutPage}
+              element={
+                <LazyRoute>
+                  <StandalonePageLayoutPage />
+                </LazyRoute>
+              }
+            />
+            <Route
+              path={AppPath.SettingsCatchAll}
+              element={
+                <SettingsRoutes
+                  isFunctionSettingsEnabled={isFunctionSettingsEnabled}
+                  isAdminPageEnabled={isAdminPageEnabled}
+                />
+              }
+            />
+            <Route
+              path={AppPath.NotFoundWildcard}
+              element={
+                <LazyRoute>
+                  <NotFound />
+                </LazyRoute>
+              }
+            />
+          </Route>
         </Route>
         <Route element={<BlankLayout />}>
           <Route

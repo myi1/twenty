@@ -14,7 +14,7 @@ import {
   IconId,
   IconFileText,
   IconRocket,
-} from 'twenty-ui/display';
+} from 'twenty-ui-deprecated/display';
 import { type StudioFacts, type StudioStep } from '@/propel/types/listingStudio';
 
 // The per-step body. In S2 the SHELL is the deliverable, so most steps are honest

@@ -12,7 +12,7 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { IconSearch, IconUserPlus } from 'twenty-ui/display';
+import { IconSearch, IconUserPlus } from 'twenty-ui-deprecated/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import {
   listWorkspaceMembers,

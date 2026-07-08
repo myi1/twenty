@@ -23,7 +23,7 @@ import {
   IconSparkles,
   IconUser,
   IconUserPlus,
-} from 'twenty-ui/display';
+} from 'twenty-ui-deprecated/display';
 import {
   type InboxAgentOption,
   type InboxChannel,

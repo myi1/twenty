@@ -20,7 +20,7 @@ import {
   IconBroadcast,
   IconMessage,
   IconSparkles,
-} from 'twenty-ui/display';
+} from 'twenty-ui-deprecated/display';
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { PropelMantineProvider } from '@/propel/components/PropelMantineProvider';

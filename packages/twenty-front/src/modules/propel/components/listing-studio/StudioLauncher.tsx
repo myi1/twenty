@@ -16,7 +16,7 @@ import {
   IconBuildingSkyscraper,
   IconFileText,
   IconHistory,
-} from 'twenty-ui/display';
+} from 'twenty-ui-deprecated/display';
 import { STUDIO_STEP_META } from '@/propel/lib/listingStudioConfig';
 import { loadStudioProperties } from '@/propel/lib/listingStudioCrm';
 import {

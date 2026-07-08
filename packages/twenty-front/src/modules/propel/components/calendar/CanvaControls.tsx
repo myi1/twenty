@@ -1,7 +1,7 @@
 import { Button, Group, Text, Tooltip } from '@mantine/core';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { IconPaint, IconExternalLink, IconRefresh } from 'twenty-ui/display';
+import { IconPaint, IconExternalLink, IconRefresh } from 'twenty-ui-deprecated/display';
 import {
   createCanvaDesign,
   exportCanvaDesign,

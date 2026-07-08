@@ -1,7 +1,7 @@
 import { Box } from '@mantine/core';
 import { useContext } from 'react';
 import { EmbedSignDocument } from '@documenso/embed-react';
-import { ThemeContext } from 'twenty-ui/theme-constants';
+import { ThemeContext } from 'twenty-ui-deprecated/theme-constants';
 
 // Wraps Documenso's `@documenso/embed-react` signing view (verified API, v0.6.2:
 // `EmbedSignDocument` takes a recipient `token` + optional `host`, and fires

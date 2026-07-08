@@ -18,7 +18,7 @@ import {
   IconPlayerPlay,
   IconPlayerStop,
   IconPlus,
-} from 'twenty-ui/display';
+} from 'twenty-ui-deprecated/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import {
   type SequenceAction,

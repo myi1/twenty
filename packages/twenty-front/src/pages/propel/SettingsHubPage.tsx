@@ -8,7 +8,7 @@ import {
   IconSettings,
   IconUsers,
   IconWorld,
-} from 'twenty-ui/display';
+} from 'twenty-ui-deprecated/display';
 
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';

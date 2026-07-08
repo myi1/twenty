@@ -6,7 +6,7 @@ import {
   IconFilePencil,
   IconFileText,
   IconSquareRoundedCheck,
-} from 'twenty-ui/display';
+} from 'twenty-ui-deprecated/display';
 import { type A2ADocumentStatus } from '@/propel/types/a2a';
 
 // The status strip (design §5 A2AStatusStrip): draft → out-for-signature → signed,

@@ -1,5 +1,5 @@
 import { Box, Group, Text } from '@mantine/core';
-import { IconAlertTriangle, IconClock } from 'twenty-ui/display';
+import { IconAlertTriangle, IconClock } from 'twenty-ui-deprecated/display';
 import { type InboxMessageRow } from '@/propel/types/inbox';
 import { hasRenderableMedia, showSaveAffordance } from '@/propel/lib/inboxThread';
 import {

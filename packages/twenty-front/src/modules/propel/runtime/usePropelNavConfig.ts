@@ -11,8 +11,8 @@
 // the mounted JSON can name any Tabler icon without a code change.
 
 import { useSyncExternalStore } from 'react';
-import * as TwentyUiDisplay from 'twenty-ui/display';
-import { type IconComponent } from 'twenty-ui/display';
+import * as TwentyUiDisplay from 'twenty-ui-deprecated/display';
+import { type IconComponent } from 'twenty-ui-deprecated/display';
 
 import {
   getPropelNavConfig,

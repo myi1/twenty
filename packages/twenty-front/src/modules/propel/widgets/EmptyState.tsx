@@ -1,5 +1,5 @@
 import { Center, Stack, Text } from '@mantine/core';
-import { type IconComponent, IconInbox } from 'twenty-ui/display';
+import { type IconComponent, IconInbox } from 'twenty-ui-deprecated/display';
 
 // Honest empty state — shown when a route reports a block as absent (presence
 // contract: never zero-fill). Communicates "no data yet", not "zero".

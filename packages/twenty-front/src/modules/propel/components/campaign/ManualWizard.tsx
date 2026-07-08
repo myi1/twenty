@@ -24,7 +24,7 @@ import {
   IconSparkles,
   IconTestPipe,
   IconUsers,
-} from 'twenty-ui/display';
+} from 'twenty-ui-deprecated/display';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import {

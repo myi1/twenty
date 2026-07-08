@@ -20,7 +20,7 @@ import {
   IconPlayerPause,
   IconPlayerPlay,
   IconPlus,
-} from 'twenty-ui/display';
+} from 'twenty-ui-deprecated/display';
 import { CampaignDetail } from '@/propel/components/marketingHero/CampaignDetail';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import {

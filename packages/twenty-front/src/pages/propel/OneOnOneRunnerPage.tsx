@@ -1,5 +1,5 @@
 import { Box, Button, Center, Loader, Stack, Text } from '@mantine/core';
-import { IconRefresh, IconUsers } from 'twenty-ui/display';
+import { IconRefresh, IconUsers } from 'twenty-ui-deprecated/display';
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { PropelMantineProvider } from '@/propel/components/PropelMantineProvider';

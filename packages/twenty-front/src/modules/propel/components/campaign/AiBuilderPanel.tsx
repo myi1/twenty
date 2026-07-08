@@ -16,7 +16,7 @@ import {
   IconPencil,
   IconSend,
   IconSparkles,
-} from 'twenty-ui/display';
+} from 'twenty-ui-deprecated/display';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import { aiText, envelopeMessage } from '@/propel/lib/campaignBuilderConfig';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';

@@ -13,7 +13,7 @@ import {
   TextInput,
 } from '@mantine/core';
 import { useState } from 'react';
-import { IconAlertTriangle } from 'twenty-ui/display';
+import { IconAlertTriangle } from 'twenty-ui-deprecated/display';
 
 import { useAgentProfiles } from '@/propel/hooks/useAgentProfiles';
 import {

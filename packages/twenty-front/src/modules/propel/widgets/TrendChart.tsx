@@ -1,9 +1,9 @@
 import { ResponsiveLine } from '@nivo/line';
-import { IconChartLine } from 'twenty-ui/display';
+import { IconChartLine } from 'twenty-ui-deprecated/display';
 import { type MarketingAnalyticsPayload } from '@/propel/types/marketingHome';
 import { WidgetCard } from '@/propel/components/WidgetCard';
 import { channelColor, propelNivoTheme } from '@/propel/lib/nivoTheme';
-import { themeCssVariables } from 'twenty-ui/theme-constants';
+import { themeCssVariables } from 'twenty-ui-deprecated/theme-constants';
 import { EmptyState } from '@/propel/widgets/EmptyState';
 
 // Sends-over-time line chart. ONLY rendered when analytics.trend.present is true

@@ -2,7 +2,7 @@ import { Button, Center, Loader, Stack, Text } from '@mantine/core';
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppPath } from 'twenty-shared/types';
-import { IconArrowLeft, IconArrowsSplit2 } from 'twenty-ui/display';
+import { IconArrowLeft, IconArrowsSplit2 } from 'twenty-ui-deprecated/display';
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { PropelMantineProvider } from '@/propel/components/PropelMantineProvider';

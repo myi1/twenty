@@ -30,8 +30,8 @@ import {
   IconMessage,
   IconPhone,
   IconRefresh,
-} from 'twenty-ui/display';
-import { themeCssVariables } from 'twenty-ui/theme-constants';
+} from 'twenty-ui-deprecated/display';
+import { themeCssVariables } from 'twenty-ui-deprecated/theme-constants';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import { runMarketingRoute } from '@/propel/lib/marketingHubActions';

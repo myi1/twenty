@@ -16,7 +16,7 @@ import {
   IconArrowRight,
   IconUser,
   IconUserPlus,
-} from 'twenty-ui/display';
+} from 'twenty-ui-deprecated/display';
 import {
   type A2APrefill,
   type CounterpartyPerson,

@@ -6,7 +6,7 @@ import {
   Text,
 } from '@mantine/core';
 import { type ToolbarProps } from 'react-big-calendar';
-import { IconChevronLeft, IconChevronRight } from 'twenty-ui/display';
+import { IconChevronLeft, IconChevronRight } from 'twenty-ui-deprecated/display';
 import { CALENDAR_VIEWS } from '@/propel/lib/socialCalendarConfig';
 import {
   type SocialCalendarEvent,
