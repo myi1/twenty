@@ -102,6 +102,13 @@ jest.mock('~/hooks/useCopyToClipboard', () => ({
   }),
 }));
 
+// Propel fork: the hook pulls readRegisteredFrontComponentFileBytes (byte-RPC)
+// from the renderer package at runtime; jest would otherwise load the built
+// dist/index.cjs whose deps (@quilted/threads) don't survive jest resolution.
+jest.mock('twenty-front-component-renderer', () => ({
+  readRegisteredFrontComponentFileBytes: jest.fn(async () => null),
+}));
+
 const renderUseFrontComponentExecutionContext = (
   params: Parameters<typeof useFrontComponentExecutionContext>[0],
 ) =>

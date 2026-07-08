@@ -1,5 +1,3 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
 import {
   __frontComponentFileRegistrySizeForTests as registrySize,
   clearRegisteredFrontComponentFiles,
@@ -7,8 +5,20 @@ import {
   registerFrontComponentFile,
 } from '../frontComponentFileRegistry';
 
-const blobOf = (bytes: number[], type = 'application/octet-stream'): Blob =>
-  new Blob([new Uint8Array(bytes)], { type });
+// File-like stub instead of a real Blob: this package's jest environment (jsdom)
+// does not implement Blob.prototype.arrayBuffer, which is exactly the capability
+// the registry keys on (isRegistrableFile). The registry only ever touches
+// size/arrayBuffer, so a stub exercises the same code paths.
+const blobOf = (bytes: number[], type = 'application/octet-stream') => {
+  const data = new Uint8Array(bytes);
+  return {
+    size: data.byteLength,
+    type,
+    name: 'test.bin',
+    arrayBuffer: async (): Promise<ArrayBuffer> =>
+      data.buffer.slice(0) as ArrayBuffer,
+  };
+};
 
 describe('frontComponentFileRegistry', () => {
   beforeEach(() => {
@@ -69,25 +79,25 @@ describe('frontComponentFileRegistry', () => {
   });
 
   it('expires entries past the TTL', async () => {
-    vi.useFakeTimers();
+    jest.useFakeTimers();
     try {
-      vi.setSystemTime(new Date(0));
+      jest.setSystemTime(new Date(0));
       const token = registerFrontComponentFile(blobOf([9]));
       expect(token).toBeDefined();
 
       // Just inside the TTL: still readable.
-      vi.setSystemTime(new Date(4 * 60 * 1000));
+      jest.setSystemTime(new Date(4 * 60 * 1000));
       expect(
         await readRegisteredFrontComponentFileBytes(token as string),
       ).not.toBeNull();
 
       // Past the 5-minute TTL: pruned away.
-      vi.setSystemTime(new Date(6 * 60 * 1000));
+      jest.setSystemTime(new Date(6 * 60 * 1000));
       expect(
         await readRegisteredFrontComponentFileBytes(token as string),
       ).toBeNull();
     } finally {
-      vi.useRealTimers();
+      jest.useRealTimers();
     }
   });
 
