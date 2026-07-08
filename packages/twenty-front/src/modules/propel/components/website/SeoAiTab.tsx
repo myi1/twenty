@@ -49,6 +49,10 @@ import {
 } from '@/propel/lib/websiteSeoCrm';
 import { useWebsiteSeo } from '@/propel/hooks/useWebsiteSeo';
 
+// Visible build tag (footer) — bump on user-visible fixes so stale-cache
+// debates end with a glance.
+const HERO_UI_BUILD = 'r2-ringfix';
+
 // SEO and AI sub-tab of the Website tab (WEBSITE-REBUILD-DESIGN.md §6 "SEO and AI").
 //
 // REAL: the SEO-audit half. "Run audit" hits POST /website/seo-audit (a
@@ -464,6 +468,10 @@ export const SeoAiTab = () => {
             Crawled {data.pagesReachable} of {data.pagesAudited} representative
             pages on {data.baseUrl}
             {data.scannedAt ? ` · ${relativeScanAge(data.scannedAt)}` : ''}.
+            {/* Build stamp — settles "am I on the new bundle?" instantly.
+                Bump HERO_UI_BUILD on visible UI fixes. */}
+            {' · ui '}
+            {HERO_UI_BUILD}
           </Text>
 
           {data.pagesUnreachable > 0 ? (
