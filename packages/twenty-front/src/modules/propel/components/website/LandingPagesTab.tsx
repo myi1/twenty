@@ -57,7 +57,7 @@ import {
 } from '@/propel/lib/landingSectionDefs';
 import { type SectionActionKind } from '@/propel/lib/landingPreviewBridge';
 import { LandingPreviewPane } from '@/propel/components/website/LandingPreviewPane';
-import { ProjectAssetsProvider } from '@/propel/components/website/ProjectImagePicker';
+import { ProjectAssetsProvider } from '@/propel/components/website/MediaStudioModal';
 import {
   ImageField,
   SectionRow,

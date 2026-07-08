@@ -244,3 +244,86 @@ export async function generateImage(input: GenerateImageInput): Promise<Generate
     featureOff: isFeatureOff(body),
   };
 }
+
+// ── AI prompt helper (Media Studio M2) ───────────────────────────────────────
+// `{action:'improvePrompt', idea, presets?, projectName?}` → the CRM route asks a
+// cheap text model to expand the marketer's rough idea (+ selected GENERATE preset
+// labels + project name) into ONE vivid, concrete image prompt line. The route
+// holds the OpenAI key and applies the no-fake-building guardrail server-side.
+//   → { ok, prompt }
+//   → { ok:false, code:'FEATURE_OFF' }   (OPENAI_API_KEY unset)
+export interface ImprovePromptInput {
+  idea: string;
+  // Selected GENERATE_PRESETS labels — the model folds these into the prompt.
+  presets?: string[];
+  projectName?: string;
+}
+
+export type ImprovePromptResult =
+  | { ok: true; prompt: string }
+  | { ok: false; error: string; featureOff: boolean };
+
+export async function improvePrompt(input: ImprovePromptInput): Promise<ImprovePromptResult> {
+  const body = await callPropelRoute<Envelope>(IMAGE_ROUTE, {
+    action: 'improvePrompt',
+    idea: input.idea,
+    presets: input.presets ?? [],
+    projectName: input.projectName ?? '',
+  });
+  if (body && body.ok === true && typeof body.prompt === 'string' && body.prompt !== '') {
+    return { ok: true, prompt: body.prompt };
+  }
+  return {
+    ok: false,
+    error: isFeatureOff(body) ? 'Prompt helper isn’t configured yet.' : failMessage(body),
+    featureOff: isFeatureOff(body),
+  };
+}
+
+// ── AI image-to-image enhance (Media Studio M1/M2) ────────────────────────────
+// `{action:'enhance', sourceUrl, enhancements?, instructions?, aspect?, projectName?}`
+// → the CRM route builds an edit prompt from the enhancement LABELS + free-text
+// instructions (+ the named-project guardrail), calls the image-service
+// `/v1/images/enhance` (gpt-image-1 edits over the source bytes), and maps the
+// result to a same-domain gateway path.
+//   → { ok, gatewayPath:'/img/is/<name>', provenance:'enhanced' }
+//   → { ok:false, code:'FEATURE_OFF' }   (OPENAI_API_KEY / IMAGE_SERVICE_URL unset)
+//   → { ok:false, code, message }        (bad source / enhance failed)
+export interface EnhanceImageInput {
+  // Fully-qualified https source (sitePublicUrl + gatewayPath for a library/render
+  // pick, or a pasted public URL). The route's SSRF guard rejects private hosts.
+  sourceUrl: string;
+  // Selected ENHANCE_PRESETS labels — the route assembles the edit prompt from them.
+  enhancements?: string[];
+  instructions?: string;
+  aspect?: ImageAspect;
+  projectName?: string;
+}
+
+export type EnhanceImageResult =
+  | { ok: true; gatewayPath: string }
+  | { ok: false; error: string; featureOff: boolean };
+
+export async function enhanceImage(input: EnhanceImageInput): Promise<EnhanceImageResult> {
+  const body = await callPropelRoute<Envelope>(IMAGE_ROUTE, {
+    action: 'enhance',
+    sourceUrl: input.sourceUrl,
+    enhancements: input.enhancements ?? [],
+    instructions: input.instructions ?? '',
+    aspect: input.aspect ?? 'landscape',
+    projectName: input.projectName ?? '',
+  });
+  if (
+    body &&
+    body.ok === true &&
+    typeof body.gatewayPath === 'string' &&
+    body.gatewayPath !== ''
+  ) {
+    return { ok: true, gatewayPath: body.gatewayPath };
+  }
+  return {
+    ok: false,
+    error: isFeatureOff(body) ? 'Image enhancement isn’t configured yet.' : failMessage(body),
+    featureOff: isFeatureOff(body),
+  };
+}

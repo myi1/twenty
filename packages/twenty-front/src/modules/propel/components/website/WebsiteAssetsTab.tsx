@@ -64,6 +64,7 @@ const SOURCE_CHIPS: { value: SourceChip; label: string }[] = [
 // Source → badge color (matches the O1 SELECT colour posture).
 const SOURCE_COLOR: Record<WebsiteAssetSource, string> = {
   GENERATED: 'green',
+  ENHANCED: 'teal',
   PROJECT: 'blue',
   UPLOADED: 'indigo',
   BRAND: 'gray',
@@ -72,6 +73,7 @@ const SOURCE_COLOR: Record<WebsiteAssetSource, string> = {
 
 const SOURCE_LABEL: Record<WebsiteAssetSource, string> = {
   GENERATED: 'Generated',
+  ENHANCED: 'Enhanced',
   PROJECT: 'Project',
   UPLOADED: 'Uploaded',
   BRAND: 'Brand',

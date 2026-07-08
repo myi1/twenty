@@ -46,7 +46,7 @@ import {
   type IconComponent,
 } from 'twenty-ui/display';
 import { sectionDef, type LandingSectionType } from '@/propel/lib/landingSectionDefs';
-import { ProjectImagePicker } from '@/propel/components/website/ProjectImagePicker';
+import { MediaStudioModal } from '@/propel/components/website/MediaStudioModal';
 
 // LP editor polish — A1 (collapsible + native-drag section rows), A4 (image
 // fields as thumbnails), and the shared section→icon identity map reused by the
@@ -200,9 +200,9 @@ export const ImageField = ({
         </Box>
         <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
           <Group gap={6} wrap="nowrap">
-            <ProjectImagePicker
+            <MediaStudioModal
               sitePublicUrl={sitePublicUrl}
-              triggerLabel="Change"
+              fieldLabel={label}
               projectName={projectName}
               onPick={(path) => {
                 setBroken(false);

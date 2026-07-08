@@ -21,11 +21,20 @@ import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 
 const ROUTE = '/website/assets';
 
-// The 5 asset provenances (UPPER_CASE — matches the O1 SELECT enum values).
-export type WebsiteAssetSource = 'GENERATED' | 'PROJECT' | 'UPLOADED' | 'BRAND' | 'TEAM';
+// The asset provenances (UPPER_CASE — matches the O1 SELECT enum values). ENHANCED
+// (Media Studio M3) is the AI image-to-image output, saved explicitly via the same
+// `create` route with source:'ENHANCED'.
+export type WebsiteAssetSource =
+  | 'GENERATED'
+  | 'ENHANCED'
+  | 'PROJECT'
+  | 'UPLOADED'
+  | 'BRAND'
+  | 'TEAM';
 
 export const WEBSITE_ASSET_SOURCES: WebsiteAssetSource[] = [
   'GENERATED',
+  'ENHANCED',
   'PROJECT',
   'UPLOADED',
   'BRAND',
