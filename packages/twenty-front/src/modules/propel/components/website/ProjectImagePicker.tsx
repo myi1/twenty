@@ -2,6 +2,7 @@ import { createContext, useContext, useMemo, useState } from 'react';
 import {
   ActionIcon,
   Box,
+  Button,
   Center,
   Group,
   Loader,
@@ -63,11 +64,15 @@ const useProjectAssets = (): ProjectAssetsCtx =>
 interface ProjectImagePickerProps {
   sitePublicUrl: string;
   onPick: (gatewayPath: string) => void;
+  // When set, the popover target is a labelled Button (A4 thumbnail "Change"
+  // affordance) instead of the compact photo ActionIcon (row-editor / rightSection
+  // usage). Purely a trigger-styling switch — the popover body is identical.
+  triggerLabel?: string;
 }
 
 type Stage = 'search' | 'images';
 
-export const ProjectImagePicker = ({ sitePublicUrl, onPick }: ProjectImagePickerProps) => {
+export const ProjectImagePicker = ({ sitePublicUrl, onPick, triggerLabel }: ProjectImagePickerProps) => {
   const notify = usePropelToast();
   const { featureOff, markFeatureOff } = useProjectAssets();
 
@@ -143,17 +148,29 @@ export const ProjectImagePicker = ({ sitePublicUrl, onPick }: ProjectImagePicker
       trapFocus
     >
       <Popover.Target>
-        <Tooltip label="Browse project images" withinPortal zIndex={5000}>
-          <ActionIcon
-            size="sm"
-            variant="subtle"
-            color="gray"
-            aria-label="Browse project images"
+        {triggerLabel ? (
+          <Button
+            size="compact-xs"
+            variant="light"
+            color="red"
+            leftSection={<IconPhoto size={14} />}
             onClick={() => setOpened((o) => !o)}
           >
-            <IconPhoto size={15} />
-          </ActionIcon>
-        </Tooltip>
+            {triggerLabel}
+          </Button>
+        ) : (
+          <Tooltip label="Browse project images" withinPortal zIndex={5000}>
+            <ActionIcon
+              size="sm"
+              variant="subtle"
+              color="gray"
+              aria-label="Browse project images"
+              onClick={() => setOpened((o) => !o)}
+            >
+              <IconPhoto size={15} />
+            </ActionIcon>
+          </Tooltip>
+        )}
       </Popover.Target>
       <Popover.Dropdown>
         {stage === 'search' ? (
