@@ -19,6 +19,10 @@ export type UseLandingPagesResult = {
   error: string | null;
   data: LandingPageSummary[];
   usingMock: boolean;
+  // C6 — the hero-only preview origin from the `list` response's meta. '' when the
+  // route is unavailable (mock mode) or SITE_PUBLIC_URL is unset server-side; the
+  // editor then degrades to full-width forms with a dimmed note.
+  sitePublicUrl: string;
   reload: () => void;
 };
 
@@ -43,6 +47,7 @@ export const useLandingPages = (): UseLandingPagesResult => {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<LandingPageSummary[]>([]);
   const [usingMock, setUsingMock] = useState(false);
+  const [sitePublicUrl, setSitePublicUrl] = useState('');
   const mounted = useRef(true);
 
   const load = useCallback(async () => {
@@ -51,12 +56,14 @@ export const useLandingPages = (): UseLandingPagesResult => {
     const result = await listLandingPages();
     if (!mounted.current) return;
     if (result.ok) {
-      setData(result.data);
+      setData(result.data.pages);
+      setSitePublicUrl(result.data.sitePublicUrl);
       setUsingMock(false);
       setPhase('ready');
     } else {
       // route unavailable (not deployed / not a Manager) → mock preview, honest error
       setData(mockToSummary());
+      setSitePublicUrl(''); // no live preview until the real route answers
       setUsingMock(true);
       setError(result.error);
       setPhase('ready');
@@ -71,5 +78,5 @@ export const useLandingPages = (): UseLandingPagesResult => {
     };
   }, [load]);
 
-  return { phase, error, data, usingMock, reload: () => void load() };
+  return { phase, error, data, usingMock, sitePublicUrl, reload: () => void load() };
 };

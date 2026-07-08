@@ -63,6 +63,24 @@ export type CrmResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
 type Envelope = { ok?: boolean; error?: string; code?: string } & Record<string, unknown>;
 
+// C6 — the `list` response carries a hero-only preview origin in `meta`. Read from
+// SITE_PUBLIC_URL server-side; absent → '' (the editor then degrades to full-width
+// forms with a dimmed note — see LandingPreviewPane). We surface it ALONGSIDE the
+// page rows so a single list fetch feeds both the grid and the preview iframe src.
+export interface LandingListPayload {
+  pages: LandingPageSummary[];
+  sitePublicUrl: string;
+}
+
+const readSitePublicUrl = (body: Envelope | null): string => {
+  const meta = body?.meta;
+  if (meta !== null && typeof meta === 'object') {
+    const url = (meta as Record<string, unknown>).sitePublicUrl;
+    if (typeof url === 'string') return url;
+  }
+  return '';
+};
+
 const failMessage = (body: Envelope | null): string => {
   if (body === null) {
     return 'Could not reach the landing-page service (sign in as a Manager; the object may not be deployed yet).';
@@ -70,10 +88,13 @@ const failMessage = (body: Envelope | null): string => {
   return typeof body.error === 'string' && body.error ? body.error : 'Request failed.';
 };
 
-export async function listLandingPages(): Promise<CrmResult<LandingPageSummary[]>> {
+export async function listLandingPages(): Promise<CrmResult<LandingListPayload>> {
   const body = await callPropelRoute<Envelope>(ROUTE, { action: 'list' });
   if (body && body.ok === true && Array.isArray(body.pages)) {
-    return { ok: true, data: body.pages as LandingPageSummary[] };
+    return {
+      ok: true,
+      data: { pages: body.pages as LandingPageSummary[], sitePublicUrl: readSitePublicUrl(body) },
+    };
   }
   return { ok: false, error: failMessage(body) };
 }
@@ -105,4 +126,65 @@ export async function setLandingStatus(
     return { ok: true, data: { id: body.id, status } };
   }
   return { ok: false, error: failMessage(body) };
+}
+
+// ── Project-image assets (C4) ────────────────────────────────────────────────
+// A SEPARATE Manager/Admin-gated route from landing-admin: the image picker asks
+// the off-plan service (via the CRM) for projects + their GenieMap renders, mapped
+// to same-domain gateway paths (/img/gm/<cdn-path>). The route fails CLOSED with
+// `{ ok:false, code:'FEATURE_OFF' }` when OFFPLAN_SERVICE_URL is unset — the picker
+// then HIDES its button (never fabricates a gallery). Flat body, per the gotcha.
+//
+//   POST /website/landing-assets  body { action, ... }
+//     action:'projectSearch' + query               → { ok, projects[] }
+//     action:'projectImages' + projectExternalId   → { ok, images[] }
+
+const ASSETS_ROUTE = '/website/landing-assets';
+
+export interface ProjectSearchResult {
+  externalId: string;
+  name: string;
+  developerName: string;
+  districtName: string;
+}
+
+export interface ProjectImage {
+  id: string;
+  gatewayPath: string; // e.g. /img/gm/17/97/67/8b/720_….webp — served from OUR domain
+}
+
+// Discriminated result: `featureOff` distinguishes "the assets feature isn't wired
+// on this workspace" (hide the picker, silently) from a transient error (toast).
+export type AssetsResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string; featureOff: boolean };
+
+const isFeatureOff = (body: Envelope | null): boolean =>
+  body !== null && body.ok === false && body.code === 'FEATURE_OFF';
+
+const assetsFail = (body: Envelope | null): AssetsResult<never> => ({
+  ok: false,
+  error: isFeatureOff(body) ? 'Project images are not configured on this workspace.' : failMessage(body),
+  featureOff: isFeatureOff(body),
+});
+
+export async function searchProjects(query: string): Promise<AssetsResult<ProjectSearchResult[]>> {
+  const body = await callPropelRoute<Envelope>(ASSETS_ROUTE, { action: 'projectSearch', query });
+  if (body && body.ok === true && Array.isArray(body.projects)) {
+    return { ok: true, data: body.projects as ProjectSearchResult[] };
+  }
+  return assetsFail(body);
+}
+
+export async function projectImages(
+  projectExternalId: string,
+): Promise<AssetsResult<ProjectImage[]>> {
+  const body = await callPropelRoute<Envelope>(ASSETS_ROUTE, {
+    action: 'projectImages',
+    projectExternalId,
+  });
+  if (body && body.ok === true && Array.isArray(body.images)) {
+    return { ok: true, data: body.images as ProjectImage[] };
+  }
+  return assetsFail(body);
 }
