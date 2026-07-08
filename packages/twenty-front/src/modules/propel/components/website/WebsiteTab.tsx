@@ -6,6 +6,7 @@ import {
   IconFileText,
   IconLayoutGrid,
   IconLayoutDashboard,
+  IconPhoto,
   IconUsers,
 } from 'twenty-ui/display';
 
@@ -28,6 +29,7 @@ import {
 import { OverviewTab } from '@/propel/components/website/OverviewTab';
 import { BlogTab } from '@/propel/components/website/BlogTab';
 import { LandingPagesTab } from '@/propel/components/website/LandingPagesTab';
+import { WebsiteAssetsTab } from '@/propel/components/website/WebsiteAssetsTab';
 import { SiteLeadsTab } from '@/propel/components/website/SiteLeadsTab';
 import { SeoAiTab } from '@/propel/components/website/SeoAiTab';
 
@@ -35,6 +37,7 @@ type WebsiteSubTab =
   | 'overview'
   | 'blog'
   | 'landing-pages'
+  | 'assets'
   | 'site-leads'
   | 'seo-ai';
 
@@ -42,6 +45,7 @@ const SUB_TAB_VALUES: WebsiteSubTab[] = [
   'overview',
   'blog',
   'landing-pages',
+  'assets',
   'site-leads',
   'seo-ai',
 ];
@@ -85,6 +89,9 @@ export const WebsiteTab = () => {
         <Tabs.Panel value="landing-pages">
           {activeSubTab === 'landing-pages' ? <LandingPagesTab /> : null}
         </Tabs.Panel>
+        <Tabs.Panel value="assets">
+          {activeSubTab === 'assets' ? <WebsiteAssetsTab /> : null}
+        </Tabs.Panel>
         <Tabs.Panel value="site-leads">
           {activeSubTab === 'site-leads' ? <SiteLeadsTab /> : null}
         </Tabs.Panel>
@@ -125,6 +132,9 @@ export const WebsiteTab = () => {
         </Tabs.Tab>
         <Tabs.Tab value="landing-pages" leftSection={<IconLayoutGrid size={15} />}>
           Landing pages
+        </Tabs.Tab>
+        <Tabs.Tab value="assets" leftSection={<IconPhoto size={15} />}>
+          Assets
         </Tabs.Tab>
         <Tabs.Tab value="site-leads" leftSection={<IconUsers size={15} />}>
           Site leads
