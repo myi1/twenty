@@ -37,6 +37,25 @@ import {
   type BlogColumns,
 } from '@/propel/hooks/useBlogPipeline';
 import { decideBlogPost, generateBlogDraft, type BlogPost } from '@/propel/lib/blogCrm';
+import { BlogPostDrawer } from '@/propel/components/website/BlogPostDrawer';
+
+// Every card opens the detail drawer on click; withhold the click from the
+// inner Approve/Reject buttons so those still act inline (real DOM here — this is
+// the twenty-front hero, not the in-sandbox front-component, so stopPropagation
+// works, unlike the sandboxed builders).
+const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
+const clickableCard = (onOpen: () => void) => ({
+  style: { cursor: 'pointer' as const },
+  onClick: onOpen,
+  role: 'button' as const,
+  tabIndex: 0,
+  onKeyDown: (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onOpen();
+    }
+  },
+});
 
 // Blog sub-tab of the Website tab (WEBSITE-REBUILD-DESIGN.md §6 "Blog"). LIVE wave:
 // a 4-column pipeline board (In progress → Needs approval → Scheduled → Published)
@@ -136,10 +155,10 @@ const formatWhen = (iso: string | null): string => {
 };
 
 // In-progress + failed cards: title, stage badge, locale.
-const InProgressCard = ({ item }: { item: BlogPost }) => {
+const InProgressCard = ({ item, onOpen }: { item: BlogPost; onOpen: () => void }) => {
   const meta = STAGE_META[item.status] ?? { color: 'gray', label: item.status };
   return (
-    <Paper withBorder radius="md" p="md">
+    <Paper withBorder radius="md" p="md" {...clickableCard(onOpen)}>
       <Stack gap="xs">
         <Text size="sm" fw={600}>
           {item.title}
@@ -179,13 +198,21 @@ const NeedsApprovalCard = ({
   busy,
   onApprove,
   onReject,
+  onOpen,
 }: {
   item: BlogPost;
   busy: boolean;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
+  onOpen: () => void;
 }) => (
-  <Paper withBorder radius="md" p="md" style={{ borderColor: 'var(--mantine-color-red-3)' }}>
+  <Paper
+    withBorder
+    radius="md"
+    p="md"
+    {...clickableCard(onOpen)}
+    style={{ borderColor: 'var(--mantine-color-red-3)', cursor: 'pointer' }}
+  >
     <Stack gap="xs">
       <Group justify="space-between" align="flex-start" wrap="nowrap">
         <Text size="sm" fw={600} style={{ flex: 1 }}>
@@ -215,7 +242,10 @@ const NeedsApprovalCard = ({
           variant="default"
           leftSection={<IconX size={13} />}
           disabled={busy}
-          onClick={() => onReject(item.id)}
+          onClick={(e) => {
+            stop(e);
+            onReject(item.id);
+          }}
         >
           Reject
         </Button>
@@ -224,7 +254,10 @@ const NeedsApprovalCard = ({
           color="red"
           leftSection={<IconCheck size={13} />}
           loading={busy}
-          onClick={() => onApprove(item.id)}
+          onClick={(e) => {
+            stop(e);
+            onApprove(item.id);
+          }}
         >
           Approve
         </Button>
@@ -233,8 +266,8 @@ const NeedsApprovalCard = ({
   </Paper>
 );
 
-const ScheduledCard = ({ item }: { item: BlogPost }) => (
-  <Paper withBorder radius="md" p="md">
+const ScheduledCard = ({ item, onOpen }: { item: BlogPost; onOpen: () => void }) => (
+  <Paper withBorder radius="md" p="md" {...clickableCard(onOpen)}>
     <Stack gap="xs">
       <Text size="sm" fw={600}>
         {item.title}
@@ -250,8 +283,8 @@ const ScheduledCard = ({ item }: { item: BlogPost }) => (
   </Paper>
 );
 
-const PublishedCard = ({ item }: { item: BlogPost }) => (
-  <Paper withBorder radius="md" p="md">
+const PublishedCard = ({ item, onOpen }: { item: BlogPost; onOpen: () => void }) => (
+  <Paper withBorder radius="md" p="md" {...clickableCard(onOpen)}>
     <Stack gap="xs">
       <Text size="sm" fw={600}>
         {item.title}
@@ -276,6 +309,7 @@ export const BlogTab = () => {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [topicSeed, setTopicSeed] = useState('');
   const [seeding, setSeeding] = useState(false);
+  const [openRow, setOpenRow] = useState<BlogPost | null>(null);
 
   const visibleColumns: BlogColumns = useMemo(
     () => ({
@@ -418,7 +452,7 @@ export const BlogTab = () => {
             Icon={IconPencil}
           >
             {[...visibleColumns.failed, ...visibleColumns.inProgress].map((item) => (
-              <InProgressCard key={item.id} item={item} />
+              <InProgressCard key={item.id} item={item} onOpen={() => setOpenRow(item)} />
             ))}
           </KanbanColumn>
 
@@ -434,6 +468,7 @@ export const BlogTab = () => {
                 busy={busyId === item.id}
                 onApprove={(id) => void decide(id, 'approve')}
                 onReject={(id) => void decide(id, 'reject')}
+                onOpen={() => setOpenRow(item)}
               />
             ))}
           </KanbanColumn>
@@ -444,7 +479,7 @@ export const BlogTab = () => {
             Icon={IconCalendar}
           >
             {visibleColumns.scheduled.map((item) => (
-              <ScheduledCard key={item.id} item={item} />
+              <ScheduledCard key={item.id} item={item} onOpen={() => setOpenRow(item)} />
             ))}
           </KanbanColumn>
 
@@ -454,11 +489,17 @@ export const BlogTab = () => {
             Icon={IconFileText}
           >
             {visibleColumns.published.map((item) => (
-              <PublishedCard key={item.id} item={item} />
+              <PublishedCard key={item.id} item={item} onOpen={() => setOpenRow(item)} />
             ))}
           </KanbanColumn>
         </SimpleGrid>
       )}
+
+      <BlogPostDrawer
+        row={openRow}
+        onClose={() => setOpenRow(null)}
+        onChanged={reload}
+      />
     </Box>
   );
 };

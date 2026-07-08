@@ -75,7 +75,9 @@ export const WebsiteTab = () => {
     () => (
       <>
         <Tabs.Panel value="overview">
-          {activeSubTab === 'overview' ? <OverviewTab /> : null}
+          {activeSubTab === 'overview' ? (
+            <OverviewTab onNavigateSubTab={setSubTab} />
+          ) : null}
         </Tabs.Panel>
         <Tabs.Panel value="blog">
           {activeSubTab === 'blog' ? <BlogTab /> : null}

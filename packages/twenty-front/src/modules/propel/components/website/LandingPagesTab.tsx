@@ -74,6 +74,11 @@ interface Draft {
   sections: EditSection[];
 }
 
+// Live pages render on the marketing site at this base. Staging renders the same
+// {type,props}[] on the site dev server (a different host) — swap this only if the
+// public LP host changes; the slug/path shape is stable.
+const LIVE_LP_BASE = 'https://remaxhub.ae/lp';
+
 const slugify = (input: string): string =>
   input
     .toLowerCase()
@@ -185,6 +190,20 @@ const PageCard = ({
       >
         {page.status === 'LIVE' ? 'Unpublish' : 'Set live'}
       </Button>
+      {page.status === 'LIVE' ? (
+        <Button
+          size="xs"
+          variant="subtle"
+          color="blue"
+          component="a"
+          href={`${LIVE_LP_BASE}/${page.slug}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          rightSection={<IconExternalLink size={14} />}
+        >
+          Open page
+        </Button>
+      ) : null}
     </Group>
   </Paper>
 );

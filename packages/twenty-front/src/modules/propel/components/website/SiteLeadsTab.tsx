@@ -18,13 +18,12 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   IconAlertTriangle,
   IconClock,
   IconDownload,
-  IconExternalLink,
   IconFilter,
+  IconChevronRight,
   IconRefresh,
   IconUsers,
 } from 'twenty-ui/display';
@@ -37,6 +36,7 @@ import {
   type SiteLead,
 } from '@/propel/lib/websiteCrm';
 import { SlaAgeChip } from '@/propel/components/website/SlaAgeChip';
+import { SiteLeadDrawer } from '@/propel/components/website/SiteLeadDrawer';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 
 // Site leads sub-tab (Website tab, spec §6): the working QUEUE of every lead the
@@ -152,7 +152,6 @@ const MetricCard = ({
 
 export const SiteLeadsTab = () => {
   const notify = usePropelToast();
-  const navigate = useNavigate();
   const { phase, error, leads, metrics, reload } = useSiteLeads();
 
   const [formTypeFilter, setFormTypeFilter] = useState<string>('ALL');
@@ -160,6 +159,7 @@ export const SiteLeadsTab = () => {
   const [campaignFilter, setCampaignFilter] = useState<string>('ALL');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [openLead, setOpenLead] = useState<SiteLead | null>(null);
 
   const formTypeOptions = useMemo(
     () =>
@@ -463,8 +463,12 @@ export const SiteLeadsTab = () => {
           </Table.Thead>
           <Table.Tbody>
             {filteredRows.map((r) => (
-              <Table.Tr key={r.id}>
-                <Table.Td>
+              <Table.Tr
+                key={r.id}
+                style={{ cursor: 'pointer' }}
+                onClick={() => setOpenLead(r)}
+              >
+                <Table.Td onClick={(e) => e.stopPropagation()}>
                   <Checkbox
                     checked={selected.has(r.id)}
                     onChange={() => toggleOne(r.id)}
@@ -555,10 +559,13 @@ export const SiteLeadsTab = () => {
                   <Button
                     size="compact-xs"
                     variant="subtle"
-                    rightSection={<IconExternalLink size={13} />}
-                    onClick={() => navigate(`/object/person/${r.id}`)}
+                    rightSection={<IconChevronRight size={13} />}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenLead(r);
+                    }}
                   >
-                    Open
+                    View
                   </Button>
                 </Table.Td>
               </Table.Tr>
@@ -566,6 +573,8 @@ export const SiteLeadsTab = () => {
           </Table.Tbody>
         </Table>
       )}
+
+      <SiteLeadDrawer lead={openLead} onClose={() => setOpenLead(null)} />
     </Box>
   );
 };

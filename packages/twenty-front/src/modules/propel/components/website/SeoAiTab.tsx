@@ -24,6 +24,7 @@ import {
   IconBrandOpenai,
   IconCheck,
   IconCircleX,
+  IconExternalLink,
   IconInfoCircle,
   IconLoader,
   IconPlus,
@@ -65,6 +66,17 @@ import { useWebsiteSeo } from '@/propel/hooks/useWebsiteSeo';
 // state only, marked as previews so a future wiring pass knows exactly what to
 // replace.
 
+// Build the real page URL an issue points at, so a row click opens exactly the
+// affected page in a new tab. Tolerates a full URL, a "/path" slug, or a bare
+// asset name (e.g. sitemap.xml) — the audit uses all three shapes.
+const buildIssuePageUrl = (baseUrl: string, slug: string): string => {
+  const s = (slug ?? '').trim();
+  if (/^https?:\/\//i.test(s)) return s;
+  const b = (baseUrl ?? DEFAULT_SEO_BASE_URL).replace(/\/+$/, '');
+  const path = s.startsWith('/') ? s : `/${s}`;
+  return `${b}${path}`;
+};
+
 const SEVERITY_META: Record<
   SeoIssueSeverity,
   { color: string; label: string }
@@ -104,8 +116,25 @@ const ScoreCard = ({
         thickness={6}
         roundCaps
         sections={[{ value: valuePct, color }]}
+        // Mantine's default label CSS only vertically centers (top:50% +
+        // translateY) and horizontally insets by thickness*2 — which reads as
+        // off-center in a small ring (the founder's "circles not aligned" bug).
+        // Override the label box to fill the ring and flex-center its child so the
+        // % sits dead-center at any size; lh={1} removes the line-box drift.
+        styles={{
+          label: {
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            transform: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          },
+        }}
         label={
-          <Text size="xs" fw={700} ta="center">
+          <Text size="xs" fw={700} lh={1} ta="center">
             {valuePct}%
           </Text>
         }
@@ -473,8 +502,15 @@ export const SeoAiTab = () => {
                 <Table.Tbody>
                   {data.issues.map((issue) => {
                     const sev = SEVERITY_META[issue.severity];
+                    const pageUrl = buildIssuePageUrl(data.baseUrl, issue.pageSlug);
                     return (
-                      <Table.Tr key={issue.id}>
+                      <Table.Tr
+                        key={issue.id}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() =>
+                          window.open(pageUrl, '_blank', 'noopener,noreferrer')
+                        }
+                      >
                         <Table.Td>
                           <Badge size="sm" variant="light" color={sev.color}>
                             {sev.label}
@@ -489,11 +525,19 @@ export const SeoAiTab = () => {
                           </Text>
                         </Table.Td>
                         <Table.Td>
-                          <Text size="xs" ff="monospace" c="dimmed">
-                            {issue.pageSlug}
-                          </Text>
+                          <Tooltip label={`Open ${pageUrl}`} withArrow>
+                            <Group gap={4} wrap="nowrap">
+                              <Text size="xs" ff="monospace" c="dimmed" truncate maw={180}>
+                                {issue.pageSlug}
+                              </Text>
+                              <IconExternalLink
+                                size={13}
+                                style={{ color: 'var(--mantine-color-dimmed)', flexShrink: 0 }}
+                              />
+                            </Group>
+                          </Tooltip>
                         </Table.Td>
-                        <Table.Td>
+                        <Table.Td onClick={(e) => e.stopPropagation()}>
                           <FixAffordance issue={issue} />
                         </Table.Td>
                       </Table.Tr>
