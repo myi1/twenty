@@ -1,7 +1,11 @@
 import { useMemo } from 'react';
 
+import { gql } from '@apollo/client';
+import { useQuery } from '@apollo/client/react';
+
 import { currentUserWorkspaceState } from '@/auth/states/currentUserWorkspaceState';
 import { currentWorkspaceMemberState } from '@/auth/states/currentWorkspaceMemberState';
+import { useApolloCoreClient } from '@/object-metadata/hooks/useApolloCoreClient';
 import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomStateValue';
 
 // Resolves the user's EFFECTIVE permission-flag set for the propel
@@ -14,9 +18,17 @@ import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomState
 //   permissionFlagUniversalIdentifiers). Includes built-in Twenty flag keys
 //   AND the propel app's flag keys (PROPEL_INBOX, PROPEL_MARKETING_HUB, …).
 // - additionalFlags / excludedFlags: propel-custom MULTI_SELECT fields on
-//   the currentWorkspaceMember (see workspace-member-additional-flags.field.ts /
-//   workspace-member-excluded-flags.field.ts). Option `value`s mirror the
-//   permission-flag KEYS exactly.
+//   the workspaceMember OBJECT (workspace schema — see
+//   workspace-member-additional-flags.field.ts). ROOT-CAUSE NOTE (2026-07-08):
+//   these used to be requested through the CORE currentUser query, whose
+//   WorkspaceMember type never exposed them — every currentUser (re)load
+//   failed GraphQL validation silently, so the flags never reached the client
+//   and mid-session auth-state refreshes were broken app-wide ("heroes vanish
+//   until re-login"). They are now fetched where they actually live: the
+//   workspace RECORD API, via a direct minimal query below. Deliberately NOT
+//   useFindOneRecord — that hook throws ObjectMetadataItemNotFoundError when
+//   object metadata hasn't loaded yet, which would crash the nav drawer at
+//   boot; this query has zero metadata-store dependency and fails soft.
 //
 // EXCLUDE WINS on conflict — by design (a flag in both `additional` and
 // `excluded` resolves to NOT visible). Matches the docstring on the field
@@ -26,18 +38,23 @@ import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomState
 // routes / RLS hooks remain the security boundary. A user who edits this
 // hook's output in DevTools still hits an empty data set behind any gated
 // surface.
-// LAST-KNOWN-GOOD cache (recurring "heroes vanished from nav" bug, 2026-07-08):
-// the two source states below are client caches that other code paths can
-// overwrite mid-session with PARTIAL payloads (a mutation response writing a
-// member object without the custom additionalFlags fields, a
-// currentUserWorkspace update without permissionFlags, …). When that happens
-// the resolved set reads empty, the sidebar filters out EVERY hero, and only a
-// re-login (full currentUser query) recovers. Since this gate is COSMETIC
-// (backend routes/RLS stay the security boundary), the resilient posture is:
-// once a non-empty flag set has been seen for a member this session, keep
-// serving it whenever the sources go temporarily empty. Fresh data overwrites
-// the cache on arrival; a genuine mid-session revocation applies on the next
-// full load — an acceptable trade for a cosmetic gate.
+
+const FIND_MEMBER_FLAGS = gql`
+  query PropelFindMemberFlags($memberId: UUID!) {
+    workspaceMember(filter: { id: { eq: $memberId } }) {
+      id
+      additionalFlags
+      excludedFlags
+    }
+  }
+`;
+
+// LAST-KNOWN-GOOD cache: the source states are client caches that other code
+// paths can overwrite mid-session with partial payloads. Once a non-empty flag
+// set has been seen for a member this session, keep serving it whenever the
+// sources go temporarily empty. Fresh data overwrites the cache on arrival; a
+// genuine mid-session revocation applies on the next full load — an acceptable
+// trade for a cosmetic gate.
 let lastKnownGoodFlags: {
   memberId: string;
   flags: ReadonlySet<string>;
@@ -46,27 +63,43 @@ let lastKnownGoodFlags: {
 export const usePropelEffectiveFlags = (): ReadonlySet<string> => {
   const currentUserWorkspace = useAtomStateValue(currentUserWorkspaceState);
   const currentWorkspaceMember = useAtomStateValue(currentWorkspaceMemberState);
+  const apolloCoreClient = useApolloCoreClient();
+
+  const memberId = currentWorkspaceMember?.id;
+
+  // The member's own record via the workspace RECORD API — the only transport
+  // that actually carries the custom flag fields. Apollo-cached across the
+  // session; skipped until the member id is known (pre-auth / boot); errors
+  // tolerated (data stays undefined → role flags / last-known-good carry).
+  const { data } = useQuery<{
+    workspaceMember?: {
+      id: string;
+      additionalFlags?: string[] | null;
+      excludedFlags?: string[] | null;
+    } | null;
+  }>(FIND_MEMBER_FLAGS, {
+    client: apolloCoreClient,
+    variables: { memberId: memberId ?? '' },
+    skip: memberId === undefined || memberId === '',
+    errorPolicy: 'all',
+  });
 
   return useMemo(() => {
     const roleFlags = currentUserWorkspace?.permissionFlags ?? [];
-    // `additionalFlags` / `excludedFlags` are MULTI_SELECT custom fields →
-    // string[] of option values, or null when no custom fields are installed
-    // (e.g. a workspace without the propel app, dev fixtures).
-    const additional =
-      (currentWorkspaceMember as { additionalFlags?: string[] | null } | null)
-        ?.additionalFlags ?? [];
-    const excluded =
-      (currentWorkspaceMember as { excludedFlags?: string[] | null } | null)
-        ?.excludedFlags ?? [];
+    // MULTI_SELECT custom fields → string[] of option values (the flag KEY
+    // strings), or null/undefined when unset or the propel app is absent.
+    const additional = data?.workspaceMember?.additionalFlags ?? [];
+    const excluded = data?.workspaceMember?.excludedFlags ?? [];
 
     const merged = new Set<string>(roleFlags);
     for (const f of additional) merged.add(f);
     for (const f of excluded) merged.delete(f); // exclude wins
 
-    const memberId = currentWorkspaceMember?.id;
-
-    if (memberId !== undefined && lastKnownGoodFlags !== null &&
-        lastKnownGoodFlags.memberId !== memberId) {
+    if (
+      memberId !== undefined &&
+      lastKnownGoodFlags !== null &&
+      lastKnownGoodFlags.memberId !== memberId
+    ) {
       // Different member (user/workspace switch) → the cached set is not ours.
       lastKnownGoodFlags = null;
     }
@@ -87,7 +120,7 @@ export const usePropelEffectiveFlags = (): ReadonlySet<string> => {
     }
 
     return merged;
-  }, [currentUserWorkspace, currentWorkspaceMember]);
+  }, [currentUserWorkspace, data, memberId]);
 };
 
 // Convenience predicate. Mirrors the shape of Twenty's useHasPermissionFlag

@@ -1,15 +1,14 @@
 import { gql } from '@apollo/client';
 
-// NOTE — Propel additions: additionalFlags / excludedFlags are PROPEL CUSTOM
-// FIELDS on workspaceMember (defined in the propel-crm app manifest at
-// src/fields/workspace-member-additional-flags.field.ts and
-// .../workspace-member-excluded-flags.field.ts). Fetched in this standard
-// fragment so the propel hero-gate hook (usePropelEffectiveFlags) can merge
-// `(currentUserWorkspace.permissionFlags ∪ additionalFlags) \ excludedFlags`
-// without a second round trip on every page load. MULTI_SELECT fields
-// surface as string[] of option `value`s — the flag KEY strings
-// (PROPEL_INBOX, …). Workspaces without the propel app get null for both
-// (handled in the hook).
+// NOTE (2026-07-08, root cause of the recurring "heroes vanish / need
+// re-login" bug): additionalFlags / excludedFlags used to be requested HERE —
+// but they are workspace-schema CUSTOM fields that the CORE API's
+// WorkspaceMember type never exposed, so EVERY currentUser (re)load failed
+// GraphQL validation silently. The app then ran on login-time cached state;
+// any mid-session state disturbance had no working refetch to recover from.
+// The flags are now fetched where they actually live — the workspace RECORD
+// API — inside usePropelEffectiveFlags. NEVER add workspace-schema custom
+// fields to this core fragment.
 export const WORKSPACE_MEMBER_QUERY_FRAGMENT = gql`
   fragment WorkspaceMemberQueryFragment on WorkspaceMember {
     id
@@ -27,7 +26,5 @@ export const WORKSPACE_MEMBER_QUERY_FRAGMENT = gql`
     timeFormat
     calendarStartDay
     numberFormat
-    additionalFlags
-    excludedFlags
   }
 `;
