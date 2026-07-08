@@ -483,23 +483,19 @@ const mergeConfig = (raw: unknown): PropelNavConfig => {
   };
 };
 
-// Fetch the mounted nav config ONCE (idempotent). Called at boot from index.tsx,
-// before/independent of render. On success it swaps the cache and notifies
-// subscribers; on any failure (no file, 404, bad JSON) it silently keeps the
-// baked default. Never throws — a missing config must not break the app.
-export const loadPropelNavConfigOnce = (): void => {
-  if (loadStarted) {
-    return;
-  }
-  loadStarted = true;
-
+// One fetch-and-merge pass over the mounted nav config. On success it swaps the
+// cache and notifies subscribers; on any failure (no file, 404, bad JSON) it
+// silently keeps the current config. Never throws — nav must never break
+// because a config file was unreachable.
+const fetchAndMergeNavConfig = (): void => {
   const url = `${heroesBaseUrl()}/nav.config.json`;
-  // cache:'no-cache' → always revalidate so a nav edit shows on hard-refresh
+  // cache:'no-cache' → always revalidate so a nav edit shows on refetch
   // without a stale cached 200 masking the new file.
   fetch(url, { cache: 'no-cache' })
     .then((res) => {
       if (!res.ok) {
-        // 404 = no mounted config; the baked default is correct. Not an error.
+        // 404 = no mounted config; the current (baked/merged) config is
+        // correct. Not an error.
         return undefined;
       }
       return res.json();
@@ -513,9 +509,30 @@ export const loadPropelNavConfigOnce = (): void => {
       emitChange();
     })
     .catch(() => {
-      // Network / parse failure → keep the baked default. Swallow: nav must never
-      // break because a config file was unreachable.
+      // Network / parse failure → keep the current config. Swallow.
     });
+};
+
+// Fetch the mounted nav config at boot (idempotent registration). Called from
+// index.tsx before/independent of render. Also registers a SELF-HEALING
+// refetch: whenever the tab regains visibility the mounted config is
+// re-validated, so (a) a nav.config.json edit on the heroes mount shows up on
+// the next tab focus without a hard refresh, and (b) a transiently stale merge
+// heals itself mid-session instead of persisting until re-login (part of the
+// 2026-07-08 "heroes vanished from nav" fix).
+export const loadPropelNavConfigOnce = (): void => {
+  if (loadStarted) {
+    return;
+  }
+  loadStarted = true;
+
+  fetchAndMergeNavConfig();
+
+  window.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      fetchAndMergeNavConfig();
+    }
+  });
 };
 
 // The ordered, ENABLED entries for the sidebar (sorted by `order`).

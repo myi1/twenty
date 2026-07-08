@@ -4,14 +4,18 @@ import { IconHelpCircle, IconSettings } from 'twenty-ui/display';
 import { AnimatedExpandableContainer } from 'twenty-ui/layout';
 
 // Propel: the graduated hero hub nav entries (Inbox, Marketing, Weekly 1:1,
-// Listing Studio, …) are gated behind a build/runtime flag so they only appear
-// where the engine image enables them. Same dual mechanism as the dialer dock
-// (window._env_ for the Docker runtime injection, import.meta.env for vite dev).
-// The hero routes themselves register unconditionally (they 404 when nav-hidden);
-// only these nav ITEMS are gated.
-const PROPEL_MARKETING_HUB_ENABLED =
-  Boolean(window._env_?.REACT_APP_PROPEL_MARKETING_HUB) ||
-  Boolean(import.meta.env.REACT_APP_PROPEL_MARKETING_HUB);
+// Listing Studio, …) render from the runtime nav registry (baked defaults ∪
+// mounted nav.config.json) filtered by the user's effective permission flags.
+//
+// HISTORY (recurring "heroes vanished from nav" bug, fixed 2026-07-08): these
+// items used to ALSO be gated behind window._env_.REACT_APP_PROPEL_MARKETING_HUB,
+// a module-level const read from the server-stamped index.html. Any page copy
+// without that stamp (proxy/CDN-cached index.html, server-restart window, stale
+// tab) evaluated it false and hid EVERY hero for the whole session — only a
+// re-login (fresh page loads) recovered. The env flag was redundant belt-and-
+// suspenders over the registry (whose baked default already ships enabled
+// entries and whose mounted JSON can disable them), so it was removed rather
+// than patched. Do not reintroduce an env gate here.
 
 import { currentWorkspaceMemberState } from '@/auth/states/currentWorkspaceMemberState';
 import { usePropelEffectiveFlags } from '@/propel/hooks/usePropelEffectiveFlags';
@@ -109,11 +113,11 @@ export const NavigationDrawerHeroesSection = ({
         {/* Propel hero nav items, rendered from the runtime config. Labels,
             icons, order and routes are all config-driven — editing them needs only
             a nav.config.json edit on the heroes mount + a refresh (NO rebuild).
-            Gated by REACT_APP_PROPEL_MARKETING_HUB exactly as before. */}
-        {PROPEL_MARKETING_HUB_ENABLED &&
-          propelNavEntries.map((entry) => (
-            <PropelHeroNavItem key={entry.key} entry={entry} />
-          ))}
+            No env-flag gate (see header comment): visibility = registry `enabled`
+            ∩ the user's effective permission flags, nothing else. */}
+        {propelNavEntries.map((entry) => (
+          <PropelHeroNavItem key={entry.key} entry={entry} />
+        ))}
         <NavigationDrawerItem
           label={t`Settings`}
           Icon={IconSettings}
