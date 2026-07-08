@@ -51,7 +51,7 @@ import { useWebsiteSeo } from '@/propel/hooks/useWebsiteSeo';
 
 // Visible build tag (footer) — bump on user-visible fixes so stale-cache
 // debates end with a glance.
-const HERO_UI_BUILD = 'r4-biggauge';
+const HERO_UI_BUILD = 'r5-optical';
 
 // Gauge geometry. NOTE Mantine converts px props to rem against a 16px
 // assumption; Twenty's 13px root shrinks everything by 13/16 — 96 renders
@@ -149,14 +149,27 @@ const ScoreCard = ({
             pointerEvents: 'none',
           }}
         >
-          <Text
-            size="sm"
-            fw={700}
-            lh={1}
-            style={{ fontVariantNumeric: 'tabular-nums' }}
-          >
-            {valuePct}%
-          </Text>
+          {/* OPTICAL centering (r5): geometric centering of "100%" measures
+              perfect yet reads left-shifted — the % glyph is mostly whitespace,
+              so the eye centers on the DIGITS. Center the number itself and
+              counterbalance the visible % with an invisible mirror twin, so
+              digits sit dead-on the ring axis and the % hangs symmetrically. */}
+          <Box style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1 }}>
+            <Text size="xs" fw={600} lh={1} style={{ visibility: 'hidden' }}>
+              %
+            </Text>
+            <Text
+              size="sm"
+              fw={700}
+              lh={1}
+              style={{ fontVariantNumeric: 'tabular-nums' }}
+            >
+              {valuePct}
+            </Text>
+            <Text size="xs" fw={600} lh={1} c="dimmed">
+              %
+            </Text>
+          </Box>
         </Box>
       </Box>
       <Stack gap={2} style={{ minWidth: 0 }}>
