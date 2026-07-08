@@ -42,9 +42,11 @@ export interface LandingPageSummary {
   updatedAt: string | null;
 }
 
-// Full page (editor). Adds the section list.
+// Full page (editor). Adds the section list + the bench audit log (Stage 3B —
+// absent from older route builds → normalized to []).
 export interface LandingPageFull extends Omit<LandingPageSummary, 'updatedAt'> {
   sections: LandingSection[];
+  benchLog: BenchLogEntry[];
 }
 
 export interface SaveLandingInput {
@@ -102,7 +104,9 @@ export async function listLandingPages(): Promise<CrmResult<LandingListPayload>>
 export async function getLandingPage(id: string): Promise<CrmResult<LandingPageFull>> {
   const body = await callPropelRoute<Envelope>(ROUTE, { action: 'get', id });
   if (body && body.ok === true && body.page && typeof body.page === 'object') {
-    return { ok: true, data: body.page as LandingPageFull };
+    const page = body.page as LandingPageFull;
+    // benchLog is tolerant: routes predating Stage 3B don't project it → [].
+    return { ok: true, data: { ...page, benchLog: asBenchLog((body.page as Envelope).benchLog) } };
   }
   return { ok: false, error: failMessage(body) };
 }
@@ -351,6 +355,9 @@ export interface BenchLogEntry {
   agent: string;
   action: string;
   summary: string;
+  // Stage 3B — instruct entries record the targeted section (absent/null for a
+  // whole-page edit). Older entries simply don't carry the field.
+  sectionIndex?: number | null;
 }
 
 export interface DraftFromBriefOverrides {
@@ -397,5 +404,103 @@ export async function draftFromBrief(
     ok: false,
     error: isFeatureOff(body) ? 'AI drafting isn’t configured yet.' : failMessage(body),
     featureOff: isFeatureOff(body),
+  };
+}
+
+// ── AI instruct edit (Stage 3B — click+tell) ──────────────────────────────────
+// `{action:'instruct', id, sectionIndex?, instruction, sourceIds?}` (flat body,
+// per the gotcha) → the bench's editor agent rewrites JUST the target (one
+// section, or the whole page when sectionIndex is omitted), validates via
+// parseSections server-side, saves, and appends an `instruct` benchLog entry.
+// Pinned T1 contract:
+//   → { ok, sectionsJson, headline?, metaDescription?, benchLog }
+//   → { ok:false, code:'FEATURE_OFF' }      (LLM key unset → dim the bar)
+//   → { ok:false, code:'BENCH_INVALID' }    (edit failed validation — the page
+//                                            was NEVER corrupted; draft untouched)
+
+// `sectionsJson` may arrive as the raw JSON string (the CRM field's value) or an
+// already-parsed array — accept both, reject anything that isn't {type,props}[].
+const parseSectionsPayload = (v: unknown): LandingSection[] | null => {
+  let raw: unknown = v;
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  if (!Array.isArray(raw)) return null;
+  const out: LandingSection[] = [];
+  for (const item of raw) {
+    if (item === null || typeof item !== 'object') return null;
+    const rec = item as Record<string, unknown>;
+    if (typeof rec.type !== 'string' || rec.type === '') return null;
+    const props =
+      rec.props !== null && typeof rec.props === 'object'
+        ? (rec.props as Record<string, unknown>)
+        : {};
+    out.push({ type: rec.type as LandingSection['type'], props });
+  }
+  return out;
+};
+
+// Discriminated result: `featureOff` dims the bar; `benchInvalid` means the AI
+// edit failed validation server-side (toast, keep the draft exactly as-is).
+export type InstructEditResult =
+  | {
+      ok: true;
+      sections: LandingSection[];
+      headline: string | null;
+      metaDescription: string | null;
+      benchLog: BenchLogEntry[];
+    }
+  | { ok: false; error: string; featureOff: boolean; benchInvalid: boolean };
+
+export async function instructEdit(
+  id: string,
+  sectionIndex: number | null,
+  instruction: string,
+  sourceIds?: string[],
+): Promise<InstructEditResult> {
+  // FLAT body — sectionIndex only when a section is targeted; sourceIds only
+  // when the founder picked grounding sources (mirrors draftFromBrief).
+  const body = await callPropelRoute<Envelope>(BENCH_ROUTE, {
+    action: 'instruct',
+    id,
+    instruction,
+    ...(sectionIndex !== null ? { sectionIndex } : {}),
+    ...(sourceIds && sourceIds.length > 0 ? { sourceIds } : {}),
+  });
+  if (body && body.ok === true) {
+    const sections = parseSectionsPayload(body.sectionsJson);
+    if (sections !== null) {
+      return {
+        ok: true,
+        sections,
+        headline: typeof body.headline === 'string' ? body.headline : null,
+        metaDescription:
+          typeof body.metaDescription === 'string' ? body.metaDescription : null,
+        benchLog: asBenchLog(body.benchLog),
+      };
+    }
+    // ok:true but an unreadable sections payload — treat as a soft failure so
+    // the local draft is never clobbered with garbage.
+    return {
+      ok: false,
+      error: 'The edit saved but returned an unreadable page — reload to see it.',
+      featureOff: false,
+      benchInvalid: false,
+    };
+  }
+  const benchInvalid = body !== null && body.ok === false && body.code === 'BENCH_INVALID';
+  return {
+    ok: false,
+    error: benchInvalid
+      ? 'The AI edit came back invalid — your page was left untouched. Try rephrasing.'
+      : isFeatureOff(body)
+        ? 'AI editing isn’t configured yet.'
+        : failMessage(body),
+    featureOff: isFeatureOff(body),
+    benchInvalid,
   };
 }
