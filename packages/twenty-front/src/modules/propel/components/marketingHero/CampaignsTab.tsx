@@ -22,7 +22,10 @@ import {
   IconPlus,
 } from 'twenty-ui/display';
 import { CampaignDetail } from '@/propel/components/marketingHero/CampaignDetail';
+import { CampaignReviewPanel } from '@/propel/components/marketingHero/CampaignReviewPanel';
+import { CampaignSpinePanel } from '@/propel/components/marketingHero/CampaignSpinePanel';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
+import { type SpineArm } from '@/propel/lib/campaignSpineCrm';
 import {
   type CampaignFilter,
   type ChannelKey,
@@ -80,6 +83,13 @@ export const CampaignsTab = ({
   const [seqBusy, setSeqBusy] = useState<string | null>(null);
   // When set, the tab swaps the list for the full CampaignDetail drill-in.
   const [detailId, setDetailId] = useState<string | null>(null);
+  // Campaign Spine (CS4) — a fresh multi-channel campaign under review. `failed`
+  // carries any arm the generate reported as partial-failed, so the review can
+  // mark that card "generation failed" instead of silently omitting it.
+  const [spineReview, setSpineReview] = useState<{
+    id: string;
+    failed: SpineArm[];
+  } | null>(null);
 
   const rows = useMemo(
     () => (payload ? buildCampaignRows(payload) : []),
@@ -163,6 +173,18 @@ export const CampaignsTab = ({
           and sequences.
         </Text>
       </Stack>
+
+      {/* Campaign Spine v1 (CS4) — one brief → LP + social arms in review */}
+      <CampaignSpinePanel
+        onCampaignCreated={(id, failed) => setSpineReview({ id, failed })}
+      />
+      <CampaignReviewPanel
+        campaignId={spineReview?.id ?? null}
+        failedArms={spineReview?.failed ?? []}
+        onClose={() => setSpineReview(null)}
+        onChanged={reload}
+        onRegenerated={(id, failed) => setSpineReview({ id, failed })}
+      />
 
       <Group justify="space-between" align="center" mb="md" wrap="wrap">
         <Group gap="xs" wrap="wrap">

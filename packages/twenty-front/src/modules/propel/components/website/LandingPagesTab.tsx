@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Alert,
   Badge,
@@ -322,7 +323,15 @@ const PageCard = ({
 // ── the tab ──────────────────────────────────────────────────────────────────
 export const LandingPagesTab = () => {
   const notify = usePropelToast();
-  const { error, data, usingMock, sitePublicUrl, reload } = useLandingPages();
+  const { phase, error, data, usingMock, sitePublicUrl, reload } = useLandingPages();
+  // Campaign Spine deep-link (CS4): the campaign review's "Open in editor"
+  // navigates to /marketing?tab=website&sub=landing-pages&edit=<id>. There is no
+  // standalone editor route (mode is local state), so we consume a one-shot
+  // ?edit= param here: once the list load settles (mock vs live known), open
+  // that page's editor and strip the param so back/refresh don't re-trigger it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const editParam = searchParams.get('edit');
+  const consumedEditRef = useRef(false);
 
   const [mode, setMode] = useState<'list' | 'editor'>('list');
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
@@ -499,6 +508,20 @@ export const LandingPagesTab = () => {
     setSlugTouched(true);
     setMode('editor');
   };
+
+  // Consume the one-shot ?edit=<id> deep-link (Campaign Spine CS4) once the
+  // list load settled — `usingMock` is only trustworthy at phase 'ready', and
+  // openEdit itself no-ops with an honest note in mock mode.
+  useEffect(() => {
+    if (editParam === null || consumedEditRef.current) return;
+    if (phase !== 'ready') return;
+    consumedEditRef.current = true;
+    const next = new URLSearchParams(searchParams);
+    next.delete('edit');
+    setSearchParams(next, { replace: true });
+    void openEdit(editParam);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editParam, phase, searchParams, setSearchParams]);
 
   // ── Stage 3C — the publish pre-flight gate ─────────────────────────────────
   // The actual go-live leg: setStatus LIVE (the server RE-RUNS the gate — the
