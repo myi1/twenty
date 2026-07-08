@@ -24,6 +24,7 @@ import {
   Text,
   Textarea,
   TextInput,
+  ThemeIcon,
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
@@ -627,17 +628,24 @@ export const MediaStudioBody = ({
     );
   };
 
-  const previewBox = (gatewayPath: string | null, emptyMsg: string) => (
+  const previewBox = (
+    gatewayPath: string | null,
+    emptyMsg: string,
+    opts?: { busy?: boolean; hint?: string },
+  ) => (
     <Box
       style={{
         aspectRatio: '4 / 3',
-        borderRadius: 10,
-        border: '1px solid var(--mantine-color-gray-3)',
+        borderRadius: 12,
         overflow: 'hidden',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'var(--mantine-color-gray-0)',
+        background:
+          'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))',
+        border: gatewayPath
+          ? '1px solid var(--mantine-color-default-border)'
+          : '1.5px dashed var(--mantine-color-default-border)',
       }}
     >
       {gatewayPath ? (
@@ -646,10 +654,27 @@ export const MediaStudioBody = ({
           alt=""
           style={{ width: '100%', height: '100%', objectFit: 'contain' }}
         />
+      ) : opts?.busy ? (
+        <Stack gap={10} align="center" c="dimmed">
+          <Loader size="sm" color="red" />
+          <Text size="sm" fw={500}>
+            Creating your image…
+          </Text>
+          <Text size="xs">This usually takes around 20 seconds</Text>
+        </Stack>
       ) : (
-        <Stack gap={6} align="center" c="dimmed">
-          <IconPhoto size={28} />
-          <Text size="xs">{emptyMsg}</Text>
+        <Stack gap={10} align="center" px="md" style={{ textAlign: 'center' }}>
+          <ThemeIcon size={54} radius="xl" variant="light" color="red">
+            <IconSparkles size={26} />
+          </ThemeIcon>
+          <Text size="sm" fw={500} c="dimmed">
+            {emptyMsg}
+          </Text>
+          {opts?.hint ? (
+            <Text size="xs" c="dimmed" maw={240}>
+              {opts.hint}
+            </Text>
+          ) : null}
         </Stack>
       )}
     </Box>
@@ -752,7 +777,10 @@ export const MediaStudioBody = ({
           </Button>
         </Stack>
         <Stack gap="sm" style={{ flex: 1, minWidth: 0 }}>
-          {previewBox(genResult, 'Your generated image will appear here')}
+          {previewBox(genResult, 'Your image will appear here', {
+            busy: generating,
+            hint: 'Describe it, pick a style, then hit Generate.',
+          })}
           <Group gap="xs" justify="space-between">
             <Button
               size="sm"
@@ -884,7 +912,10 @@ export const MediaStudioBody = ({
               <Text size="xs" fw={500} c="dimmed">
                 After
               </Text>
-              {previewBox(enhResult, 'Enhanced result')}
+              {previewBox(enhResult, 'Enhanced result', {
+                busy: enhancing,
+                hint: 'Pick a source, choose enhancements, then Enhance.',
+              })}
             </Stack>
           </SimpleGrid>
           <Group justify="flex-end">
