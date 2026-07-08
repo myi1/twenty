@@ -258,7 +258,10 @@ export async function fetchBlogPost(id: string): Promise<CrmResult<BlogPostDetai
 export async function retryBlogPost(
   id: string,
 ): Promise<CrmResult<{ id: string; status: BlogStatus }>> {
-  const body = await callPropelRoute<Envelope>(QUEUE_ROUTE, { action: 'retry', id });
+  // Retry is a state MUTATION — it lives on the approve route (same
+  // Manager/Admin gate + audit path as approve/reject), NOT the read-only
+  // queue route. Contract: blog-approve-route { id, action:'retry' }.
+  const body = await callPropelRoute<Envelope>(APPROVE_ROUTE, { action: 'retry', id });
   if (body && body.ok === true && typeof body.id === 'string') {
     return { ok: true, data: { id: body.id, status: asBlogStatus(body.status) } };
   }
