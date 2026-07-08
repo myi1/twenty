@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Box, Center, SegmentedControl, Stack, Text } from '@mantine/core';
-import { IconWorld } from 'twenty-ui/display';
+import { Anchor, Box, Center, Group, SegmentedControl, Stack, Text } from '@mantine/core';
+import { IconAppWindow, IconExternalLink, IconPhone, IconWorld } from 'twenty-ui/display';
 import {
   debounce,
   originOf,
@@ -8,6 +8,7 @@ import {
   postRender,
   type LpSection,
   type LpTheme,
+  type SectionActionKind,
 } from '@/propel/lib/landingPreviewBridge';
 
 // LP Builder v2 — Stage 2 live-preview pane (B1 / contract C1).
@@ -28,7 +29,15 @@ interface LandingPreviewPaneProps {
   theme: LpTheme;
   sections: LpSection[];
   selectedIndex: number | null;
+  // C7 — the section hovered in the left rail; forwarded to the child so it can
+  // draw a dashed outline. null clears it.
+  hoverIndex: number | null;
   onSelectSection: (index: number) => void;
+  // C7 — the on-canvas floating toolbar's verbs bubble up here; the parent (the
+  // single source of truth for sections[]) applies them and re-posts render.
+  onSectionAction: (index: number, action: SectionActionKind) => void;
+  // Present only for a LIVE page → renders an "Open live page ↗" link (A5).
+  liveUrl?: string;
 }
 
 type Device = 'desktop' | 'mobile';
@@ -50,7 +59,10 @@ export const LandingPreviewPane = ({
   theme,
   sections,
   selectedIndex,
+  hoverIndex,
   onSelectSection,
+  onSectionAction,
+  liveUrl,
 }: LandingPreviewPaneProps) => {
   const origin = useMemo(() => originOf(sitePublicUrl), [sitePublicUrl]);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -60,8 +72,8 @@ export const LandingPreviewPane = ({
 
   // Always post the LATEST draft; a ref keeps `flush` stable while the effect
   // below re-arms the debounce on every draft change.
-  const draftRef = useRef({ theme, sections, selectedIndex });
-  draftRef.current = { theme, sections, selectedIndex };
+  const draftRef = useRef({ theme, sections, selectedIndex, hoverIndex });
+  draftRef.current = { theme, sections, selectedIndex, hoverIndex };
 
   const flush = useCallback(() => {
     if (!readyRef.current) return;
@@ -80,12 +92,14 @@ export const LandingPreviewPane = ({
         flush(); // first paint: send the current draft immediately
       } else if (msg.type === 'sectionClick') {
         onSelectSection(msg.index);
+      } else if (msg.type === 'sectionAction') {
+        onSectionAction(msg.index, msg.action);
       }
-      // 'height' is accepted but ignored (v1 — the iframe is height:100%).
+      // 'height' / 'sectionHover' are accepted by the bridge but not consumed here.
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [origin, flush, onSelectSection]);
+  }, [origin, flush, onSelectSection, onSectionAction]);
 
   // Any draft/selection change → re-post (debounced). Selection changes ride the
   // same debounce; 300ms of highlight lag is imperceptible and coalesces bursts.
@@ -93,6 +107,13 @@ export const LandingPreviewPane = ({
     debouncedFlush();
     return () => debouncedFlush.cancel();
   }, [theme, sections, selectedIndex, debouncedFlush]);
+
+  // Hover-outline (A5/C7) is posted IMMEDIATELY (not debounced) so the outline
+  // tracks the pointer without lag. Hover state changes are inherently low-
+  // frequency (one per row crossing), so this never spams postMessage.
+  useEffect(() => {
+    flush();
+  }, [hoverIndex, flush]);
 
   if (sitePublicUrl === '' || origin === '') {
     return (
@@ -104,16 +125,49 @@ export const LandingPreviewPane = ({
 
   return (
     <Stack gap="xs" style={{ height: '100%', minHeight: 0 }}>
-      <SegmentedControl
-        size="xs"
-        value={device}
-        onChange={(v) => setDevice(v as Device)}
-        data={[
-          { value: 'desktop', label: 'Desktop' },
-          { value: 'mobile', label: 'Mobile' },
-        ]}
-        style={{ alignSelf: 'flex-end' }}
-      />
+      <Group justify="space-between" align="center" wrap="nowrap">
+        {liveUrl ? (
+          <Anchor
+            href={liveUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            size="xs"
+            c="red"
+          >
+            <Group gap={4} wrap="nowrap" component="span">
+              <span>Open live page</span>
+              <IconExternalLink size={13} />
+            </Group>
+          </Anchor>
+        ) : (
+          <span />
+        )}
+        <SegmentedControl
+          size="xs"
+          value={device}
+          onChange={(v) => setDevice(v as Device)}
+          data={[
+            {
+              value: 'desktop',
+              label: (
+                <Group gap={6} wrap="nowrap" justify="center" component="span">
+                  <IconAppWindow size={14} />
+                  <span>Desktop</span>
+                </Group>
+              ),
+            },
+            {
+              value: 'mobile',
+              label: (
+                <Group gap={6} wrap="nowrap" justify="center" component="span">
+                  <IconPhone size={14} />
+                  <span>Mobile</span>
+                </Group>
+              ),
+            },
+          ]}
+        />
+      </Group>
       <Box
         style={{
           flex: 1,
