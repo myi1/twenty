@@ -3,17 +3,18 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
 } from 'react';
 import {
   ActionIcon,
+  Alert,
   Box,
   Button,
   Center,
   Chip,
   CopyButton,
-  Divider,
   Group,
   Loader,
   ScrollArea,
@@ -29,6 +30,7 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import {
+  IconAlertTriangle,
   IconArrowRight,
   IconBookmark,
   IconCheck,
@@ -41,6 +43,7 @@ import {
   IconSearch,
   IconSparkles,
   IconStar,
+  IconUpload,
   IconWand,
 } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
@@ -57,6 +60,7 @@ import {
 import {
   createAsset,
   listAssets,
+  uploadAsset,
   type WebsiteAsset,
   type WebsiteAssetSource,
 } from '@/propel/lib/websiteAssetsCrm';
@@ -192,6 +196,33 @@ const triggerDownload = (url: string, gatewayPath: string) => {
   a.remove();
 };
 
+// ── device upload (SRC-2 / plan SM6) ──────────────────────────────────────────
+// The hero is main-thread twenty-front code, so <input type=file> + FileReader
+// work today (the old "engine byte-bridge" gate applied to SANDBOXED
+// front-components only). Client-side caps mirror the route: image mime, ≤4MB.
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+
+// The image types the image-service accepts (magic-byte verified server-side).
+const UPLOAD_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+// Main-thread FileReader → bare base64 (data:-URL prefix stripped). Mirrors
+// inboxApi.fileToBase64.
+const fileToBase64 = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== 'string') {
+        reject(new Error('unreadable'));
+        return;
+      }
+      const comma = result.indexOf(',');
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('read failed'));
+    reader.readAsDataURL(file);
+  });
+
 // ── the studio body ───────────────────────────────────────────────────────────
 interface MediaStudioBodyProps {
   sitePublicUrl: string;
@@ -253,6 +284,14 @@ export const MediaStudioBody = ({
   const [enhFeatureOff, setEnhFeatureOff] = useState(false);
   const [enhSaving, setEnhSaving] = useState(false);
   const [enhSaved, setEnhSaved] = useState(false);
+
+  // ── Upload state (SRC-2 / plan SM6) ─────────────────────────────────────────
+  const [upBusy, setUpBusy] = useState(false);
+  const [upError, setUpError] = useState<string | null>(null);
+  const [upResult, setUpResult] = useState<{ gatewayPath: string; filename: string } | null>(null);
+  const [upFeatureOff, setUpFeatureOff] = useState(false);
+  const [upDragOver, setUpDragOver] = useState(false);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
   // ── Project renders state (harvested) ───────────────────────────────────────
   const [stage, setStage] = useState<RenderStage>('search');
@@ -479,6 +518,51 @@ export const MediaStudioBody = ({
       return;
     }
     notify(res.error, 'error');
+  };
+
+  // ── Upload (SRC-2) ──────────────────────────────────────────────────────────
+  // Client-side validation mirrors the route caps (image mime, ≤4MB) so the user
+  // gets an instant, specific error instead of a round-trip 4xx. On success the
+  // asset is ALREADY in the library (the route creates the UPLOADED row) — we just
+  // invalidate the cached list so the Library tab refetches.
+  const handleUploadFile = async (file: File) => {
+    if (upBusy) return;
+    setUpError(null);
+    if (!UPLOAD_MIME_TYPES.includes(file.type)) {
+      setUpError('That file isn’t a supported image — use JPEG, PNG, WebP, or GIF.');
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setUpError(
+        `That image is ${(file.size / (1024 * 1024)).toFixed(1)}MB — the limit is 4MB.`,
+      );
+      return;
+    }
+    setUpBusy(true);
+    setUpResult(null);
+    try {
+      const dataBase64 = await fileToBase64(file);
+      const res = await uploadAsset(file.name, dataBase64);
+      if (res.ok) {
+        setUpResult({ gatewayPath: res.gatewayPath, filename: file.name });
+        setLibraryLoaded(false); // the Library tab refetches and shows the new row
+        notify('Image uploaded to the library.', 'success');
+      } else if (res.featureOff) {
+        setUpFeatureOff(true);
+      } else {
+        setUpError(res.error);
+      }
+    } catch {
+      setUpError('Could not read that file — try again.');
+    }
+    setUpBusy(false);
+  };
+
+  const onUploadInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.currentTarget.files?.[0];
+    // Reset so picking the SAME file again re-fires change (retry after an error).
+    e.currentTarget.value = '';
+    if (file) void handleUploadFile(file);
   };
 
   // ── shared UI fragments ─────────────────────────────────────────────────────
@@ -823,11 +907,14 @@ export const MediaStudioBody = ({
               >
                 {enhPickerOpen ? 'Close library' : 'Pick from library'}
               </Button>
-              <Tooltip label="Device upload — coming soon" zIndex={6000}>
-                <Button size="xs" variant="default" disabled>
-                  Drag & drop
-                </Button>
-              </Tooltip>
+              <Button
+                size="xs"
+                variant="default"
+                leftSection={<IconUpload size={14} />}
+                onClick={() => setTab('upload')}
+              >
+                Upload new
+              </Button>
             </Group>
             <Group gap="xs" wrap="nowrap" mt="xs">
               <TextInput
@@ -1092,6 +1179,131 @@ export const MediaStudioBody = ({
     );
   };
 
+  const uploadPanel = () => {
+    if (upFeatureOff)
+      return dimmedNote('Device uploads aren’t configured on this workspace yet.');
+    if (!gatewayReady)
+      return dimmedNote(
+        'Uploads need a published site host (SITE_PUBLIC_URL) to preview results. Ask an admin to configure it.',
+      );
+    return (
+      <Group align="flex-start" gap="xl" wrap="nowrap" style={{ minHeight: 0 }}>
+        <Stack gap="sm" style={{ flex: '0 0 380px', maxWidth: 380 }}>
+          <input
+            ref={uploadInputRef}
+            type="file"
+            accept={UPLOAD_MIME_TYPES.join(',')}
+            style={{ display: 'none' }}
+            onChange={onUploadInputChange}
+          />
+          <UnstyledButton
+            onClick={() => uploadInputRef.current?.click()}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setUpDragOver(true);
+            }}
+            onDragLeave={() => setUpDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setUpDragOver(false);
+              const file = e.dataTransfer.files?.[0];
+              if (file) void handleUploadFile(file);
+            }}
+            style={{
+              borderRadius: 12,
+              border: upDragOver
+                ? '2px dashed var(--mantine-color-red-5)'
+                : '1.5px dashed var(--mantine-color-default-border)',
+              background: upDragOver
+                ? 'var(--mantine-color-red-light)'
+                : 'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))',
+              padding: '36px 16px',
+            }}
+          >
+            <Stack gap={10} align="center" style={{ textAlign: 'center' }}>
+              <ThemeIcon size={54} radius="xl" variant="light" color="red">
+                <IconUpload size={26} />
+              </ThemeIcon>
+              <Text size="sm" fw={500}>
+                Drag an image here, or click to browse
+              </Text>
+              <Text size="xs" c="dimmed">
+                JPEG · PNG · WebP · GIF — up to 4MB
+              </Text>
+            </Stack>
+          </UnstyledButton>
+          {upBusy ? (
+            <Group gap="xs">
+              <Loader size="xs" color="red" />
+              <Text size="xs" c="dimmed">
+                Uploading…
+              </Text>
+            </Group>
+          ) : null}
+          {upError ? (
+            <Alert color="red" variant="light" icon={<IconAlertTriangle size={16} />}>
+              {upError}
+            </Alert>
+          ) : null}
+        </Stack>
+        <Stack gap="sm" style={{ flex: 1, minWidth: 0 }}>
+          {previewBox(upResult?.gatewayPath ?? null, 'Your uploaded image will appear here', {
+            busy: upBusy,
+            hint: 'Uploads land in the Library automatically.',
+          })}
+          {upResult ? (
+            <Group gap="xs" justify="space-between" wrap="wrap">
+              <Group gap={6}>
+                <IconCheck size={14} style={{ color: 'var(--mantine-color-teal-6)' }} />
+                <Text size="xs" c="dimmed">
+                  {upResult.filename} — saved to your library.
+                </Text>
+              </Group>
+              {insertMode ? (
+                <Button
+                  size="sm"
+                  color="red"
+                  rightSection={<IconArrowRight size={15} />}
+                  onClick={() => pick(upResult.gatewayPath)}
+                >
+                  Use this image
+                </Button>
+              ) : (
+                <Group gap="xs">
+                  <CopyButton value={`${sitePublicUrl}${upResult.gatewayPath}`}>
+                    {({ copied, copy }) => (
+                      <Button
+                        size="sm"
+                        variant="default"
+                        leftSection={copied ? <IconCheck size={15} /> : <IconCopy size={15} />}
+                        onClick={copy}
+                      >
+                        {copied ? 'Copied' : 'Copy URL'}
+                      </Button>
+                    )}
+                  </CopyButton>
+                  <Button
+                    size="sm"
+                    variant="default"
+                    leftSection={<IconDownload size={15} />}
+                    onClick={() =>
+                      triggerDownload(
+                        `${sitePublicUrl}${upResult.gatewayPath}`,
+                        upResult.gatewayPath,
+                      )
+                    }
+                  >
+                    Download
+                  </Button>
+                </Group>
+              )}
+            </Group>
+          ) : null}
+        </Stack>
+      </Group>
+    );
+  };
+
   return (
     <Tabs
       value={tab}
@@ -1112,13 +1324,9 @@ export const MediaStudioBody = ({
         <Tabs.Tab value="renders" leftSection={<IconSearch size={15} />}>
           Project renders
         </Tabs.Tab>
-        <Tooltip label="Coming soon" zIndex={6000}>
-          <Box component="span" style={{ display: 'inline-flex' }}>
-            <Tabs.Tab value="upload" disabled>
-              Upload
-            </Tabs.Tab>
-          </Box>
-        </Tooltip>
+        <Tabs.Tab value="upload" leftSection={<IconUpload size={15} />}>
+          Upload
+        </Tabs.Tab>
       </Tabs.List>
 
       <Tabs.Panel value="library">
@@ -1129,10 +1337,7 @@ export const MediaStudioBody = ({
       <Tabs.Panel value="generate">{generatePanel()}</Tabs.Panel>
       <Tabs.Panel value="enhance">{enhancePanel()}</Tabs.Panel>
       <Tabs.Panel value="renders">{rendersPanel()}</Tabs.Panel>
-      <Tabs.Panel value="upload">
-        <Divider my="md" />
-        {dimmedNote('Device uploads are coming soon.')}
-      </Tabs.Panel>
+      <Tabs.Panel value="upload">{uploadPanel()}</Tabs.Panel>
     </Tabs>
   );
 };
