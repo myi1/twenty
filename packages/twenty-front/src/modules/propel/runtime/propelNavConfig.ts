@@ -133,6 +133,13 @@ export type PropelNavConfig = {
   entries: PropelNavEntry[];
   // The ordered nav sections. Absent/empty ⇒ hardcoded fallback composition.
   sections?: PropelNavSection[];
+  // The route "/" lands on (2026-07-08). Twenty's stock fallback is the
+  // ALPHABETICALLY-FIRST readable object — which in this workspace is
+  // agreementDocument, so every fresh login dumped the user on the A2A
+  // Documents table. A configured route here wins over that fallback (and
+  // over the lastVisited-object heuristic, so landing is deterministic).
+  // Editable via the mounted nav.config.json — NO rebuild to change it.
+  defaultHome?: string;
 };
 
 // ── Baked default (the current live nav) ───────────────────────────────────
@@ -151,6 +158,9 @@ export type PropelNavConfig = {
 
 export const DEFAULT_NAV_CONFIG: PropelNavConfig = {
   version: 2,
+  // Land on People — the CRM's heart — instead of Twenty's alphabetical
+  // accident (A2A Documents). Override in the mounted nav.config.json.
+  defaultHome: '/objects/people',
   entries: [
     {
       key: 'inbox',
@@ -476,12 +486,31 @@ const mergeConfig = (raw: unknown): PropelNavConfig => {
   }
 
   const version = (raw as Record<string, unknown>).version;
+
+  // defaultHome: a mounted route string (must start with '/') overrides the
+  // baked default; anything else keeps it.
+  const rawDefaultHome = (raw as Record<string, unknown>).defaultHome;
+  const defaultHome =
+    typeof rawDefaultHome === 'string' && rawDefaultHome.startsWith('/')
+      ? rawDefaultHome
+      : DEFAULT_NAV_CONFIG.defaultHome;
+
   return {
     version: typeof version === 'number' ? version : DEFAULT_NAV_CONFIG.version,
     entries: [...byKey.values()],
     sections,
+    ...(defaultHome !== undefined ? { defaultHome } : {}),
   };
 };
+
+// The configured "/" landing route, or undefined when unset/invalid. Consumed
+// by useDefaultHomePagePath (which falls back to Twenty's stock heuristic).
+export const getDefaultHomeRoute = (
+  config: PropelNavConfig,
+): string | undefined =>
+  typeof config.defaultHome === 'string' && config.defaultHome.startsWith('/')
+    ? config.defaultHome
+    : undefined;
 
 // One fetch-and-merge pass over the mounted nav config. On success it swaps the
 // cache and notifies subscribers; on any failure (no file, 404, bad JSON) it
