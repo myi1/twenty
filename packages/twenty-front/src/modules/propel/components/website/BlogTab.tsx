@@ -114,11 +114,11 @@ const KanbanColumn = ({
 );
 
 const STAGE_META: Record<string, { color: string; label: string }> = {
-  idea: { color: 'gray', label: 'Idea' },
-  grounding: { color: 'blue', label: 'Grounding' },
-  drafting: { color: 'indigo', label: 'Drafting' },
-  seo_review: { color: 'teal', label: 'SEO review' },
-  failed: { color: 'red', label: 'Failed' },
+  IDEA: { color: 'gray', label: 'Idea' },
+  GROUNDING: { color: 'blue', label: 'Grounding' },
+  DRAFTING: { color: 'indigo', label: 'Drafting' },
+  SEO_REVIEW: { color: 'teal', label: 'SEO review' },
+  FAILED: { color: 'red', label: 'Failed' },
 };
 
 const localeBadge = (locale: string): ReactNode =>
@@ -154,14 +154,14 @@ const InProgressCard = ({ item }: { item: BlogPost }) => {
             size="xs"
             variant="light"
             color={meta.color}
-            leftSection={item.status === 'failed' ? <IconAlertTriangle size={11} /> : undefined}
+            leftSection={item.status === 'FAILED' ? <IconAlertTriangle size={11} /> : undefined}
             style={{ alignSelf: 'flex-start' }}
           >
             {meta.label}
           </Badge>
           {localeBadge(item.locale)}
         </Group>
-        {item.status === 'failed' && item.lastError ? (
+        {item.status === 'FAILED' && item.lastError ? (
           <Tooltip label={item.lastError} multiline w={260}>
             <Text size="xs" c="red" lineClamp={1}>
               {item.lastError}

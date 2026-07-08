@@ -48,10 +48,10 @@ const EMPTY_COLUMNS: BlogColumns = {
 };
 
 const IN_PROGRESS: ReadonlySet<BlogStatus> = new Set<BlogStatus>([
-  'idea',
-  'grounding',
-  'drafting',
-  'seo_review',
+  'IDEA',
+  'GROUNDING',
+  'DRAFTING',
+  'SEO_REVIEW',
 ]);
 
 const bucket = (posts: BlogPost[]): BlogColumns => {
@@ -63,10 +63,10 @@ const bucket = (posts: BlogPost[]): BlogColumns => {
     failed: [],
   };
   for (const p of posts) {
-    if (p.status === 'needs_approval') cols.needsApproval.push(p);
-    else if (p.status === 'scheduled') cols.scheduled.push(p);
-    else if (p.status === 'published') cols.published.push(p);
-    else if (p.status === 'failed') cols.failed.push(p);
+    if (p.status === 'NEEDS_APPROVAL') cols.needsApproval.push(p);
+    else if (p.status === 'SCHEDULED') cols.scheduled.push(p);
+    else if (p.status === 'PUBLISHED') cols.published.push(p);
+    else if (p.status === 'FAILED') cols.failed.push(p);
     else if (IN_PROGRESS.has(p.status)) cols.inProgress.push(p);
   }
   return cols;
@@ -76,10 +76,10 @@ const bucket = (posts: BlogPost[]): BlogColumns => {
 const deriveActiveAgents = (posts: BlogPost[]): Set<BlogAgentKey> => {
   const active = new Set<BlogAgentKey>();
   for (const p of posts) {
-    if (p.status === 'idea' || p.status === 'grounding') active.add('ideas');
-    else if (p.status === 'drafting') active.add('writer');
-    else if (p.status === 'seo_review') active.add('seoReviewer');
-    else if (p.status === 'scheduled') active.add('scheduler');
+    if (p.status === 'IDEA' || p.status === 'GROUNDING') active.add('ideas');
+    else if (p.status === 'DRAFTING') active.add('writer');
+    else if (p.status === 'SEO_REVIEW') active.add('seoReviewer');
+    else if (p.status === 'SCHEDULED') active.add('scheduler');
   }
   return active;
 };

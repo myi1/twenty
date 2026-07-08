@@ -7,7 +7,7 @@ import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 //   POST /blog/queue    body { statuses?: string[] }              → { ok, statuses, count, posts }
 //   POST /blog/approve  body { id, action:'approve'|'reject', scheduledAt?, reason? }
 //                                                                  → { ok, id, status, scheduledAt? }
-//   POST /blog/generate body { topicSeed, angle?, title?, locale? } → { ok, id, status:'idea' }
+//   POST /blog/generate body { topicSeed, angle?, title?, locale? } → { ok, id, status:'IDEA' }
 //
 // Bodies are FLAT (Twenty sets event.body = parsed JSON as-is — the callPropelRoute
 // gotcha). callPropelRoute sends the agent's own session token; identity + role are
@@ -23,15 +23,15 @@ const APPROVE_ROUTE = '/blog/approve';
 const GENERATE_ROUTE = '/blog/generate';
 
 export type BlogStatus =
-  | 'idea'
-  | 'grounding'
-  | 'drafting'
-  | 'seo_review'
-  | 'needs_approval'
-  | 'scheduled'
-  | 'published'
-  | 'failed'
-  | 'rejected';
+  | 'IDEA'
+  | 'GROUNDING'
+  | 'DRAFTING'
+  | 'SEO_REVIEW'
+  | 'NEEDS_APPROVAL'
+  | 'SCHEDULED'
+  | 'PUBLISHED'
+  | 'FAILED'
+  | 'REJECTED';
 
 // One row of the pipeline, as projected by blog-queue-route's posts[].
 export interface BlogPost {
@@ -60,14 +60,14 @@ type Envelope = { ok?: boolean; error?: string; code?: string } & Record<string,
 // The statuses the board reads in one shot: everything the pipeline can be at
 // EXCEPT the terminal rejected (kept off the board — it's noise, not work).
 export const BOARD_STATUSES: BlogStatus[] = [
-  'idea',
-  'grounding',
-  'drafting',
-  'seo_review',
-  'needs_approval',
-  'scheduled',
-  'published',
-  'failed',
+  'IDEA',
+  'GROUNDING',
+  'DRAFTING',
+  'SEO_REVIEW',
+  'NEEDS_APPROVAL',
+  'SCHEDULED',
+  'PUBLISHED',
+  'FAILED',
 ];
 
 const failMessage = (body: Envelope | null): string => {
@@ -78,7 +78,7 @@ const failMessage = (body: Envelope | null): string => {
 };
 
 const asBlogStatus = (v: unknown): BlogStatus =>
-  (typeof v === 'string' ? (v as BlogStatus) : 'idea');
+  (typeof v === 'string' ? (v as BlogStatus) : 'IDEA');
 
 const toPost = (raw: unknown): BlogPost => {
   const r = (raw ?? {}) as Record<string, unknown>;
