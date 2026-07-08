@@ -145,8 +145,9 @@ export interface PreflightCheck {
 
 // Tolerant row parse — drop anything that isn't {key,…}; default level to SOFT
 // so an unknown level can never hard-block a publish client-side (the server
-// gate is authoritative anyway).
-const asPreflightChecks = (v: unknown): PreflightCheck[] => {
+// gate is authoritative anyway). Exported for the Campaign Spine (CS4), whose
+// GATES_FAILED response carries the LP channel's failures in this exact shape.
+export const asPreflightChecks = (v: unknown): PreflightCheck[] => {
   if (!Array.isArray(v)) return [];
   const out: PreflightCheck[] = [];
   for (const item of v) {
