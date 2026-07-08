@@ -128,6 +128,36 @@ describe('parseChildMessage — origin + source policy', () => {
     ).toBeNull();
   });
 
+  it('parses an editWithAi with a numeric index (Stage 3B click+tell)', () => {
+    expect(
+      parseChildMessage(
+        { origin: ORIGIN, data: { source: PROPEL_LP_SOURCE, type: 'editWithAi', index: 3 } },
+        ORIGIN,
+      ),
+    ).toEqual({ source: PROPEL_LP_SOURCE, type: 'editWithAi', index: 3 });
+  });
+
+  it('rejects an editWithAi with a missing / non-finite index', () => {
+    expect(
+      parseChildMessage(
+        { origin: ORIGIN, data: { source: PROPEL_LP_SOURCE, type: 'editWithAi' } },
+        ORIGIN,
+      ),
+    ).toBeNull();
+    expect(
+      parseChildMessage(
+        { origin: ORIGIN, data: { source: PROPEL_LP_SOURCE, type: 'editWithAi', index: 'x' } },
+        ORIGIN,
+      ),
+    ).toBeNull();
+    expect(
+      parseChildMessage(
+        { origin: ORIGIN, data: { source: PROPEL_LP_SOURCE, type: 'editWithAi', index: Infinity } },
+        ORIGIN,
+      ),
+    ).toBeNull();
+  });
+
   it('rejects an unknown message type', () => {
     expect(
       parseChildMessage(

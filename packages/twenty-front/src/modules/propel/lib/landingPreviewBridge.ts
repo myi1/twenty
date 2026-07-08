@@ -25,6 +25,11 @@
 //                   never mutates content.
 //   child → parent  { type: 'sectionHover', index: number|null } — pointer entered/left a
 //                   section overlay (parent may mirror it in the left list; optional).
+//
+// Stage 3B (click+tell — plan §T3):
+//   child → parent  { type: 'editWithAi', index: number } — the on-canvas toolbar's
+//                   "Edit with AI" button (committed on the site as 34934bc). The parent
+//                   targets the instruction bar at that section.
 
 export const PROPEL_LP_SOURCE = 'propel-lp';
 
@@ -90,6 +95,11 @@ export interface SectionHoverMessage {
   type: 'sectionHover';
   index: number | null;
 }
+export interface EditWithAiMessage {
+  source: typeof PROPEL_LP_SOURCE;
+  type: 'editWithAi';
+  index: number;
+}
 
 // Messages the parent RECEIVES from the child.
 export type ChildMessage =
@@ -97,7 +107,8 @@ export type ChildMessage =
   | SectionClickMessage
   | HeightMessage
   | SectionActionMessage
-  | SectionHoverMessage;
+  | SectionHoverMessage
+  | EditWithAiMessage;
 
 // ── origin helper ─────────────────────────────────────────────────────────────
 // Derive the trusted child origin from the configured sitePublicUrl. Empty /
@@ -150,6 +161,9 @@ export const parseChildMessage = (
         action: action as SectionActionKind,
       };
     }
+    case 'editWithAi':
+      if (typeof msg.index !== 'number' || !Number.isFinite(msg.index)) return null;
+      return { source: PROPEL_LP_SOURCE, type: 'editWithAi', index: msg.index };
     case 'sectionHover': {
       // null clears the hover; a finite number sets it. Anything else → reject.
       if (msg.index === null) {
