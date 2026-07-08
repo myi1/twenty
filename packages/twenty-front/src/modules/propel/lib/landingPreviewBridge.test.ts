@@ -78,6 +78,56 @@ describe('parseChildMessage — origin + source policy', () => {
     ).toEqual({ source: PROPEL_LP_SOURCE, type: 'height', px: 1200 });
   });
 
+  it('parses each valid sectionAction verb (C7)', () => {
+    for (const action of ['moveUp', 'moveDown', 'duplicate', 'delete', 'insertAfter'] as const) {
+      expect(
+        parseChildMessage(
+          { origin: ORIGIN, data: { source: PROPEL_LP_SOURCE, type: 'sectionAction', index: 2, action } },
+          ORIGIN,
+        ),
+      ).toEqual({ source: PROPEL_LP_SOURCE, type: 'sectionAction', index: 2, action });
+    }
+  });
+
+  it('rejects a sectionAction with an unknown verb or bad index', () => {
+    expect(
+      parseChildMessage(
+        { origin: ORIGIN, data: { source: PROPEL_LP_SOURCE, type: 'sectionAction', index: 0, action: 'nuke' } },
+        ORIGIN,
+      ),
+    ).toBeNull();
+    expect(
+      parseChildMessage(
+        { origin: ORIGIN, data: { source: PROPEL_LP_SOURCE, type: 'sectionAction', index: 'x', action: 'delete' } },
+        ORIGIN,
+      ),
+    ).toBeNull();
+  });
+
+  it('parses a sectionHover with a numeric index and with null (clear) (C7)', () => {
+    expect(
+      parseChildMessage(
+        { origin: ORIGIN, data: { source: PROPEL_LP_SOURCE, type: 'sectionHover', index: 4 } },
+        ORIGIN,
+      ),
+    ).toEqual({ source: PROPEL_LP_SOURCE, type: 'sectionHover', index: 4 });
+    expect(
+      parseChildMessage(
+        { origin: ORIGIN, data: { source: PROPEL_LP_SOURCE, type: 'sectionHover', index: null } },
+        ORIGIN,
+      ),
+    ).toEqual({ source: PROPEL_LP_SOURCE, type: 'sectionHover', index: null });
+  });
+
+  it('rejects a sectionHover with a non-numeric, non-null index', () => {
+    expect(
+      parseChildMessage(
+        { origin: ORIGIN, data: { source: PROPEL_LP_SOURCE, type: 'sectionHover', index: 'x' } },
+        ORIGIN,
+      ),
+    ).toBeNull();
+  });
+
   it('rejects an unknown message type', () => {
     expect(
       parseChildMessage(
@@ -101,11 +151,12 @@ describe('postRender', () => {
     theme: 'RIVIERA',
     sections: [{ type: 'hero', props: { headline: 'Hi' } }],
     selectedIndex: 0,
+    hoverIndex: null,
   };
 
-  it('posts a well-formed render message to the target origin', () => {
+  it('posts a well-formed render message to the target origin (incl. hoverIndex, C7)', () => {
     const postMessage = jest.fn();
-    postRender({ postMessage }, ORIGIN, draft);
+    postRender({ postMessage }, ORIGIN, { ...draft, hoverIndex: 2 });
     expect(postMessage).toHaveBeenCalledTimes(1);
     expect(postMessage).toHaveBeenCalledWith(
       {
@@ -114,6 +165,7 @@ describe('postRender', () => {
         theme: 'RIVIERA',
         sections: draft.sections,
         selectedIndex: 0,
+        hoverIndex: 2,
       },
       ORIGIN,
     );

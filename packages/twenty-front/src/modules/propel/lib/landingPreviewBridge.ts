@@ -14,6 +14,17 @@
 //   child → parent  { type: 'sectionClick', index: number }
 //   child → parent  { type: 'height', px: number }
 //   The parent verifies event.origin === SITE_ORIGIN before trusting child messages.
+//
+// C7 (editor-polish additions — implemented VERBATIM in both repos):
+//   parent → child  { type: 'render', …, hoverIndex: number|null }   ← hover-outline a
+//                   section (dashed) when the pointer is over its left-rail row.
+//   child → parent  { type: 'sectionAction', index, action } where action is one of
+//                   'moveUp'|'moveDown'|'duplicate'|'delete'|'insertAfter' — from the
+//                   on-canvas floating toolbar. The parent is the single source of truth
+//                   for sections[]: it applies the action and re-posts render. The child
+//                   never mutates content.
+//   child → parent  { type: 'sectionHover', index: number|null } — pointer entered/left a
+//                   section overlay (parent may mirror it in the left list; optional).
 
 export const PROPEL_LP_SOURCE = 'propel-lp';
 
@@ -29,7 +40,21 @@ export interface RenderDraft {
   theme: LpTheme;
   sections: LpSection[];
   selectedIndex: number | null;
+  // C7 — the section the pointer is hovering in the left rail (dashed outline in
+  // the preview, distinct from selectedIndex's solid highlight). null when none.
+  hoverIndex: number | null;
 }
+
+// C7 — the on-canvas floating toolbar's verbs. `insertAfter` opens the add-section
+// menu anchored at index+1; the rest mutate order/existence of sections[].
+export type SectionActionKind = 'moveUp' | 'moveDown' | 'duplicate' | 'delete' | 'insertAfter';
+const SECTION_ACTION_KINDS: readonly SectionActionKind[] = [
+  'moveUp',
+  'moveDown',
+  'duplicate',
+  'delete',
+  'insertAfter',
+];
 
 // ── message shapes ────────────────────────────────────────────────────────────
 export interface ReadyMessage {
@@ -42,6 +67,7 @@ export interface RenderMessage {
   theme: LpTheme;
   sections: LpSection[];
   selectedIndex: number | null;
+  hoverIndex: number | null;
 }
 export interface SectionClickMessage {
   source: typeof PROPEL_LP_SOURCE;
@@ -53,9 +79,25 @@ export interface HeightMessage {
   type: 'height';
   px: number;
 }
+export interface SectionActionMessage {
+  source: typeof PROPEL_LP_SOURCE;
+  type: 'sectionAction';
+  index: number;
+  action: SectionActionKind;
+}
+export interface SectionHoverMessage {
+  source: typeof PROPEL_LP_SOURCE;
+  type: 'sectionHover';
+  index: number | null;
+}
 
 // Messages the parent RECEIVES from the child.
-export type ChildMessage = ReadyMessage | SectionClickMessage | HeightMessage;
+export type ChildMessage =
+  | ReadyMessage
+  | SectionClickMessage
+  | HeightMessage
+  | SectionActionMessage
+  | SectionHoverMessage;
 
 // ── origin helper ─────────────────────────────────────────────────────────────
 // Derive the trusted child origin from the configured sitePublicUrl. Empty /
@@ -96,6 +138,26 @@ export const parseChildMessage = (
     case 'height':
       if (typeof msg.px !== 'number' || !Number.isFinite(msg.px)) return null;
       return { source: PROPEL_LP_SOURCE, type: 'height', px: msg.px };
+    case 'sectionAction': {
+      if (typeof msg.index !== 'number' || !Number.isFinite(msg.index)) return null;
+      const action = msg.action;
+      if (typeof action !== 'string') return null;
+      if (!SECTION_ACTION_KINDS.includes(action as SectionActionKind)) return null;
+      return {
+        source: PROPEL_LP_SOURCE,
+        type: 'sectionAction',
+        index: msg.index,
+        action: action as SectionActionKind,
+      };
+    }
+    case 'sectionHover': {
+      // null clears the hover; a finite number sets it. Anything else → reject.
+      if (msg.index === null) {
+        return { source: PROPEL_LP_SOURCE, type: 'sectionHover', index: null };
+      }
+      if (typeof msg.index !== 'number' || !Number.isFinite(msg.index)) return null;
+      return { source: PROPEL_LP_SOURCE, type: 'sectionHover', index: msg.index };
+    }
     default:
       return null;
   }
@@ -120,6 +182,7 @@ export const postRender = (
     theme: draft.theme,
     sections: draft.sections,
     selectedIndex: draft.selectedIndex,
+    hoverIndex: draft.hoverIndex,
   };
   target.postMessage(message, targetOrigin);
 };
