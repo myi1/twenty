@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActionIcon,
   Alert,
@@ -52,6 +52,19 @@ import {
   type LandingTheme,
   type LandingSectionType,
 } from '@/propel/lib/landingSectionDefs';
+import { LandingPreviewPane } from '@/propel/components/website/LandingPreviewPane';
+import {
+  ProjectAssetsProvider,
+  ProjectImagePicker,
+} from '@/propel/components/website/ProjectImagePicker';
+
+// Image-ish field keys get the project-image picker (B2 / C4). Matches the
+// explicit contract set: src / imageSrc / imageUrl / posterUrl / photoSrc /
+// logoSrc / ogImageUrl — an image keyword AND a Src|Url suffix (or the bare `src`
+// column). Deliberately tight so videoUrl / assetUrl / mapEmbedUrl / href don't
+// sprout a picker.
+const isImageFieldKey = (key: string): boolean =>
+  key === 'src' || (/(Src|Url)$/.test(key) && /(image|photo|logo|poster|og)/i.test(key));
 
 // Landing page builder — WEBSITE-REBUILD-DESIGN §4. A LIGHTWEIGHT, Mantine-only
 // form-driven assembler (NO GrapesJS / no heavy or lazy-loaded lib — that is
@@ -213,10 +226,12 @@ const RowsEditor = ({
   def,
   rows,
   onChange,
+  sitePublicUrl,
 }: {
   def: NonNullable<ReturnType<typeof sectionDef>['rows']>;
   rows: Record<string, string>[];
   onChange: (next: Record<string, string>[]) => void;
+  sitePublicUrl: string;
 }) => (
   <Stack gap="xs">
     <Group justify="space-between">
@@ -277,6 +292,19 @@ const RowsEditor = ({
                     next[ri] = { ...next[ri], [col.key]: e.currentTarget.value };
                     onChange(next);
                   }}
+                  rightSectionPointerEvents={isImageFieldKey(col.key) ? 'all' : undefined}
+                  rightSection={
+                    isImageFieldKey(col.key) ? (
+                      <ProjectImagePicker
+                        sitePublicUrl={sitePublicUrl}
+                        onPick={(path) => {
+                          const next = rows.slice();
+                          next[ri] = { ...next[ri], [col.key]: path };
+                          onChange(next);
+                        }}
+                      />
+                    ) : undefined
+                  }
                 />
               ),
             )}
@@ -292,6 +320,8 @@ const SectionEditor = ({
   section,
   index,
   total,
+  selected,
+  sitePublicUrl,
   onChange,
   onMove,
   onRemove,
@@ -299,6 +329,8 @@ const SectionEditor = ({
   section: EditSection;
   index: number;
   total: number;
+  selected: boolean;
+  sitePublicUrl: string;
   onChange: (next: EditSection) => void;
   onMove: (dir: -1 | 1) => void;
   onRemove: () => void;
@@ -307,7 +339,16 @@ const SectionEditor = ({
   const setScalar = (key: string, value: string) =>
     onChange({ ...section, props: { ...section.props, [key]: value } });
   return (
-    <Paper withBorder radius="md" p="md">
+    <Paper
+      withBorder
+      radius="md"
+      p="md"
+      style={
+        selected
+          ? { borderColor: 'var(--mantine-color-red-6)', boxShadow: '0 0 0 1px var(--mantine-color-red-6)' }
+          : undefined
+      }
+    >
       <Group justify="space-between" mb="sm">
         <Group gap="xs">
           <ThemeIcon size="sm" variant="light" color="red">
@@ -370,6 +411,12 @@ const SectionEditor = ({
               placeholder={f.placeholder}
               value={asStr(section.props[f.key])}
               onChange={(e) => setScalar(f.key, e.currentTarget.value)}
+              rightSectionPointerEvents={isImageFieldKey(f.key) ? 'all' : undefined}
+              rightSection={
+                isImageFieldKey(f.key) ? (
+                  <ProjectImagePicker sitePublicUrl={sitePublicUrl} onPick={(path) => setScalar(f.key, path)} />
+                ) : undefined
+              }
             />
           ),
         )}
@@ -380,6 +427,7 @@ const SectionEditor = ({
               def={def.rows}
               rows={(section.props[def.rows.key] as Record<string, string>[]) ?? []}
               onChange={(next) => onChange({ ...section, props: { ...section.props, [def.rows!.key]: next } })}
+              sitePublicUrl={sitePublicUrl}
             />
           </>
         ) : null}
@@ -391,22 +439,40 @@ const SectionEditor = ({
 // ── the tab ──────────────────────────────────────────────────────────────────
 export const LandingPagesTab = () => {
   const notify = usePropelToast();
-  const { error, data, usingMock, reload } = useLandingPages();
+  const { error, data, usingMock, sitePublicUrl, reload } = useLandingPages();
 
   const [mode, setMode] = useState<'list' | 'editor'>('list');
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [slugTouched, setSlugTouched] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
+  // Live-preview selection (B1) — synced BOTH directions: a left-rail card click
+  // and a preview `sectionClick` both set this; it highlights the card + the
+  // preview section and scrolls the selected card into view.
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const sectionRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   const derivedSlug = useMemo(
     () => (slugTouched ? draft.slug : slugify(draft.title)),
     [slugTouched, draft.slug, draft.title],
   );
 
+  // Keep the selection valid as sections are added/removed/reordered.
+  useEffect(() => {
+    setSelectedIndex((cur) => (cur !== null && cur >= draft.sections.length ? null : cur));
+  }, [draft.sections.length]);
+
+  // Preview → left rail: scroll the selected card into view (the "expand" the
+  // plan calls for — the section cards are always-expanded, so we scroll+highlight).
+  useEffect(() => {
+    if (selectedIndex === null) return;
+    sectionRefs.current[selectedIndex]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [selectedIndex]);
+
   const openNew = (sections: EditSection[] = []) => {
     setDraft({ ...EMPTY_DRAFT, sections });
     setSlugTouched(false);
+    setSelectedIndex(null);
     setMode('editor');
   };
 
@@ -414,6 +480,7 @@ export const LandingPagesTab = () => {
     const seeded = seedSectionsFromPrompt(prompt).map((s) => toEditSection(s.type, s.props));
     setDraft({ ...EMPTY_DRAFT, title: prompt.trim().slice(0, 80), sections: seeded });
     setSlugTouched(false);
+    setSelectedIndex(null);
     setMode('editor');
     setPrompt('');
   };
@@ -443,6 +510,7 @@ export const LandingPagesTab = () => {
       sections: p.sections.map((s) => toEditSection(s.type, s.props)),
     });
     setSlugTouched(true);
+    setSelectedIndex(null);
     setMode('editor');
   };
 
@@ -514,147 +582,217 @@ export const LandingPagesTab = () => {
 
   // ── editor ──
   if (mode === 'editor') {
-    return (
-      <Box p="md">
-        <Group justify="space-between" align="flex-start" mb="md" wrap="nowrap">
-          <Group gap="xs">
-            <ThemeIcon size="lg" variant="light" color="red">
-              <IconLayoutGrid size={18} />
-            </ThemeIcon>
-            <Box>
-              <Title order={4}>{draft.id ? 'Edit landing page' : 'New landing page'}</Title>
-              <Text size="xs" c="dimmed">
-                remaxhub.ae/lp/{derivedSlug || '…'}
-              </Text>
-            </Box>
-          </Group>
-          <Group gap="xs">
-            <Button variant="default" size="sm" onClick={() => setMode('list')}>
-              Back
-            </Button>
-            <Button
-              size="sm"
+    // C6 graceful degrade: with a configured site origin we render the split
+    // live-preview editor; without one, the forms go full-width and the preview
+    // is replaced by a dimmed note (never a crash).
+    const hasPreview = sitePublicUrl !== '';
+
+    const pageSettingsBlock = (
+      <Paper withBorder radius="md" p="md">
+        <Text fw={600} mb="sm">
+          Page settings
+        </Text>
+        <Stack gap="sm">
+          <TextInput
+            label="Title"
+            value={draft.title}
+            onChange={(e) => setDraft((d) => ({ ...d, title: e.currentTarget.value }))}
+          />
+          <TextInput
+            label="URL slug"
+            value={derivedSlug}
+            onChange={(e) => {
+              setSlugTouched(true);
+              setDraft((d) => ({ ...d, slug: e.currentTarget.value }));
+            }}
+          />
+          <Box>
+            <Text size="sm" fw={500} mb={4}>
+              Theme
+            </Text>
+            <SegmentedControl
+              fullWidth
               color="red"
-              loading={busy}
-              leftSection={<IconDeviceFloppy size={16} />}
-              onClick={save}
+              value={draft.theme}
+              onChange={(v) => setDraft((d) => ({ ...d, theme: v as LandingTheme }))}
+              data={LANDING_THEMES.map((t) => ({ value: t, label: THEME_LABEL[t] }))}
+            />
+          </Box>
+          <Select
+            label="Status"
+            value={draft.status}
+            onChange={(v) => setDraft((d) => ({ ...d, status: (v as LandingStatus) ?? 'DRAFT' }))}
+            data={[
+              { value: 'DRAFT', label: 'Draft' },
+              { value: 'LIVE', label: 'Live' },
+              { value: 'ARCHIVED', label: 'Archived' },
+            ]}
+            comboboxProps={{ zIndex: 5000 }}
+          />
+          <TextInput
+            label="Headline (OG)"
+            value={draft.headline}
+            onChange={(e) => setDraft((d) => ({ ...d, headline: e.currentTarget.value }))}
+          />
+          <Textarea
+            label="Meta description"
+            autosize
+            minRows={2}
+            value={draft.metaDescription}
+            onChange={(e) => setDraft((d) => ({ ...d, metaDescription: e.currentTarget.value }))}
+          />
+          <TextInput
+            label="OG image URL"
+            value={draft.ogImageUrl}
+            onChange={(e) => setDraft((d) => ({ ...d, ogImageUrl: e.currentTarget.value }))}
+            rightSectionPointerEvents="all"
+            rightSection={
+              <ProjectImagePicker
+                sitePublicUrl={sitePublicUrl}
+                onPick={(path) => setDraft((d) => ({ ...d, ogImageUrl: path }))}
+              />
+            }
+          />
+        </Stack>
+      </Paper>
+    );
+
+    const addSectionBlock = (
+      <Paper withBorder radius="md" p="md">
+        <Text fw={600} mb="xs">
+          Add a section
+        </Text>
+        <Group gap="xs">
+          {LANDING_SECTION_DEFS.map((d) => (
+            <Button
+              key={d.type}
+              size="compact-sm"
+              variant="light"
+              leftSection={<IconPlus size={12} />}
+              onClick={() => addSection(d.type)}
             >
-              Save
+              {d.label}
             </Button>
-          </Group>
+          ))}
         </Group>
+      </Paper>
+    );
 
-        <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
-          {/* page meta */}
-          <Stack gap="sm">
-            <Paper withBorder radius="md" p="md">
-              <Text fw={600} mb="sm">
-                Page settings
-              </Text>
-              <Stack gap="sm">
-                <TextInput
-                  label="Title"
-                  value={draft.title}
-                  onChange={(e) => setDraft((d) => ({ ...d, title: e.currentTarget.value }))}
-                />
-                <TextInput
-                  label="URL slug"
-                  value={derivedSlug}
-                  onChange={(e) => {
-                    setSlugTouched(true);
-                    setDraft((d) => ({ ...d, slug: e.currentTarget.value }));
-                  }}
-                />
-                <Box>
-                  <Text size="sm" fw={500} mb={4}>
-                    Theme
-                  </Text>
-                  <SegmentedControl
-                    fullWidth
-                    color="red"
-                    value={draft.theme}
-                    onChange={(v) => setDraft((d) => ({ ...d, theme: v as LandingTheme }))}
-                    data={LANDING_THEMES.map((t) => ({ value: t, label: THEME_LABEL[t] }))}
-                  />
-                </Box>
-                <Select
-                  label="Status"
-                  value={draft.status}
-                  onChange={(v) => setDraft((d) => ({ ...d, status: (v as LandingStatus) ?? 'DRAFT' }))}
-                  data={[
-                    { value: 'DRAFT', label: 'Draft' },
-                    { value: 'LIVE', label: 'Live' },
-                    { value: 'ARCHIVED', label: 'Archived' },
-                  ]}
-                  comboboxProps={{ zIndex: 5000 }}
-                />
-                <TextInput
-                  label="Headline (OG)"
-                  value={draft.headline}
-                  onChange={(e) => setDraft((d) => ({ ...d, headline: e.currentTarget.value }))}
-                />
-                <Textarea
-                  label="Meta description"
-                  autosize
-                  minRows={2}
-                  value={draft.metaDescription}
-                  onChange={(e) => setDraft((d) => ({ ...d, metaDescription: e.currentTarget.value }))}
-                />
-                <TextInput
-                  label="OG image URL"
-                  value={draft.ogImageUrl}
-                  onChange={(e) => setDraft((d) => ({ ...d, ogImageUrl: e.currentTarget.value }))}
-                />
-              </Stack>
-            </Paper>
-
-            <Paper withBorder radius="md" p="md">
-              <Text fw={600} mb="xs">
-                Add a section
-              </Text>
-              <Group gap="xs">
-                {LANDING_SECTION_DEFS.map((d) => (
-                  <Button
-                    key={d.type}
-                    size="compact-sm"
-                    variant="light"
-                    leftSection={<IconPlus size={12} />}
-                    onClick={() => addSection(d.type)}
-                  >
-                    {d.label}
-                  </Button>
-                ))}
-              </Group>
-            </Paper>
+    const sectionStack =
+      draft.sections.length === 0 ? (
+        <Paper withBorder p="xl" radius="md" style={{ borderStyle: 'dashed' }}>
+          <Stack align="center" gap="xs">
+            <IconLayoutGrid size={28} />
+            <Text c="dimmed" size="sm" ta="center">
+              No sections yet — add one from the left to start building the page.
+            </Text>
           </Stack>
+        </Paper>
+      ) : (
+        draft.sections.map((section, i) => (
+          <Box
+            key={i}
+            ref={(el: HTMLDivElement | null) => {
+              sectionRefs.current[i] = el;
+            }}
+            onClick={() => setSelectedIndex(i)}
+          >
+            <SectionEditor
+              section={section}
+              index={i}
+              total={draft.sections.length}
+              selected={selectedIndex === i}
+              sitePublicUrl={sitePublicUrl}
+              onChange={(next) => updateSection(i, next)}
+              onMove={(dir) => moveSection(i, dir)}
+              onRemove={() => removeSection(i)}
+            />
+          </Box>
+        ))
+      );
 
-          {/* section stack */}
-          <Stack gap="sm">
-            {draft.sections.length === 0 ? (
-              <Paper withBorder p="xl" radius="md" style={{ borderStyle: 'dashed' }}>
-                <Stack align="center" gap="xs">
-                  <IconLayoutGrid size={28} />
-                  <Text c="dimmed" size="sm" ta="center">
-                    No sections yet — add one from the left to start building the page.
-                  </Text>
+    const header = (
+      <Group justify="space-between" align="flex-start" mb="md" wrap="nowrap">
+        <Group gap="xs">
+          <ThemeIcon size="lg" variant="light" color="red">
+            <IconLayoutGrid size={18} />
+          </ThemeIcon>
+          <Box>
+            <Title order={4}>{draft.id ? 'Edit landing page' : 'New landing page'}</Title>
+            <Text size="xs" c="dimmed">
+              remaxhub.ae/lp/{derivedSlug || '…'}
+            </Text>
+          </Box>
+        </Group>
+        <Group gap="xs">
+          <Button variant="default" size="sm" onClick={() => setMode('list')}>
+            Back
+          </Button>
+          <Button
+            size="sm"
+            color="red"
+            loading={busy}
+            leftSection={<IconDeviceFloppy size={16} />}
+            onClick={save}
+          >
+            Save
+          </Button>
+        </Group>
+      </Group>
+    );
+
+    return (
+      <ProjectAssetsProvider>
+        <Box
+          p="md"
+          style={
+            hasPreview
+              ? { display: 'flex', flexDirection: 'column', height: 'calc(100dvh - 220px)', minHeight: 480 }
+              : undefined
+          }
+        >
+          {header}
+
+          {hasPreview ? (
+            <Group align="stretch" gap="lg" wrap="nowrap" style={{ flex: 1, minHeight: 0 }}>
+              {/* left rail — forms, independently scrollable */}
+              <Box
+                style={{ width: 420, flexShrink: 0, minHeight: 0, overflowY: 'auto', paddingRight: 8 }}
+              >
+                <Stack gap="sm">
+                  {pageSettingsBlock}
+                  {addSectionBlock}
+                  {sectionStack}
                 </Stack>
-              </Paper>
-            ) : (
-              draft.sections.map((section, i) => (
-                <SectionEditor
-                  key={i}
-                  section={section}
-                  index={i}
-                  total={draft.sections.length}
-                  onChange={(next) => updateSection(i, next)}
-                  onMove={(dir) => moveSection(i, dir)}
-                  onRemove={() => removeSection(i)}
+              </Box>
+              {/* right — the live preview iframe */}
+              <Box style={{ flex: 1, minWidth: 0 }}>
+                <LandingPreviewPane
+                  sitePublicUrl={sitePublicUrl}
+                  theme={draft.theme}
+                  sections={draft.sections}
+                  selectedIndex={selectedIndex}
+                  onSelectSection={setSelectedIndex}
                 />
-              ))
-            )}
-          </Stack>
-        </SimpleGrid>
-      </Box>
+              </Box>
+            </Group>
+          ) : (
+            <>
+              <Alert color="gray" variant="light" icon={<IconWorld size={16} />} mb="md">
+                Live preview is available once SITE_PUBLIC_URL is configured for this workspace.
+                You can still assemble and save the page below.
+              </Alert>
+              <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
+                <Stack gap="sm">
+                  {pageSettingsBlock}
+                  {addSectionBlock}
+                </Stack>
+                <Stack gap="sm">{sectionStack}</Stack>
+              </SimpleGrid>
+            </>
+          )}
+        </Box>
+      </ProjectAssetsProvider>
     );
   }
 
