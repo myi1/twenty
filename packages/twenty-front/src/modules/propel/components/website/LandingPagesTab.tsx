@@ -41,8 +41,10 @@ import { useLandingPages } from '@/propel/hooks/useLandingPages';
 import {
   draftFromBrief,
   getLandingPage,
+  instructEdit,
   saveLandingPage,
   setLandingStatus,
+  type BenchLogEntry,
   type LandingPageSummary,
   type LandingSection,
 } from '@/propel/lib/landingPagesCrm';
@@ -61,6 +63,7 @@ import {
   AddSourcesControl,
   type SelectedSource,
 } from '@/propel/components/website/AddSourcesControl';
+import { InstructionBar } from '@/propel/components/website/InstructionBar';
 import { LandingPreviewPane } from '@/propel/components/website/LandingPreviewPane';
 import { ProjectAssetsProvider } from '@/propel/components/website/MediaStudioModal';
 import {
@@ -314,6 +317,18 @@ export const LandingPagesTab = () => {
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const insertIndexRef = useRef<number | null>(null);
   const sectionRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  // Stage 3B — the click+tell instruction bar. `instructTarget` is the section
+  // the bar edits (null = whole page), set by the preview's "Edit with AI"
+  // button or a row's Instruct affordance. `benchLog` is the page's append-only
+  // AI audit trail (seeded on open, replaced by each instruct response) — it
+  // feeds the bar's history popover. `instructFeatureOff` dims the bar when the
+  // route reports the LLM key is unset (or the CRM leg isn't live yet).
+  const [instructTarget, setInstructTarget] = useState<number | null>(null);
+  const [instructText, setInstructText] = useState('');
+  const [instructBusy, setInstructBusy] = useState(false);
+  const [instructFeatureOff, setInstructFeatureOff] = useState(false);
+  const [benchLog, setBenchLog] = useState<BenchLogEntry[]>([]);
+  const instructInputRef = useRef<HTMLInputElement | null>(null);
 
   const derivedSlug = useMemo(
     () => (slugTouched ? draft.slug : slugify(draft.title)),
@@ -327,6 +342,8 @@ export const LandingPagesTab = () => {
   // Keep the selection valid as sections are added/removed/reordered.
   useEffect(() => {
     setSelectedIndex((cur) => (cur !== null && cur >= draft.sections.length ? null : cur));
+    // The instruction bar's target follows the same clamp (falls back to whole page).
+    setInstructTarget((cur) => (cur !== null && cur >= draft.sections.length ? null : cur));
   }, [draft.sections.length]);
 
   // Preview → left rail: scroll the selected (auto-expanded) row into view.
@@ -336,13 +353,16 @@ export const LandingPagesTab = () => {
   }, [selectedIndex]);
 
   // Snapshot a freshly-opened draft so a pristine page is not "dirty".
-  const beginEditing = (next: Draft) => {
+  const beginEditing = (next: Draft, pageBenchLog: BenchLogEntry[] = []) => {
     const slug = next.slug || slugify(next.title);
     setDraft(next);
     setSavedSnapshot(serializeDraft(next, slug));
     setSelectedIndex(null);
     setHoverIndex(null);
     setJustSaved(false);
+    setInstructTarget(null);
+    setInstructText('');
+    setBenchLog(pageBenchLog);
   };
 
   const openNew = (sections: EditSection[] = []) => {
@@ -409,17 +429,20 @@ export const LandingPagesTab = () => {
       return;
     }
     const p = res.data;
-    beginEditing({
-      id: p.id,
-      title: p.title,
-      slug: p.slug,
-      theme: p.theme,
-      status: p.status,
-      headline: p.headline,
-      metaDescription: p.metaDescription,
-      ogImageUrl: p.ogImageUrl,
-      sections: p.sections.map((s) => toEditSection(s.type, s.props)),
-    });
+    beginEditing(
+      {
+        id: p.id,
+        title: p.title,
+        slug: p.slug,
+        theme: p.theme,
+        status: p.status,
+        headline: p.headline,
+        metaDescription: p.metaDescription,
+        ogImageUrl: p.ogImageUrl,
+        sections: p.sections.map((s) => toEditSection(s.type, s.props)),
+      },
+      p.benchLog,
+    );
     setSlugTouched(true);
     setMode('editor');
   };
@@ -525,6 +548,66 @@ export const LandingPagesTab = () => {
         setAddMenuOpen(true);
         break;
     }
+  };
+
+  // ── Stage 3B — click+tell (instruct edits) ────────────────────────────────
+  // Target the bar at a section (from the preview's "Edit with AI" button or a
+  // row's Instruct affordance) and put the cursor in the input.
+  const targetInstruct = (index: number | null) => {
+    setInstructTarget(index);
+    if (index !== null) setSelectedIndex(index);
+    window.setTimeout(() => instructInputRef.current?.focus(), 0);
+  };
+
+  const applyInstruct = async () => {
+    const instruction = instructText.trim();
+    const id = draft.id;
+    if (instruction === '' || instructBusy || !id || usingMock) return;
+    setInstructBusy(true);
+    // The route edits the last-SAVED sectionsJson — flush local edits first so
+    // the AI works from (and its result can't clobber) the founder's latest.
+    if (isDirty) {
+      const saved = await persist(draft.status, true);
+      if (!saved) {
+        setInstructBusy(false);
+        notify('Could not save your edits before the AI edit — check the title, then retry.', 'error');
+        return;
+      }
+    }
+    const sourceIds = briefSources.map((s) => s.id);
+    const res = await instructEdit(
+      id,
+      instructTarget,
+      instruction,
+      sourceIds.length > 0 ? sourceIds : undefined,
+    );
+    setInstructBusy(false);
+    if (res.ok) {
+      const sections = res.sections.map((s) => toEditSection(s.type, s.props));
+      const patch = {
+        sections,
+        ...(res.headline !== null ? { headline: res.headline } : {}),
+        ...(res.metaDescription !== null ? { metaDescription: res.metaDescription } : {}),
+      };
+      // Functional merge — edits typed DURING the await survive (and keep the
+      // draft dirty, so autosave reconciles them on top of the AI's save).
+      setDraft((d) => ({ ...d, ...patch }));
+      // The route already saved this content; re-baseline the snapshot so the
+      // AI edit itself doesn't read as "Unsaved". The existing debounced
+      // postMessage re-renders the preview from the new sections.
+      setSavedSnapshot(serializeDraft({ ...draft, ...patch }, derivedSlug));
+      setBenchLog(res.benchLog);
+      setInstructText('');
+      const last = [...res.benchLog].reverse().find((e) => e.action === 'instruct');
+      notify(last?.summary ? `AI edit applied — ${last.summary}` : 'AI edit applied', 'success');
+      return;
+    }
+    if (res.featureOff) {
+      setInstructFeatureOff(true);
+      return;
+    }
+    // BENCH_INVALID and transient failures both land here: toast, draft untouched.
+    notify(res.error, 'error');
   };
 
   // ── persistence (A3) ──
@@ -800,6 +883,7 @@ export const LandingPagesTab = () => {
               onChange={(next) => updateSection(i, next)}
               onMove={(dir) => moveSection(i, dir)}
               onRemove={() => removeSection(i)}
+              onInstruct={() => targetInstruct(i)}
               onHover={(hovering) => setHoverIndex(hovering ? i : null)}
               onDragStart={() => setDragIndex(i)}
               onDragEnterRow={() => setDragOverIndex(i)}
@@ -880,6 +964,36 @@ export const LandingPagesTab = () => {
 
     const liveUrl = draft.status === 'LIVE' && derivedSlug ? `${LIVE_LP_BASE}/${derivedSlug}` : undefined;
 
+    // Stage 3B — the click+tell instruction bar (bottom of the editor, both
+    // layouts). Targeted from the preview toolbar's "Edit with AI" or a row's
+    // Instruct affordance; cleared → whole page.
+    const instructTargetLabel =
+      instructTarget !== null && draft.sections[instructTarget]
+        ? `${sectionDef(draft.sections[instructTarget].type).label} · #${instructTarget + 1}`
+        : 'Whole page';
+    const instructionBar = (
+      <InstructionBar
+        targetIndex={instructTarget}
+        targetLabel={instructTargetLabel}
+        text={instructText}
+        busy={instructBusy}
+        featureOff={instructFeatureOff}
+        canApply={!usingMock && !!draft.id}
+        disabledHint={
+          usingMock
+            ? 'Preview data — deploy the landingPage object to use AI edits.'
+            : !draft.id
+              ? 'Save the page first (a title is enough — autosave does the rest).'
+              : null
+        }
+        history={benchLog}
+        inputRef={instructInputRef}
+        onTextChange={setInstructText}
+        onClearTarget={() => setInstructTarget(null)}
+        onApply={() => void applyInstruct()}
+      />
+    );
+
     const confirmBackModal = (
       <Modal
         opened={confirmBackOpen}
@@ -923,31 +1037,38 @@ export const LandingPagesTab = () => {
           {header}
 
           {hasPreview ? (
-            <Group align="stretch" gap="lg" wrap="nowrap" style={{ flex: 1, minHeight: 0 }}>
-              {/* left rail — forms, independently scrollable */}
-              <Box
-                style={{ width: 420, flexShrink: 0, minHeight: 0, overflowY: 'auto', paddingRight: 8 }}
-              >
-                <Stack gap="sm">
-                  {pageSettingsBlock}
-                  {addSectionBlock}
-                  {sectionStack}
-                </Stack>
+            <>
+              <Group align="stretch" gap="lg" wrap="nowrap" style={{ flex: 1, minHeight: 0 }}>
+                {/* left rail — forms, independently scrollable */}
+                <Box
+                  style={{ width: 420, flexShrink: 0, minHeight: 0, overflowY: 'auto', paddingRight: 8 }}
+                >
+                  <Stack gap="sm">
+                    {pageSettingsBlock}
+                    {addSectionBlock}
+                    {sectionStack}
+                  </Stack>
+                </Box>
+                {/* right — the live preview iframe */}
+                <Box style={{ flex: 1, minWidth: 0 }}>
+                  <LandingPreviewPane
+                    sitePublicUrl={sitePublicUrl}
+                    theme={draft.theme}
+                    sections={draft.sections}
+                    selectedIndex={selectedIndex}
+                    hoverIndex={hoverIndex}
+                    onSelectSection={setSelectedIndex}
+                    onSectionAction={handleSectionAction}
+                    onEditWithAi={targetInstruct}
+                    liveUrl={liveUrl}
+                  />
+                </Box>
+              </Group>
+              {/* Stage 3B — click+tell, pinned under the split view */}
+              <Box mt="sm" style={{ flexShrink: 0 }}>
+                {instructionBar}
               </Box>
-              {/* right — the live preview iframe */}
-              <Box style={{ flex: 1, minWidth: 0 }}>
-                <LandingPreviewPane
-                  sitePublicUrl={sitePublicUrl}
-                  theme={draft.theme}
-                  sections={draft.sections}
-                  selectedIndex={selectedIndex}
-                  hoverIndex={hoverIndex}
-                  onSelectSection={setSelectedIndex}
-                  onSectionAction={handleSectionAction}
-                  liveUrl={liveUrl}
-                />
-              </Box>
-            </Group>
+            </>
           ) : (
             <>
               <Alert color="gray" variant="light" icon={<IconWorld size={16} />} mb="md">
@@ -961,6 +1082,7 @@ export const LandingPagesTab = () => {
                 </Stack>
                 <Stack gap="sm">{sectionStack}</Stack>
               </SimpleGrid>
+              <Box mt="md">{instructionBar}</Box>
             </>
           )}
         </Box>

@@ -36,6 +36,9 @@ interface LandingPreviewPaneProps {
   // C7 — the on-canvas floating toolbar's verbs bubble up here; the parent (the
   // single source of truth for sections[]) applies them and re-posts render.
   onSectionAction: (index: number, action: SectionActionKind) => void;
+  // Stage 3B — the toolbar's "Edit with AI" button: the parent targets the
+  // instruction bar at this section. Optional so older mounts degrade silently.
+  onEditWithAi?: (index: number) => void;
   // Present only for a LIVE page → renders an "Open live page ↗" link (A5).
   liveUrl?: string;
 }
@@ -62,6 +65,7 @@ export const LandingPreviewPane = ({
   hoverIndex,
   onSelectSection,
   onSectionAction,
+  onEditWithAi,
   liveUrl,
 }: LandingPreviewPaneProps) => {
   const origin = useMemo(() => originOf(sitePublicUrl), [sitePublicUrl]);
@@ -94,12 +98,14 @@ export const LandingPreviewPane = ({
         onSelectSection(msg.index);
       } else if (msg.type === 'sectionAction') {
         onSectionAction(msg.index, msg.action);
+      } else if (msg.type === 'editWithAi') {
+        onEditWithAi?.(msg.index);
       }
       // 'height' / 'sectionHover' are accepted by the bridge but not consumed here.
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [origin, flush, onSelectSection, onSectionAction]);
+  }, [origin, flush, onSelectSection, onSectionAction, onEditWithAi]);
 
   // Any draft/selection change → re-post (debounced). Selection changes ride the
   // same debounce; 300ms of highlight lag is imperceptible and coalesces bursts.

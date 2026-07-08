@@ -38,6 +38,7 @@ import {
   IconMap,
   IconMessage,
   IconPhoto,
+  IconSparkles,
   IconStack2,
   IconStar,
   IconUsers,
@@ -343,6 +344,8 @@ export interface SectionRowProps {
   onChange: (next: EditSection) => void;
   onMove: (dir: -1 | 1) => void;
   onRemove: () => void;
+  // Stage 3B — target the click+tell instruction bar at this section.
+  onInstruct: () => void;
   onHover: (hovering: boolean) => void;
   onDragStart: () => void;
   onDragEnterRow: () => void;
@@ -363,6 +366,7 @@ export const SectionRow = ({
   onChange,
   onMove,
   onRemove,
+  onInstruct,
   onHover,
   onDragStart,
   onDragEnterRow,
@@ -430,6 +434,16 @@ export const SectionRow = ({
             {sectionSummary(section)}
           </Text>
         </Box>
+        <ActionIcon
+          size="sm"
+          variant="subtle"
+          color="grape"
+          aria-label="Instruct AI edit"
+          title="Instruct — tell the AI what to change in this section"
+          onClick={stop(onInstruct)}
+        >
+          <IconSparkles size={14} />
+        </ActionIcon>
         <ActionIcon
           size="sm"
           variant="subtle"
