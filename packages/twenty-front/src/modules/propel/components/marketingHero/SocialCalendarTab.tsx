@@ -1,6 +1,8 @@
 import { Box, Button, Group, Stack } from '@mantine/core';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { IconPlus } from 'twenty-ui/display';
+import { IconPlus, IconSparkles } from 'twenty-ui/display';
+import { PlanReviewPanel } from '@/propel/components/marketingHero/PlanReviewPanel';
+import { SocialCampaignPanel } from '@/propel/components/marketingHero/SocialCampaignPanel';
 import { CalendarFilters } from '@/propel/components/calendar/CalendarFilters';
 import {
   CalendarEmptyNoChannels,
@@ -80,6 +82,11 @@ export const SocialCalendarTab = () => {
   const [composer, setComposer] = useState<ComposerOpen | null>(null);
   const [toast, setToast] = useState<CalendarToastState | null>(null);
   const [optimisticAt, setOptimisticAt] = useState<Record<string, string>>({});
+  // Social Bench (4S-A) campaign surfaces: the "Create campaign" brief modal and
+  // the plan-review drawer. `campaignOpen` gates the brief box; `reviewPlanId` is
+  // non-null while reviewing a freshly-generated (or re-opened) plan.
+  const [campaignOpen, setCampaignOpen] = useState(false);
+  const [reviewPlanId, setReviewPlanId] = useState<string | null>(null);
 
   const showToast = useCallback(
     (tone: CalendarToastState['tone'], message: string) =>
@@ -302,6 +309,15 @@ export const SocialCalendarTab = () => {
         <Group gap="sm" wrap="nowrap" justify="flex-end" mb="md">
           <Button
             size="xs"
+            variant="light"
+            color="grape"
+            leftSection={<IconSparkles size={14} />}
+            onClick={() => setCampaignOpen(true)}
+          >
+            Create campaign
+          </Button>
+          <Button
+            size="xs"
             color="red"
             leftSection={<IconPlus size={14} />}
             onClick={openCompose}
@@ -335,6 +351,24 @@ export const SocialCalendarTab = () => {
       />
 
       <CalendarToast toast={toast} onDismiss={() => setToast(null)} />
+
+      <SocialCampaignPanel
+        opened={campaignOpen}
+        onClose={() => setCampaignOpen(false)}
+        onPlanCreated={(planId) => {
+          setCampaignOpen(false);
+          setReviewPlanId(planId);
+        }}
+      />
+
+      <PlanReviewPanel
+        planId={reviewPlanId}
+        onClose={() => setReviewPlanId(null)}
+        onApproved={() => {
+          setReviewPlanId(null);
+          reload();
+        }}
+      />
     </>
   );
 };
