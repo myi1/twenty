@@ -1,6 +1,6 @@
 import { useLingui } from '@lingui/react/macro';
 import { SettingsPath } from 'twenty-shared/types';
-import { IconHelpCircle, IconSettings } from 'twenty-ui/display';
+import { IconHelpCircle, IconSettings, useIcons } from 'twenty-ui/display';
 import { AnimatedExpandableContainer } from 'twenty-ui/layout';
 
 // Propel: the graduated hero hub nav entries (Inbox, Marketing, Weekly 1:1,
@@ -24,10 +24,7 @@ import {
   getEnabledNavEntries,
   type PropelNavEntry,
 } from '@/propel/runtime/propelNavConfig';
-import {
-  resolvePropelNavIcon,
-  usePropelNavConfig,
-} from '@/propel/runtime/usePropelNavConfig';
+import { usePropelNavConfig } from '@/propel/runtime/usePropelNavConfig';
 import { getDocumentationUrl } from '@/support/utils/getDocumentationUrl';
 import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomStateValue';
 
@@ -47,13 +44,22 @@ import { useNavigateSettings } from '~/hooks/useNavigateSettings';
 // (TM#14) this config approach fixes. The CRM is English-only, so a literal is
 // correct and catalog-independent. The icon name is resolved against
 // twenty-ui/display at render so config can name any Tabler icon.
-const PropelHeroNavItem = ({ entry }: { entry: PropelNavEntry }) => (
-  <NavigationDrawerItem
-    label={entry.label}
-    to={entry.route}
-    Icon={resolvePropelNavIcon(entry.icon)}
-  />
-);
+const PropelHeroNavItem = ({ entry }: { entry: PropelNavEntry }) => {
+  // Icons resolve through Twenty's lazy icon registry (useIcons → the
+  // AllIcons chunk loaded into iconsState by IconsProvider), NOT a static
+  // namespace lookup — the static twenty-ui/display namespace only carries a
+  // curated subset, so dynamic name lookups against it rendered the generic
+  // fallback dot for most hero icons (2026-07-08). getIcon re-renders with
+  // the real icon once the registry loads.
+  const { getIcon } = useIcons();
+  return (
+    <NavigationDrawerItem
+      label={entry.label}
+      to={entry.route}
+      Icon={getIcon(entry.icon)}
+    />
+  );
+};
 
 // The Propel "heroes" nav section — the hero hub items + Settings + Documentation.
 // Formerly NavigationDrawerOtherSection (hardcoded title "Other"); now the title
