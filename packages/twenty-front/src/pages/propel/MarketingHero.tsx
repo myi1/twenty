@@ -9,6 +9,7 @@ import {
   IconFileText,
   IconPhone,
   IconSend,
+  IconSparkles,
   IconWorld,
 } from 'twenty-ui/display';
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
@@ -19,6 +20,7 @@ import { MarketingHomeTab } from '@/propel/components/marketingHero/MarketingHom
 import { NumbersTab } from '@/propel/components/marketingHero/NumbersTab';
 import { SocialCalendarTab } from '@/propel/components/marketingHero/SocialCalendarTab';
 import { TemplatesTab } from '@/propel/components/marketingHero/TemplatesTab';
+import { MediaStudioTab } from '@/propel/components/website/MediaStudioTab';
 import { WebsiteTab } from '@/propel/components/website/WebsiteTab';
 import { PropelMantineProvider } from '@/propel/components/PropelMantineProvider';
 import { useMarketingHub } from '@/propel/hooks/useMarketingHub';
@@ -32,7 +34,7 @@ import { isManagerRole, useViewerRole } from '@/propel/hooks/useViewerRole';
 // scope (PropelMantineProvider).
 //
 // Tab order: Home · Campaigns · Templates · Social · Numbers · Website ·
-// Lead Routing. The active tab is URL-synced via ?tab= so a tab is linkable /
+// Media Studio · Lead Routing. The active tab is URL-synced via ?tab= so a tab is linkable /
 // survives reload / back-forward navigates between tabs. (Inbox graduated OUT
 // of this hero to its own top-level /inbox route — see InboxPage; ?tab=inbox
 // redirects there for old links.)
@@ -47,6 +49,10 @@ import { isManagerRole, useViewerRole } from '@/propel/hooks/useViewerRole';
 //                    Landing pages, Site leads, SEO and AI — see
 //                    components/website/WebsiteTab.tsx + CONVENTIONS.md).
 //                    NOT role-gated, same audience as Home/Campaigns/etc.
+//   • Media Studio — full (the standalone image workbench: Library · Generate ·
+//                    Enhance · Project renders — the same MediaStudioBody panels the
+//                    in-editor modal uses, minus the insert action). NOT role-gated,
+//                    same audience as Website.
 //   • Lead Routing — MANAGER/ADMIN ONLY (gated by useViewerRole). Full-width Mantine
 //                    port of the legacy Cmd-K side-drawer lead-source-config panel.
 //
@@ -62,6 +68,7 @@ type HeroTab =
   | 'social'
   | 'numbers'
   | 'website'
+  | 'media-studio'
   | 'lead-routing';
 
 const TAB_VALUES: HeroTab[] = [
@@ -71,6 +78,7 @@ const TAB_VALUES: HeroTab[] = [
   'social',
   'numbers',
   'website',
+  'media-studio',
   'lead-routing',
 ];
 
@@ -160,6 +168,9 @@ export const MarketingHero = () => {
         <Tabs.Panel value="website">
           {activeTab === 'website' ? <WebsiteTab /> : null}
         </Tabs.Panel>
+        <Tabs.Panel value="media-studio">
+          {activeTab === 'media-studio' ? <MediaStudioTab /> : null}
+        </Tabs.Panel>
         {canSeeLeadRouting ? (
           <Tabs.Panel value="lead-routing">
             {activeTab === 'lead-routing' ? <LeadRoutingTab /> : null}
@@ -219,6 +230,9 @@ export const MarketingHero = () => {
             </Tabs.Tab>
             <Tabs.Tab value="website" leftSection={<IconWorld size={15} />}>
               Website
+            </Tabs.Tab>
+            <Tabs.Tab value="media-studio" leftSection={<IconSparkles size={15} />}>
+              Media Studio
             </Tabs.Tab>
             {canSeeLeadRouting ? (
               <Tabs.Tab
