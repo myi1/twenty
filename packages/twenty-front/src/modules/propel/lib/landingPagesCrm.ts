@@ -327,3 +327,67 @@ export async function enhanceImage(input: EnhanceImageInput): Promise<EnhanceIma
     featureOff: isFeatureOff(body),
   };
 }
+
+// ── AI generate bench (Stage 3A) ──────────────────────────────────────────────
+// A FOURTH Manager/Admin-gated route: type a brief → a 4-agent bench
+// (Planner → Copywriter → Designer → SEO) drafts a full on-brand landing page
+// (sectionsJson + theme + copy + library-asset picks + meta) SYNCHRONOUSLY in
+// ~35–45s, and creates a DRAFT landingPage. The route holds the LLM key and runs
+// the whole chain server-side (propel-crm-integration,
+// src/logic-functions/landing-bench-route.ts). Flat body, per the gotcha.
+//
+//   POST /website/landing-bench  body { action:'generate', brief, theme?, locale?, templateKey? }
+//     → { ok:true, id, benchLog:[{ts,agent,action,summary}] }
+//     → { ok:false, code:'FEATURE_OFF' }   (the LLM key getLLMConfig() reads is unset)
+//     → { ok:false, code:'BENCH_INVALID', benchLog }   (the AI draft failed schema-validation)
+//     → { ok:false, code, ... }            (any other bench failure)
+
+const BENCH_ROUTE = '/website/landing-bench';
+
+// One append-only audit entry the bench writes per stage (mirror of the CRM-side
+// benchLog shape). `ts` is an ISO string; `agent` is Planner/Copywriter/… .
+export interface BenchLogEntry {
+  ts: string;
+  agent: string;
+  action: string;
+  summary: string;
+}
+
+export interface DraftFromBriefOverrides {
+  theme?: LandingTheme;
+  locale?: string;
+  templateKey?: string;
+}
+
+// Same discriminated shape as the other AI routes: `featureOff` distinguishes
+// "AI drafting isn't wired on this workspace" (dim the box) from a draft/transient
+// failure (toast, keep the box). On success the caller opens the editor for `id`.
+export type DraftFromBriefResult =
+  | { ok: true; id: string; benchLog: BenchLogEntry[] }
+  | { ok: false; error: string; featureOff: boolean };
+
+const asBenchLog = (v: unknown): BenchLogEntry[] =>
+  Array.isArray(v) ? (v as BenchLogEntry[]) : [];
+
+export async function draftFromBrief(
+  brief: string,
+  overrides?: DraftFromBriefOverrides,
+): Promise<DraftFromBriefResult> {
+  // FLAT body — spread the optional overrides at the top level alongside the
+  // brief so the route reads event.body.theme / .locale / .templateKey directly.
+  const body = await callPropelRoute<Envelope>(BENCH_ROUTE, {
+    action: 'generate',
+    brief,
+    ...(overrides?.theme ? { theme: overrides.theme } : {}),
+    ...(overrides?.locale ? { locale: overrides.locale } : {}),
+    ...(overrides?.templateKey ? { templateKey: overrides.templateKey } : {}),
+  });
+  if (body && body.ok === true && typeof body.id === 'string' && body.id !== '') {
+    return { ok: true, id: body.id, benchLog: asBenchLog(body.benchLog) };
+  }
+  return {
+    ok: false,
+    error: isFeatureOff(body) ? 'AI drafting isn’t configured yet.' : failMessage(body),
+    featureOff: isFeatureOff(body),
+  };
+}

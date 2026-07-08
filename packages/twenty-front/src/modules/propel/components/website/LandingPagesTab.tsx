@@ -12,6 +12,7 @@ import {
   Popover,
   ScrollArea,
   SegmentedControl,
+  Select,
   SimpleGrid,
   Stack,
   Text,
@@ -38,6 +39,7 @@ import {
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { useLandingPages } from '@/propel/hooks/useLandingPages';
 import {
+  draftFromBrief,
   getLandingPage,
   saveLandingPage,
   setLandingStatus,
@@ -49,7 +51,6 @@ import {
   LANDING_SECTION_GROUPS,
   LANDING_THEMES,
   sectionDef,
-  seedSectionsFromPrompt,
   type LandingSectionGroup,
   type LandingStatus,
   type LandingTheme,
@@ -155,6 +156,39 @@ const THEME_LABEL: Record<LandingTheme, string> = {
   ATLAS: 'Atlas',
 };
 
+// ── AI generate bench (Stage 3A) ──────────────────────────────────────────────
+// The four bench agents, in run order. The strip below ticks each to "done" as
+// the ~40s synchronous route progresses (optimistic timed progression — one
+// pill is "active" with a spinner, earlier pills are "done"; on the single await
+// resolving we mark all four done, then open the fresh draft in the editor).
+const AGENT_STAGES = ['Planner', 'Copywriter', 'Designer', 'SEO'] as const;
+
+const AgentStrip = ({ stage }: { stage: number }) => (
+  <Group gap="xs" mt="sm" wrap="wrap">
+    {AGENT_STAGES.map((name, i) => {
+      const done = i < stage;
+      const active = i === stage;
+      return (
+        <Badge
+          key={name}
+          size="sm"
+          variant={active ? 'filled' : done ? 'light' : 'outline'}
+          color={done ? 'teal' : active ? 'red' : 'gray'}
+          leftSection={
+            done ? (
+              <IconCheck size={12} />
+            ) : active ? (
+              <Loader size={10} color="white" />
+            ) : undefined
+          }
+        >
+          {name}
+        </Badge>
+      );
+    })}
+  </Group>
+);
+
 const statusColor = (s: string): string =>
   s === 'LIVE' ? 'teal' : s === 'ARCHIVED' ? 'orange' : 'gray';
 
@@ -245,6 +279,14 @@ export const LandingPagesTab = () => {
   const [slugTouched, setSlugTouched] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
+  // AI generate bench (Stage 3A). `drafting` = a bench run is in flight;
+  // `draftStage` (0–4) drives the agent strip; `briefTheme` is the optional theme
+  // override (null → the brand-kit default the server picks); `aiFeatureOff` dims
+  // the box when the route reports the LLM key is unset.
+  const [drafting, setDrafting] = useState(false);
+  const [draftStage, setDraftStage] = useState(0);
+  const [briefTheme, setBriefTheme] = useState<LandingTheme | null>(null);
+  const [aiFeatureOff, setAiFeatureOff] = useState(false);
   // Live-preview selection (B1) — synced BOTH directions: a left-rail card click
   // and a preview `sectionClick` both set this; it highlights the card + the
   // preview section and scrolls the selected card into view.
@@ -302,12 +344,41 @@ export const LandingPagesTab = () => {
     setMode('editor');
   };
 
-  const openFromPrompt = () => {
-    const seeded = seedSectionsFromPrompt(prompt).map((s) => toEditSection(s.type, s.props));
-    beginEditing({ ...EMPTY_DRAFT, title: prompt.trim().slice(0, 80), sections: seeded });
-    setSlugTouched(false);
-    setMode('editor');
-    setPrompt('');
+  // Stage 3A — the "Start from a prompt … Draft it" box now runs the REAL 4-agent
+  // bench server-side (draftFromBrief → website/landing-bench), not a client-side
+  // section seed. While the single ~40s await runs we advance the agent strip
+  // optimistically; on success we open the fresh DRAFT in the editor (same nav as
+  // a manual edit). FEATURE_OFF dims the box; any other failure toasts + keeps it.
+  const runBench = async () => {
+    const brief = prompt.trim();
+    if (brief === '') return;
+    if (usingMock) {
+      notify('AI drafting needs the landingPage object deployed to this workspace.', 'info');
+      return;
+    }
+    setDrafting(true);
+    setDraftStage(0);
+    // Optimistic progression: tick to the next agent every ~9s (cap at the last
+    // one) so the strip reads as forward motion during the synchronous await.
+    const timer = window.setInterval(() => {
+      setDraftStage((s) => (s < AGENT_STAGES.length - 1 ? s + 1 : s));
+    }, 9000);
+    const res = await draftFromBrief(brief, briefTheme ? { theme: briefTheme } : undefined);
+    window.clearInterval(timer);
+    setDraftStage(AGENT_STAGES.length); // all four done
+    if (res.ok) {
+      setDrafting(false);
+      setPrompt('');
+      await openEdit(res.id); // land the founder on the split-pane editor
+      return;
+    }
+    setDrafting(false);
+    setDraftStage(0);
+    if (res.featureOff) {
+      setAiFeatureOff(true);
+      return;
+    }
+    notify(res.error, 'error');
   };
 
   const openEdit = async (id: string) => {
@@ -910,26 +981,55 @@ export const LandingPagesTab = () => {
         </Alert>
       ) : null}
 
-      {/* prompt-stub: seed a starter stack from a description */}
-      <Paper withBorder radius="md" p="md" mb="md">
+      {/* Stage 3A — type a brief, the 4-agent bench drafts a full on-brand page */}
+      <Paper
+        withBorder
+        radius="md"
+        p="md"
+        mb="md"
+        style={aiFeatureOff ? { opacity: 0.55 } : undefined}
+      >
         <Group gap="xs" mb="xs">
           <IconSparkles size={16} />
           <Text fw={600}>Start from a prompt</Text>
-          <Badge size="xs" variant="light" color="gray">
-            template
+          <Badge size="xs" variant="light" color="grape">
+            AI bench
           </Badge>
         </Group>
-        <Group gap="xs" wrap="nowrap">
+        <Group gap="xs" wrap="nowrap" align="flex-end">
           <TextInput
             style={{ flex: 1 }}
             placeholder="e.g. Palm Jumeirah 2-bed launch, flexible payment plan"
             value={prompt}
             onChange={(e) => setPrompt(e.currentTarget.value)}
+            disabled={drafting || aiFeatureOff}
           />
-          <Button variant="light" color="red" onClick={openFromPrompt} disabled={prompt.trim() === ''}>
+          <Select
+            w={132}
+            placeholder="Theme"
+            clearable
+            value={briefTheme}
+            onChange={(v) => setBriefTheme(v as LandingTheme | null)}
+            data={LANDING_THEMES.map((t) => ({ value: t, label: THEME_LABEL[t] }))}
+            disabled={drafting || aiFeatureOff}
+            comboboxProps={{ zIndex: 5000 }}
+          />
+          <Button
+            variant="light"
+            color="red"
+            onClick={runBench}
+            loading={drafting}
+            disabled={prompt.trim() === '' || aiFeatureOff}
+          >
             Draft it
           </Button>
         </Group>
+        {drafting ? <AgentStrip stage={draftStage} /> : null}
+        {aiFeatureOff ? (
+          <Text size="xs" c="dimmed" mt="xs">
+            AI drafting isn’t configured yet.
+          </Text>
+        ) : null}
       </Paper>
 
       {busy ? (
