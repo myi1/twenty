@@ -47,6 +47,13 @@ export interface LandingPageSummary {
   // Stage 3C — the stored pre-flight result (the route projects it once the P1
   // leg lands). Tolerant: routes predating the gate simply omit it → no chip.
   preflightJson?: unknown;
+  // Stage 3D — locale siblings (the translator). Both are tolerant: routes
+  // predating the translator (or pages created before it) simply omit them →
+  // the page renders as a plain top-level EN card, exactly as today.
+  // `locale` is the page's language code ('EN' / 'AR' / …; absent ⇒ EN).
+  locale?: string | null;
+  // Set on a translated sibling: the EN parent's id. Absent/empty ⇒ a parent.
+  sourceLandingPageId?: string | null;
 }
 
 // Full page (editor). Adds the section list + the bench audit log (Stage 3B —
@@ -79,6 +86,11 @@ type Envelope = { ok?: boolean; error?: string; code?: string } & Record<string,
 export interface LandingListPayload {
   pages: LandingPageSummary[];
   sitePublicUrl: string;
+  // Stage 3D — the workspace's auto-translate switch, read tolerantly off the
+  // same `meta` block. ABSENT (older routes) → default ON; only an explicit
+  // `false` turns the post-publish loop off. The manual "Translate →" menu is
+  // never gated by this flag.
+  autoTranslate: boolean;
 }
 
 const readSitePublicUrl = (body: Envelope | null): string => {
@@ -88,6 +100,14 @@ const readSitePublicUrl = (body: Envelope | null): string => {
     if (typeof url === 'string') return url;
   }
   return '';
+};
+
+const readAutoTranslate = (body: Envelope | null): boolean => {
+  const meta = body?.meta;
+  if (meta !== null && typeof meta === 'object') {
+    if ((meta as Record<string, unknown>).autoTranslate === false) return false;
+  }
+  return true; // absent → default ON
 };
 
 const failMessage = (body: Envelope | null): string => {
@@ -102,7 +122,11 @@ export async function listLandingPages(): Promise<CrmResult<LandingListPayload>>
   if (body && body.ok === true && Array.isArray(body.pages)) {
     return {
       ok: true,
-      data: { pages: body.pages as LandingPageSummary[], sitePublicUrl: readSitePublicUrl(body) },
+      data: {
+        pages: body.pages as LandingPageSummary[],
+        sitePublicUrl: readSitePublicUrl(body),
+        autoTranslate: readAutoTranslate(body),
+      },
     };
   }
   return { ok: false, error: failMessage(body) };
@@ -614,4 +638,45 @@ export async function instructEdit(
     featureOff: isFeatureOff(body),
     benchInvalid,
   };
+}
+
+// ── AI translate (Stage 3D — pinned TR1 contract) ─────────────────────────────
+// `{action:'translate', id, locale}` (flat body, per the gotcha) — ONE locale per
+// call (~10s): the bench translates the EN page's copy-bearing props (+ headline/
+// metaDescription) into `locale` and creates/updates the sibling — same slug,
+// `locale`, `sourceLandingPageId`=EN id, status DRAFT. It NEVER publishes; the
+// founder does. Dedup by (slug, locale) is server-side, so re-translate is safe.
+//   → { ok:true, id, locale }
+//   → { ok:false, code:'FEATURE_OFF' }    (LLM key unset)
+//   → { ok:false, code:'BENCH_INVALID' }  (translation failed validation — the
+//                                          sibling was never corrupted)
+// `unavailable` = the ACTION itself is missing on this workspace (route
+// unreachable / FEATURE_OFF / an older bench route answering "unknown action")
+// → the caller dims the translate affordances and skips the loop quietly.
+
+export const TRANSLATE_LOCALES = ['AR', 'RU', 'UR', 'HI', 'FR', 'ES', 'IT'] as const;
+export type TranslateLocale = (typeof TRANSLATE_LOCALES)[number];
+
+export type TranslatePageResult =
+  | { ok: true; id: string; locale: string }
+  | { ok: false; error: string; unavailable: boolean };
+
+const isTranslateUnavailable = (body: Envelope | null): boolean => {
+  if (body === null) return true; // route unreachable / not deployed / not signed in
+  if (body.code === 'FEATURE_OFF') return true;
+  // Pre-TR1 bench builds answer: { error:'unknown action "translate"', code:… }.
+  return typeof body.error === 'string' && body.error.toLowerCase().includes('unknown action');
+};
+
+export async function translatePage(id: string, locale: string): Promise<TranslatePageResult> {
+  // FLAT body, per the gotcha — the route reads event.body.id / .locale directly.
+  const body = await callPropelRoute<Envelope>(BENCH_ROUTE, { action: 'translate', id, locale });
+  if (body && body.ok === true && typeof body.id === 'string' && body.id !== '') {
+    return {
+      ok: true,
+      id: body.id,
+      locale: typeof body.locale === 'string' && body.locale !== '' ? body.locale : locale,
+    };
+  }
+  return { ok: false, error: failMessage(body), unavailable: isTranslateUnavailable(body) };
 }

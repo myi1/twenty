@@ -23,6 +23,10 @@ export type UseLandingPagesResult = {
   // route is unavailable (mock mode) or SITE_PUBLIC_URL is unset server-side; the
   // editor then degrades to full-width forms with a dimmed note.
   sitePublicUrl: string;
+  // Stage 3D — the workspace's auto-translate switch (meta.autoTranslate, read
+  // tolerantly; absent → ON). Gates ONLY the post-publish loop, never the manual
+  // "Translate" menu.
+  autoTranslate: boolean;
   reload: () => void;
 };
 
@@ -48,6 +52,7 @@ export const useLandingPages = (): UseLandingPagesResult => {
   const [data, setData] = useState<LandingPageSummary[]>([]);
   const [usingMock, setUsingMock] = useState(false);
   const [sitePublicUrl, setSitePublicUrl] = useState('');
+  const [autoTranslate, setAutoTranslate] = useState(true);
   const mounted = useRef(true);
 
   const load = useCallback(async () => {
@@ -58,12 +63,14 @@ export const useLandingPages = (): UseLandingPagesResult => {
     if (result.ok) {
       setData(result.data.pages);
       setSitePublicUrl(result.data.sitePublicUrl);
+      setAutoTranslate(result.data.autoTranslate);
       setUsingMock(false);
       setPhase('ready');
     } else {
       // route unavailable (not deployed / not a Manager) → mock preview, honest error
       setData(mockToSummary());
       setSitePublicUrl(''); // no live preview until the real route answers
+      setAutoTranslate(true); // the default; the loop no-ops in mock mode anyway
       setUsingMock(true);
       setError(result.error);
       setPhase('ready');
@@ -78,5 +85,5 @@ export const useLandingPages = (): UseLandingPagesResult => {
     };
   }, [load]);
 
-  return { phase, error, data, usingMock, sitePublicUrl, reload: () => void load() };
+  return { phase, error, data, usingMock, sitePublicUrl, autoTranslate, reload: () => void load() };
 };
