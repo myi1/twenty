@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActionIcon,
   Alert,
   Badge,
   Box,
   Button,
   Center,
-  Divider,
   Group,
   Loader,
+  Modal,
   Paper,
-  Select,
+  Popover,
+  ScrollArea,
   SegmentedControl,
   SimpleGrid,
   Stack,
@@ -19,20 +19,21 @@ import {
   TextInput,
   ThemeIcon,
   Title,
+  UnstyledButton,
 } from '@mantine/core';
 import {
   IconAlertTriangle,
-  IconChevronDown,
+  IconCheck,
   IconDeviceFloppy,
   IconExternalLink,
   IconEye,
   IconLayoutGrid,
   IconPencil,
   IconPlus,
+  IconRocket,
   IconSparkles,
   IconUsers,
   IconWorld,
-  IconX,
 } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { useLandingPages } from '@/propel/hooks/useLandingPages';
@@ -45,26 +46,24 @@ import {
 } from '@/propel/lib/landingPagesCrm';
 import {
   LANDING_SECTION_DEFS,
+  LANDING_SECTION_GROUPS,
   LANDING_THEMES,
   sectionDef,
   seedSectionsFromPrompt,
+  type LandingSectionGroup,
   type LandingStatus,
   type LandingTheme,
   type LandingSectionType,
 } from '@/propel/lib/landingSectionDefs';
+import { type SectionActionKind } from '@/propel/lib/landingPreviewBridge';
 import { LandingPreviewPane } from '@/propel/components/website/LandingPreviewPane';
+import { ProjectAssetsProvider } from '@/propel/components/website/ProjectImagePicker';
 import {
-  ProjectAssetsProvider,
-  ProjectImagePicker,
-} from '@/propel/components/website/ProjectImagePicker';
-
-// Image-ish field keys get the project-image picker (B2 / C4). Matches the
-// explicit contract set: src / imageSrc / imageUrl / posterUrl / photoSrc /
-// logoSrc / ogImageUrl — an image keyword AND a Src|Url suffix (or the bare `src`
-// column). Deliberately tight so videoUrl / assetUrl / mapEmbedUrl / href don't
-// sprout a picker.
-const isImageFieldKey = (key: string): boolean =>
-  key === 'src' || (/(Src|Url)$/.test(key) && /(image|photo|logo|poster|og)/i.test(key));
+  ImageField,
+  SectionRow,
+  iconForSection,
+  type EditSection,
+} from '@/propel/components/website/SectionRow';
 
 // Landing page builder — WEBSITE-REBUILD-DESIGN §4. A LIGHTWEIGHT, Mantine-only
 // form-driven assembler (NO GrapesJS / no heavy or lazy-loaded lib — that is
@@ -72,8 +71,6 @@ const isImageFieldKey = (key: string): boolean =>
 // pre-built section components; the marketer picks types, edits their props,
 // reorders, picks a theme, and saves via the CRM landing-admin route. The site
 // renders the same {type, props}[] at remaxhub.ae/lp/<slug>.
-
-type EditSection = { type: LandingSectionType; props: Record<string, unknown> };
 
 interface Draft {
   id?: string;
@@ -114,6 +111,22 @@ const EMPTY_DRAFT: Draft = {
 };
 
 const asStr = (v: unknown): string => (typeof v === 'string' ? v : v == null ? '' : String(v));
+
+// A stable serialization of the fields that constitute "content" — used for
+// dirty-tracking (A3): the working draft is dirty when this differs from the
+// snapshot taken at open / last successful save. Slug is passed in (already
+// derived) so the compare is independent of the slugTouched toggle.
+const serializeDraft = (d: Draft, slug: string): string =>
+  JSON.stringify({
+    title: d.title.trim(),
+    slug,
+    theme: d.theme,
+    status: d.status,
+    headline: d.headline,
+    metaDescription: d.metaDescription,
+    ogImageUrl: d.ogImageUrl,
+    sections: d.sections,
+  });
 
 // Coerce a raw {type, props} (from the CRM or a default) into the edit shape:
 // every scalar becomes a string; every row group becomes Array<Record<string,string>>.
@@ -221,220 +234,6 @@ const PageCard = ({
   </Paper>
 );
 
-// ── row-group editor (items / stats / quotes / faq) ──────────────────────────
-const RowsEditor = ({
-  def,
-  rows,
-  onChange,
-  sitePublicUrl,
-}: {
-  def: NonNullable<ReturnType<typeof sectionDef>['rows']>;
-  rows: Record<string, string>[];
-  onChange: (next: Record<string, string>[]) => void;
-  sitePublicUrl: string;
-}) => (
-  <Stack gap="xs">
-    <Group justify="space-between">
-      <Text size="sm" fw={500}>
-        {def.label}
-      </Text>
-      <Button
-        size="compact-xs"
-        variant="light"
-        leftSection={<IconPlus size={12} />}
-        onClick={() => onChange([...rows, Object.fromEntries(def.columns.map((c) => [c.key, '']))])}
-      >
-        {def.addLabel}
-      </Button>
-    </Group>
-    {rows.length === 0 ? (
-      <Text size="xs" c="dimmed">
-        No {def.label.toLowerCase()} yet.
-      </Text>
-    ) : (
-      rows.map((row, ri) => (
-        <Paper key={ri} withBorder radius="sm" p="xs">
-          <Group justify="flex-end" mb={4}>
-            <ActionIcon
-              size="sm"
-              variant="subtle"
-              color="red"
-              aria-label="Remove row"
-              onClick={() => onChange(rows.filter((_, i) => i !== ri))}
-            >
-              <IconX size={14} />
-            </ActionIcon>
-          </Group>
-          <Stack gap={6}>
-            {def.columns.map((col) =>
-              col.kind === 'textarea' ? (
-                <Textarea
-                  key={col.key}
-                  size="xs"
-                  autosize
-                  minRows={2}
-                  label={col.label}
-                  value={row[col.key] ?? ''}
-                  onChange={(e) => {
-                    const next = rows.slice();
-                    next[ri] = { ...next[ri], [col.key]: e.currentTarget.value };
-                    onChange(next);
-                  }}
-                />
-              ) : (
-                <TextInput
-                  key={col.key}
-                  size="xs"
-                  label={col.label}
-                  value={row[col.key] ?? ''}
-                  onChange={(e) => {
-                    const next = rows.slice();
-                    next[ri] = { ...next[ri], [col.key]: e.currentTarget.value };
-                    onChange(next);
-                  }}
-                  rightSectionPointerEvents={isImageFieldKey(col.key) ? 'all' : undefined}
-                  rightSection={
-                    isImageFieldKey(col.key) ? (
-                      <ProjectImagePicker
-                        sitePublicUrl={sitePublicUrl}
-                        onPick={(path) => {
-                          const next = rows.slice();
-                          next[ri] = { ...next[ri], [col.key]: path };
-                          onChange(next);
-                        }}
-                      />
-                    ) : undefined
-                  }
-                />
-              ),
-            )}
-          </Stack>
-        </Paper>
-      ))
-    )}
-  </Stack>
-);
-
-// ── one section editor card ──────────────────────────────────────────────────
-const SectionEditor = ({
-  section,
-  index,
-  total,
-  selected,
-  sitePublicUrl,
-  onChange,
-  onMove,
-  onRemove,
-}: {
-  section: EditSection;
-  index: number;
-  total: number;
-  selected: boolean;
-  sitePublicUrl: string;
-  onChange: (next: EditSection) => void;
-  onMove: (dir: -1 | 1) => void;
-  onRemove: () => void;
-}) => {
-  const def = sectionDef(section.type);
-  const setScalar = (key: string, value: string) =>
-    onChange({ ...section, props: { ...section.props, [key]: value } });
-  return (
-    <Paper
-      withBorder
-      radius="md"
-      p="md"
-      style={
-        selected
-          ? { borderColor: 'var(--mantine-color-red-6)', boxShadow: '0 0 0 1px var(--mantine-color-red-6)' }
-          : undefined
-      }
-    >
-      <Group justify="space-between" mb="sm">
-        <Group gap="xs">
-          <ThemeIcon size="sm" variant="light" color="red">
-            <IconLayoutGrid size={14} />
-          </ThemeIcon>
-          <Text fw={600}>{def.label}</Text>
-        </Group>
-        <Group gap={4}>
-          <ActionIcon
-            size="sm"
-            variant="subtle"
-            aria-label="Move up"
-            disabled={index === 0}
-            onClick={() => onMove(-1)}
-          >
-            <IconChevronDown size={14} style={{ transform: 'rotate(180deg)' }} />
-          </ActionIcon>
-          <ActionIcon
-            size="sm"
-            variant="subtle"
-            aria-label="Move down"
-            disabled={index === total - 1}
-            onClick={() => onMove(1)}
-          >
-            <IconChevronDown size={14} />
-          </ActionIcon>
-          <ActionIcon size="sm" variant="subtle" color="red" aria-label="Remove section" onClick={onRemove}>
-            <IconX size={14} />
-          </ActionIcon>
-        </Group>
-      </Group>
-      <Stack gap="sm">
-        {def.scalarFields.map((f) =>
-          f.kind === 'select' ? (
-            <Select
-              key={f.key}
-              size="xs"
-              label={f.label}
-              data={f.options ?? []}
-              value={asStr(section.props[f.key])}
-              onChange={(v) => setScalar(f.key, v ?? '')}
-              comboboxProps={{ zIndex: 5000 }}
-            />
-          ) : f.kind === 'textarea' ? (
-            <Textarea
-              key={f.key}
-              size="xs"
-              autosize
-              minRows={2}
-              label={f.label}
-              placeholder={f.placeholder}
-              value={asStr(section.props[f.key])}
-              onChange={(e) => setScalar(f.key, e.currentTarget.value)}
-            />
-          ) : (
-            <TextInput
-              key={f.key}
-              size="xs"
-              label={f.label}
-              placeholder={f.placeholder}
-              value={asStr(section.props[f.key])}
-              onChange={(e) => setScalar(f.key, e.currentTarget.value)}
-              rightSectionPointerEvents={isImageFieldKey(f.key) ? 'all' : undefined}
-              rightSection={
-                isImageFieldKey(f.key) ? (
-                  <ProjectImagePicker sitePublicUrl={sitePublicUrl} onPick={(path) => setScalar(f.key, path)} />
-                ) : undefined
-              }
-            />
-          ),
-        )}
-        {def.rows ? (
-          <>
-            <Divider my={4} />
-            <RowsEditor
-              def={def.rows}
-              rows={(section.props[def.rows.key] as Record<string, string>[]) ?? []}
-              onChange={(next) => onChange({ ...section, props: { ...section.props, [def.rows!.key]: next } })}
-              sitePublicUrl={sitePublicUrl}
-            />
-          </>
-        ) : null}
-      </Stack>
-    </Paper>
-  );
-};
 
 // ── the tab ──────────────────────────────────────────────────────────────────
 export const LandingPagesTab = () => {
@@ -450,6 +249,21 @@ export const LandingPagesTab = () => {
   // and a preview `sectionClick` both set this; it highlights the card + the
   // preview section and scrolls the selected card into view.
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  // A5/C7 — the row the pointer is over; forwarded to the preview for a dashed
+  // hover-outline. Distinct from selectedIndex (solid).
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  // Native HTML5 drag-reorder state (A1). No dnd-kit — draggable handle only.
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  // A3 — dirty tracking + save feedback. savedSnapshot is the content as of the
+  // last open / successful save; justSaved shows a transient "Saved" tick.
+  const [savedSnapshot, setSavedSnapshot] = useState('');
+  const [justSaved, setJustSaved] = useState(false);
+  const [confirmBackOpen, setConfirmBackOpen] = useState(false);
+  // A2 — grouped add-section menu. insertIndexRef holds the target slot when the
+  // menu was opened via an `insertAfter` action (else null → append).
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const insertIndexRef = useRef<number | null>(null);
   const sectionRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   const derivedSlug = useMemo(
@@ -457,30 +271,41 @@ export const LandingPagesTab = () => {
     [slugTouched, draft.slug, draft.title],
   );
 
+  // A3 — the working draft is dirty when its content diverges from the snapshot.
+  const currentSnapshot = useMemo(() => serializeDraft(draft, derivedSlug), [draft, derivedSlug]);
+  const isDirty = mode === 'editor' && currentSnapshot !== savedSnapshot;
+
   // Keep the selection valid as sections are added/removed/reordered.
   useEffect(() => {
     setSelectedIndex((cur) => (cur !== null && cur >= draft.sections.length ? null : cur));
   }, [draft.sections.length]);
 
-  // Preview → left rail: scroll the selected card into view (the "expand" the
-  // plan calls for — the section cards are always-expanded, so we scroll+highlight).
+  // Preview → left rail: scroll the selected (auto-expanded) row into view.
   useEffect(() => {
     if (selectedIndex === null) return;
     sectionRefs.current[selectedIndex]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, [selectedIndex]);
 
-  const openNew = (sections: EditSection[] = []) => {
-    setDraft({ ...EMPTY_DRAFT, sections });
-    setSlugTouched(false);
+  // Snapshot a freshly-opened draft so a pristine page is not "dirty".
+  const beginEditing = (next: Draft) => {
+    const slug = next.slug || slugify(next.title);
+    setDraft(next);
+    setSavedSnapshot(serializeDraft(next, slug));
     setSelectedIndex(null);
+    setHoverIndex(null);
+    setJustSaved(false);
+  };
+
+  const openNew = (sections: EditSection[] = []) => {
+    beginEditing({ ...EMPTY_DRAFT, sections });
+    setSlugTouched(false);
     setMode('editor');
   };
 
   const openFromPrompt = () => {
     const seeded = seedSectionsFromPrompt(prompt).map((s) => toEditSection(s.type, s.props));
-    setDraft({ ...EMPTY_DRAFT, title: prompt.trim().slice(0, 80), sections: seeded });
+    beginEditing({ ...EMPTY_DRAFT, title: prompt.trim().slice(0, 80), sections: seeded });
     setSlugTouched(false);
-    setSelectedIndex(null);
     setMode('editor');
     setPrompt('');
   };
@@ -498,7 +323,7 @@ export const LandingPagesTab = () => {
       return;
     }
     const p = res.data;
-    setDraft({
+    beginEditing({
       id: p.id,
       title: p.title,
       slug: p.slug,
@@ -510,7 +335,6 @@ export const LandingPagesTab = () => {
       sections: p.sections.map((s) => toEditSection(s.type, s.props)),
     });
     setSlugTouched(true);
-    setSelectedIndex(null);
     setMode('editor');
   };
 
@@ -529,8 +353,23 @@ export const LandingPagesTab = () => {
     }
   };
 
-  const addSection = (type: LandingSectionType) =>
-    setDraft((d) => ({ ...d, sections: [...d.sections, newSection(type)] }));
+  // ── section mutations (parent is the single source of truth for sections[]) ──
+  const addSectionAt = (type: LandingSectionType, at: number | null) => {
+    setDraft((d) => {
+      const next = d.sections.slice();
+      const idx = at === null ? next.length : Math.max(0, Math.min(at, next.length));
+      next.splice(idx, 0, newSection(type));
+      return { ...d, sections: next };
+    });
+    const idx = at === null ? draft.sections.length : Math.max(0, Math.min(at, draft.sections.length));
+    setSelectedIndex(idx); // select + auto-expand the new row
+  };
+
+  const chooseSectionFromMenu = (type: LandingSectionType) => {
+    addSectionAt(type, insertIndexRef.current);
+    insertIndexRef.current = null;
+    setAddMenuOpen(false);
+  };
 
   const updateSection = (i: number, next: EditSection) =>
     setDraft((d) => ({ ...d, sections: d.sections.map((s, idx) => (idx === i ? next : s)) }));
@@ -547,38 +386,164 @@ export const LandingPagesTab = () => {
   const removeSection = (i: number) =>
     setDraft((d) => ({ ...d, sections: d.sections.filter((_, idx) => idx !== i) }));
 
-  const save = async () => {
+  const duplicateSection = (i: number) =>
+    setDraft((d) => {
+      const src = d.sections[i];
+      if (!src) return d;
+      const copy: EditSection = { type: src.type, props: JSON.parse(JSON.stringify(src.props)) };
+      const next = d.sections.slice();
+      next.splice(i + 1, 0, copy);
+      return { ...d, sections: next };
+    });
+
+  // Native-DnD drop: move the dragged row so it lands at the drop-target slot.
+  const reorderSection = (from: number, to: number) =>
+    setDraft((d) => {
+      if (from === to || from < 0 || from >= d.sections.length) return d;
+      const next = d.sections.slice();
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return { ...d, sections: next };
+    });
+
+  const onRowDrop = (to: number) => {
+    if (dragIndex !== null && dragIndex !== to) {
+      reorderSection(dragIndex, to);
+      setSelectedIndex(to);
+    }
+    setDragIndex(null);
+    setDragOverIndex(null);
+  };
+
+  // C7 — apply an action bubbled up from the on-canvas floating toolbar.
+  const handleSectionAction = (index: number, action: SectionActionKind) => {
+    switch (action) {
+      case 'moveUp':
+        moveSection(index, -1);
+        setSelectedIndex(Math.max(0, index - 1));
+        break;
+      case 'moveDown':
+        moveSection(index, 1);
+        setSelectedIndex(Math.min(draft.sections.length - 1, index + 1));
+        break;
+      case 'duplicate':
+        duplicateSection(index);
+        setSelectedIndex(index + 1);
+        break;
+      case 'delete':
+        removeSection(index);
+        setSelectedIndex(null);
+        break;
+      case 'insertAfter':
+        insertIndexRef.current = index + 1;
+        setAddMenuOpen(true);
+        break;
+    }
+  };
+
+  // ── persistence (A3) ──
+  const validTitleSlug = (): { title: string; slug: string } | null => {
     const title = draft.title.trim();
     if (!title) {
       notify('Give the page a title first.', 'error');
-      return;
+      return null;
     }
-    const slug = slugify(slugTouched ? draft.slug : draft.title);
+    const slug = derivedSlug;
     if (!slug) {
       notify('Could not derive a URL slug — add a title with letters/numbers.', 'error');
-      return;
+      return null;
     }
-    setBusy(true);
+    return { title, slug };
+  };
+
+  // Save the working draft with an explicit status. `silent` = autosave (no
+  // spinner / toast). Returns whether it persisted. Adopts the server id + status
+  // and re-baselines the dirty snapshot to exactly what was sent.
+  const persist = async (status: LandingStatus, silent = false): Promise<boolean> => {
+    const v = validTitleSlug();
+    if (!v) return false;
+    if (!silent) setBusy(true);
+    const snapshotAtSend = serializeDraft({ ...draft, status }, v.slug);
     const res = await saveLandingPage({
       id: draft.id,
-      title,
-      slug,
+      title: v.title,
+      slug: v.slug,
       theme: draft.theme,
-      status: draft.status,
+      status,
       headline: draft.headline,
       metaDescription: draft.metaDescription,
       ogImageUrl: draft.ogImageUrl,
       sections: draft.sections as LandingSection[],
     });
-    setBusy(false);
-    if (res.ok) {
-      notify(`Saved /lp/${res.data.slug}`, 'success');
-      setMode('list');
-      reload();
-    } else {
-      notify(res.error, 'error');
+    if (!silent) setBusy(false);
+    if (!res.ok) {
+      if (!silent) notify(res.error, 'error');
+      return false;
     }
+    // Merge server id + status without clobbering edits made during the request.
+    setDraft((d) => ({ ...d, id: res.data.id, slug: v.slug, status }));
+    setSlugTouched(true);
+    setSavedSnapshot(snapshotAtSend);
+    setJustSaved(true);
+    window.setTimeout(() => setJustSaved(false), 2000);
+    reload();
+    if (!silent) notify(status === 'LIVE' ? `Published /lp/${v.slug}` : `Saved /lp/${v.slug}`, 'success');
+    return true;
   };
+
+  const publish = async () => {
+    if (usingMock) {
+      notify('Preview data — deploy the landingPage object to publish.', 'info');
+      return;
+    }
+    const goingLive = draft.status !== 'LIVE';
+    const nextStatus: LandingStatus = goingLive ? 'LIVE' : 'DRAFT';
+    // Clean + already saved → a status-only flip is enough (reuse setStatus).
+    if (!isDirty && draft.id) {
+      setBusy(true);
+      const res = await setLandingStatus(draft.id, nextStatus);
+      setBusy(false);
+      if (!res.ok) {
+        notify(res.error, 'error');
+        return;
+      }
+      setDraft((d) => ({ ...d, status: nextStatus }));
+      setSavedSnapshot(serializeDraft({ ...draft, status: nextStatus }, derivedSlug));
+      reload();
+      notify(goingLive ? 'Page published' : 'Page unpublished', 'success');
+      return;
+    }
+    // Dirty or never-saved → persist content WITH the new status in one shot.
+    await persist(nextStatus);
+  };
+
+  const requestBack = () => {
+    if (isDirty) setConfirmBackOpen(true);
+    else setMode('list');
+  };
+
+  // A3 — guard a full tab-away / refresh while there are unsaved edits.
+  useEffect(() => {
+    if (mode !== 'editor' || !isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [mode, isDirty]);
+
+  // A3 — autosave DRAFT pages after 4s of inactivity. NEVER autosaves a LIVE page
+  // (that would silently publish edits) and never in mock mode (no route).
+  useEffect(() => {
+    if (mode !== 'editor' || usingMock || busy) return;
+    if (draft.status === 'LIVE' || !isDirty || !draft.title.trim()) return;
+    const t = window.setTimeout(() => {
+      void persist(draft.status, true);
+    }, 4000);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, usingMock, busy, draft, isDirty]);
 
   // ── editor ──
   if (mode === 'editor') {
@@ -618,17 +583,6 @@ export const LandingPagesTab = () => {
               data={LANDING_THEMES.map((t) => ({ value: t, label: THEME_LABEL[t] }))}
             />
           </Box>
-          <Select
-            label="Status"
-            value={draft.status}
-            onChange={(v) => setDraft((d) => ({ ...d, status: (v as LandingStatus) ?? 'DRAFT' }))}
-            data={[
-              { value: 'DRAFT', label: 'Draft' },
-              { value: 'LIVE', label: 'Live' },
-              { value: 'ARCHIVED', label: 'Archived' },
-            ]}
-            comboboxProps={{ zIndex: 5000 }}
-          />
           <TextInput
             label="Headline (OG)"
             value={draft.headline}
@@ -641,41 +595,91 @@ export const LandingPagesTab = () => {
             value={draft.metaDescription}
             onChange={(e) => setDraft((d) => ({ ...d, metaDescription: e.currentTarget.value }))}
           />
-          <TextInput
-            label="OG image URL"
+          <ImageField
+            label="OG image"
             value={draft.ogImageUrl}
-            onChange={(e) => setDraft((d) => ({ ...d, ogImageUrl: e.currentTarget.value }))}
-            rightSectionPointerEvents="all"
-            rightSection={
-              <ProjectImagePicker
-                sitePublicUrl={sitePublicUrl}
-                onPick={(path) => setDraft((d) => ({ ...d, ogImageUrl: path }))}
-              />
-            }
+            sitePublicUrl={sitePublicUrl}
+            onChange={(path) => setDraft((d) => ({ ...d, ogImageUrl: path }))}
           />
         </Stack>
       </Paper>
     );
 
+    // A2 — grouped add-section menu (replaces the flat pill wall). Opened by the
+    // "Add section" button or by an `insertAfter` action (anchored to that button;
+    // the target slot is held in insertIndexRef).
     const addSectionBlock = (
-      <Paper withBorder radius="md" p="md">
-        <Text fw={600} mb="xs">
-          Add a section
-        </Text>
-        <Group gap="xs">
-          {LANDING_SECTION_DEFS.map((d) => (
-            <Button
-              key={d.type}
-              size="compact-sm"
-              variant="light"
-              leftSection={<IconPlus size={12} />}
-              onClick={() => addSection(d.type)}
-            >
-              {d.label}
-            </Button>
-          ))}
-        </Group>
-      </Paper>
+      <Popover
+        opened={addMenuOpen}
+        onChange={(o) => {
+          if (!o) insertIndexRef.current = null;
+          setAddMenuOpen(o);
+        }}
+        position="bottom-start"
+        width={340}
+        shadow="md"
+        zIndex={5000}
+        withinPortal
+      >
+        <Popover.Target>
+          <Button
+            fullWidth
+            variant="light"
+            color="red"
+            leftSection={<IconPlus size={14} />}
+            onClick={() => {
+              insertIndexRef.current = null;
+              setAddMenuOpen((o) => !o);
+            }}
+          >
+            Add section
+          </Button>
+        </Popover.Target>
+        <Popover.Dropdown p="xs">
+          <ScrollArea.Autosize mah={420}>
+            <Stack gap="sm">
+              {LANDING_SECTION_GROUPS.map((group: LandingSectionGroup) => {
+                const defs = LANDING_SECTION_DEFS.filter((d) => d.group === group);
+                if (defs.length === 0) return null;
+                return (
+                  <Box key={group}>
+                    <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={4} px={4}>
+                      {group}
+                    </Text>
+                    <Stack gap={2}>
+                      {defs.map((d) => {
+                        const Icon = iconForSection(d.type);
+                        return (
+                          <UnstyledButton
+                            key={d.type}
+                            onClick={() => chooseSectionFromMenu(d.type)}
+                            style={{ padding: '6px 8px', borderRadius: 6 }}
+                            className="propel-lp-add-item"
+                          >
+                            <Group gap="xs" wrap="nowrap" align="flex-start">
+                              <ThemeIcon size="sm" variant="light" color="red" mt={2}>
+                                <Icon size={14} />
+                              </ThemeIcon>
+                              <Box style={{ minWidth: 0 }}>
+                                <Text size="sm" fw={500}>
+                                  {d.label}
+                                </Text>
+                                <Text size="xs" c="dimmed" lineClamp={1}>
+                                  {d.description}
+                                </Text>
+                              </Box>
+                            </Group>
+                          </UnstyledButton>
+                        );
+                      })}
+                    </Stack>
+                  </Box>
+                );
+              })}
+            </Stack>
+          </ScrollArea.Autosize>
+        </Popover.Dropdown>
+      </Popover>
     );
 
     const sectionStack =
@@ -684,7 +688,7 @@ export const LandingPagesTab = () => {
           <Stack align="center" gap="xs">
             <IconLayoutGrid size={28} />
             <Text c="dimmed" size="sm" ta="center">
-              No sections yet — add one from the left to start building the page.
+              No sections yet — use “Add section” to start building the page.
             </Text>
           </Stack>
         </Paper>
@@ -695,21 +699,63 @@ export const LandingPagesTab = () => {
             ref={(el: HTMLDivElement | null) => {
               sectionRefs.current[i] = el;
             }}
-            onClick={() => setSelectedIndex(i)}
           >
-            <SectionEditor
+            <SectionRow
               section={section}
               index={i}
               total={draft.sections.length}
+              open={selectedIndex === i}
               selected={selectedIndex === i}
               sitePublicUrl={sitePublicUrl}
+              dragOver={dragOverIndex === i && dragIndex !== null && dragIndex !== i}
+              onToggle={() => setSelectedIndex((cur) => (cur === i ? null : i))}
               onChange={(next) => updateSection(i, next)}
               onMove={(dir) => moveSection(i, dir)}
               onRemove={() => removeSection(i)}
+              onHover={(hovering) => setHoverIndex(hovering ? i : null)}
+              onDragStart={() => setDragIndex(i)}
+              onDragEnterRow={() => setDragOverIndex(i)}
+              onDrop={() => onRowDrop(i)}
+              onDragEnd={() => {
+                setDragIndex(null);
+                setDragOverIndex(null);
+              }}
             />
           </Box>
         ))
       );
+
+    const dirtyChip = isDirty ? (
+      <Badge size="sm" color="orange" variant="light">
+        Unsaved
+      </Badge>
+    ) : justSaved ? (
+      <Badge size="sm" color="teal" variant="light" leftSection={<IconCheck size={12} />}>
+        Saved
+      </Badge>
+    ) : null;
+
+    const isLive = draft.status === 'LIVE';
+    const publishControl = isLive ? (
+      <Group gap={6} wrap="nowrap">
+        <Badge color="teal" variant="light" leftSection={<IconCheck size={12} />}>
+          Published
+        </Badge>
+        <Button size="sm" variant="subtle" color="gray" loading={busy} onClick={publish}>
+          Unpublish
+        </Button>
+      </Group>
+    ) : (
+      <Button
+        size="sm"
+        color="teal"
+        loading={busy}
+        leftSection={<IconRocket size={16} />}
+        onClick={publish}
+      >
+        Publish
+      </Button>
+    );
 
     const header = (
       <Group justify="space-between" align="flex-start" mb="md" wrap="nowrap">
@@ -724,25 +770,60 @@ export const LandingPagesTab = () => {
             </Text>
           </Box>
         </Group>
-        <Group gap="xs">
-          <Button variant="default" size="sm" onClick={() => setMode('list')}>
+        <Group gap="xs" wrap="nowrap">
+          {dirtyChip}
+          <Button variant="default" size="sm" onClick={requestBack}>
             Back
           </Button>
           <Button
             size="sm"
             color="red"
+            variant="default"
             loading={busy}
             leftSection={<IconDeviceFloppy size={16} />}
-            onClick={save}
+            onClick={() => void persist(draft.status)}
           >
             Save
           </Button>
+          {publishControl}
         </Group>
       </Group>
     );
 
+    const liveUrl = draft.status === 'LIVE' && derivedSlug ? `${LIVE_LP_BASE}/${derivedSlug}` : undefined;
+
+    const confirmBackModal = (
+      <Modal
+        opened={confirmBackOpen}
+        onClose={() => setConfirmBackOpen(false)}
+        title="Discard unsaved changes?"
+        centered
+        zIndex={6000}
+      >
+        <Text size="sm" c="dimmed" mb="md">
+          You have unsaved edits to this page. Leaving now will lose them.
+        </Text>
+        <Group justify="flex-end" gap="xs">
+          <Button variant="default" size="sm" onClick={() => setConfirmBackOpen(false)}>
+            Keep editing
+          </Button>
+          <Button
+            color="red"
+            size="sm"
+            onClick={() => {
+              setConfirmBackOpen(false);
+              setMode('list');
+            }}
+          >
+            Discard &amp; leave
+          </Button>
+        </Group>
+      </Modal>
+    );
+
     return (
       <ProjectAssetsProvider>
+        {confirmBackModal}
         <Box
           p="md"
           style={
@@ -772,7 +853,10 @@ export const LandingPagesTab = () => {
                   theme={draft.theme}
                   sections={draft.sections}
                   selectedIndex={selectedIndex}
+                  hoverIndex={hoverIndex}
                   onSelectSection={setSelectedIndex}
+                  onSectionAction={handleSectionAction}
+                  liveUrl={liveUrl}
                 />
               </Box>
             </Group>
