@@ -35,6 +35,7 @@ import {
   IconSparkles,
   IconUsers,
   IconWorld,
+  IconX,
 } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { useLandingPages } from '@/propel/hooks/useLandingPages';
@@ -42,11 +43,14 @@ import {
   draftFromBrief,
   getLandingPage,
   instructEdit,
+  preflightPage,
+  readPreflightSummary,
   saveLandingPage,
   setLandingStatus,
   type BenchLogEntry,
   type LandingPageSummary,
   type LandingSection,
+  type PreflightCheck,
 } from '@/propel/lib/landingPagesCrm';
 import {
   LANDING_SECTION_DEFS,
@@ -202,6 +206,44 @@ const statusColor = (s: string): string =>
 const convPct = (visits: number, leads: number): number =>
   visits > 0 ? Math.round((leads / visits) * 100) : 0;
 
+// ── Stage 3C — publish pre-flight gate ───────────────────────────────────────
+// Humanize a check key ("leadForm" → "Lead form") — the row labels stay tolerant
+// to whatever keys the CRM gate ships, with the server's `detail` as the truth.
+const checkLabel = (key: string): string => {
+  const words = key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+    .toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+};
+
+// Small pass/fail/warn chip for the list cards — only when the route projects a
+// readable preflightJson (older routes don't → no chip at all).
+const PreflightChip = ({ page }: { page: LandingPageSummary }) => {
+  const s = readPreflightSummary(page.preflightJson);
+  if (!s) return null;
+  if (!s.passed || s.hardFails > 0) {
+    return (
+      <Badge color="red" variant="light" size="sm" leftSection={<IconX size={12} />}>
+        Checks
+      </Badge>
+    );
+  }
+  if (s.warnings > 0) {
+    return (
+      <Badge color="yellow" variant="light" size="sm" leftSection={<IconAlertTriangle size={12} />}>
+        {s.warnings} warn
+      </Badge>
+    );
+  }
+  return (
+    <Badge color="teal" variant="light" size="sm" leftSection={<IconCheck size={12} />}>
+      Checks
+    </Badge>
+  );
+};
+
 // ── list view ────────────────────────────────────────────────────────────────
 const PageCard = ({
   page,
@@ -223,6 +265,7 @@ const PageCard = ({
         </Text>
       </Box>
       <Group gap={6} wrap="nowrap">
+        <PreflightChip page={page} />
         <Badge color={statusColor(page.status)} variant="light" size="sm">
           {page.status}
         </Badge>
@@ -329,6 +372,16 @@ export const LandingPagesTab = () => {
   const [instructFeatureOff, setInstructFeatureOff] = useState(false);
   const [benchLog, setBenchLog] = useState<BenchLogEntry[]>([]);
   const instructInputRef = useRef<HTMLInputElement | null>(null);
+  // Stage 3C — the publish pre-flight checklist modal. Non-null = open, holding
+  // the target page + the latest check rows (from preflightPage OR the server's
+  // PREFLIGHT_FAILED response). `running` = a re-run is in flight; `publishing`
+  // = the setStatus LIVE leg is in flight.
+  const [preflightState, setPreflightState] = useState<{
+    pageId: string;
+    checks: PreflightCheck[];
+    running: boolean;
+    publishing: boolean;
+  } | null>(null);
 
   const derivedSlug = useMemo(
     () => (slugTouched ? draft.slug : slugify(draft.title)),
@@ -447,15 +500,83 @@ export const LandingPagesTab = () => {
     setMode('editor');
   };
 
+  // ── Stage 3C — the publish pre-flight gate ─────────────────────────────────
+  // The actual go-live leg: setStatus LIVE (the server RE-RUNS the gate — the
+  // modal is UX, not enforcement). PREFLIGHT_FAILED → re-render the server's
+  // checks in the modal instead of a dead-end toast.
+  const finalizePublish = async (id: string) => {
+    const res = await setLandingStatus(id, 'LIVE');
+    if (res.ok) {
+      setPreflightState(null);
+      if (mode === 'editor' && draft.id === id) {
+        setDraft((d) => ({ ...d, status: 'LIVE' }));
+        setSavedSnapshot(serializeDraft({ ...draft, status: 'LIVE' }, derivedSlug));
+      }
+      reload();
+      notify('Page published', 'success');
+      return;
+    }
+    if (res.preflightFailed) {
+      setPreflightState({ pageId: id, checks: res.checks, running: false, publishing: false });
+      notify('Publish blocked — the gate still reports failing checks.', 'error');
+      return;
+    }
+    setPreflightState((s) => (s ? { ...s, publishing: false } : s));
+    notify(res.error, 'error');
+  };
+
+  // Publish click → run pre-flight → the checklist modal. A workspace whose
+  // route predates the gate (unknown action / FEATURE_OFF / unreachable) falls
+  // back to the DIRECT publish path with a note — a missing gate must never
+  // block publishing.
+  const openPublishGate = async (id: string) => {
+    setBusy(true);
+    const pf = await preflightPage(id);
+    if (!pf.ok && pf.unavailable) {
+      notify('Pre-flight checks unavailable on this workspace — publishing directly.', 'info');
+      await finalizePublish(id);
+      setBusy(false);
+      return;
+    }
+    setBusy(false);
+    if (!pf.ok) {
+      notify(pf.error, 'error');
+      return;
+    }
+    setPreflightState({ pageId: id, checks: pf.checks, running: false, publishing: false });
+  };
+
+  const rerunChecks = async () => {
+    if (!preflightState || preflightState.running || preflightState.publishing) return;
+    const id = preflightState.pageId;
+    setPreflightState((s) => (s ? { ...s, running: true } : s));
+    const pf = await preflightPage(id);
+    setPreflightState((s) =>
+      s ? { ...s, running: false, ...(pf.ok ? { checks: pf.checks } : {}) } : s,
+    );
+    if (!pf.ok) notify(pf.error, 'error');
+  };
+
+  const publishFromModal = async () => {
+    if (!preflightState || preflightState.publishing) return;
+    const id = preflightState.pageId;
+    setPreflightState((s) => (s ? { ...s, publishing: true } : s));
+    await finalizePublish(id);
+  };
+
   const toggleStatus = async (page: LandingPageSummary) => {
     if (usingMock) {
       notify('Preview data — deploy the landingPage object to publish.', 'info');
       return;
     }
-    const next: LandingStatus = page.status === 'LIVE' ? 'DRAFT' : 'LIVE';
-    const res = await setLandingStatus(page.id, next);
+    if (page.status !== 'LIVE') {
+      // Going LIVE from the list — same pre-flight gate as the editor's Publish.
+      await openPublishGate(page.id);
+      return;
+    }
+    const res = await setLandingStatus(page.id, 'DRAFT');
     if (res.ok) {
-      notify(next === 'LIVE' ? 'Page set live' : 'Page unpublished', 'success');
+      notify('Page unpublished', 'success');
       reload();
     } else {
       notify(res.error, 'error');
@@ -626,11 +747,12 @@ export const LandingPagesTab = () => {
   };
 
   // Save the working draft with an explicit status. `silent` = autosave (no
-  // spinner / toast). Returns whether it persisted. Adopts the server id + status
-  // and re-baselines the dirty snapshot to exactly what was sent.
-  const persist = async (status: LandingStatus, silent = false): Promise<boolean> => {
+  // spinner / toast). Returns the server id when it persisted (null = failed) —
+  // truthy on success, so boolean-style callers keep working. Adopts the server
+  // id + status and re-baselines the dirty snapshot to exactly what was sent.
+  const persist = async (status: LandingStatus, silent = false): Promise<string | null> => {
     const v = validTitleSlug();
-    if (!v) return false;
+    if (!v) return null;
     if (!silent) setBusy(true);
     const snapshotAtSend = serializeDraft({ ...draft, status }, v.slug);
     const res = await saveLandingPage({
@@ -647,7 +769,7 @@ export const LandingPagesTab = () => {
     if (!silent) setBusy(false);
     if (!res.ok) {
       if (!silent) notify(res.error, 'error');
-      return false;
+      return null;
     }
     // Merge server id + status without clobbering edits made during the request.
     setDraft((d) => ({ ...d, id: res.data.id, slug: v.slug, status }));
@@ -657,7 +779,7 @@ export const LandingPagesTab = () => {
     window.setTimeout(() => setJustSaved(false), 2000);
     reload();
     if (!silent) notify(status === 'LIVE' ? `Published /lp/${v.slug}` : `Saved /lp/${v.slug}`, 'success');
-    return true;
+    return res.data.id;
   };
 
   const publish = async () => {
@@ -666,24 +788,38 @@ export const LandingPagesTab = () => {
       return;
     }
     const goingLive = draft.status !== 'LIVE';
-    const nextStatus: LandingStatus = goingLive ? 'LIVE' : 'DRAFT';
-    // Clean + already saved → a status-only flip is enough (reuse setStatus).
-    if (!isDirty && draft.id) {
-      setBusy(true);
-      const res = await setLandingStatus(draft.id, nextStatus);
-      setBusy(false);
-      if (!res.ok) {
-        notify(res.error, 'error');
+    if (!goingLive) {
+      // Unpublish is ungated: a clean saved page flips status only; a dirty one
+      // persists content WITH the DRAFT status in one shot (as before).
+      if (!isDirty && draft.id) {
+        setBusy(true);
+        const res = await setLandingStatus(draft.id, 'DRAFT');
+        setBusy(false);
+        if (!res.ok) {
+          notify(res.error, 'error');
+          return;
+        }
+        setDraft((d) => ({ ...d, status: 'DRAFT' }));
+        setSavedSnapshot(serializeDraft({ ...draft, status: 'DRAFT' }, derivedSlug));
+        reload();
+        notify('Page unpublished', 'success');
         return;
       }
-      setDraft((d) => ({ ...d, status: nextStatus }));
-      setSavedSnapshot(serializeDraft({ ...draft, status: nextStatus }, derivedSlug));
-      reload();
-      notify(goingLive ? 'Page published' : 'Page unpublished', 'success');
+      await persist('DRAFT');
       return;
     }
-    // Dirty or never-saved → persist content WITH the new status in one shot.
-    await persist(nextStatus);
+    // Going LIVE (Stage 3C) — the gate checks the SAVED page, so flush local
+    // edits first (at the current non-live status), then pre-flight → the
+    // checklist modal → setStatus LIVE from the modal's Publish button.
+    let id: string | null = draft.id ?? null;
+    if (isDirty || !id) {
+      id = await persist(draft.status, true);
+      if (!id) {
+        notify('Could not save the page before pre-flight — check the title, then retry.', 'error');
+        return;
+      }
+    }
+    await openPublishGate(id);
   };
 
   const requestBack = () => {
@@ -713,6 +849,134 @@ export const LandingPagesTab = () => {
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, usingMock, busy, draft, isDirty]);
+
+  // ── Stage 3C — the pre-flight checklist modal (rendered in BOTH views: the
+  // editor's Publish and the list cards' "Set live" share the same gate) ──────
+  const pfChecks = preflightState?.checks ?? [];
+  const pfHardFails = pfChecks.filter((c) => c.level === 'HARD' && !c.ok).length;
+  const pfWarnings = pfChecks.filter((c) => c.level === 'SOFT' && !c.ok).length;
+  const pfSummary =
+    pfHardFails > 0
+      ? `${pfHardFails} check${pfHardFails === 1 ? '' : 's'} failed`
+      : pfWarnings > 0
+        ? `All checks passed — ${pfWarnings} warning${pfWarnings === 1 ? '' : 's'}`
+        : 'All checks passed';
+  const preflightModal = (
+    <Modal
+      opened={preflightState !== null}
+      onClose={() => setPreflightState(null)}
+      title="Pre-flight checks"
+      centered
+      zIndex={5000}
+      size="lg"
+    >
+      <Alert
+        color={pfHardFails > 0 ? 'red' : pfWarnings > 0 ? 'yellow' : 'teal'}
+        variant="light"
+        mb="sm"
+        icon={
+          pfHardFails > 0 ? (
+            <IconX size={16} />
+          ) : pfWarnings > 0 ? (
+            <IconAlertTriangle size={16} />
+          ) : (
+            <IconCheck size={16} />
+          )
+        }
+      >
+        {pfSummary}
+      </Alert>
+      <Stack gap={4}>
+        {pfChecks.map((c) => {
+          const hardFail = !c.ok && c.level === 'HARD';
+          const warn = !c.ok && c.level === 'SOFT';
+          return (
+            <Group
+              key={c.key}
+              gap="sm"
+              align="flex-start"
+              wrap="nowrap"
+              p="xs"
+              style={
+                hardFail
+                  ? { background: 'var(--mantine-color-red-light)', borderRadius: 6 }
+                  : undefined
+              }
+            >
+              <ThemeIcon
+                size="sm"
+                radius="xl"
+                variant="light"
+                color={c.ok ? 'teal' : hardFail ? 'red' : 'yellow'}
+              >
+                {c.ok ? (
+                  <IconCheck size={12} />
+                ) : hardFail ? (
+                  <IconX size={12} />
+                ) : (
+                  <IconAlertTriangle size={12} />
+                )}
+              </ThemeIcon>
+              <Box style={{ minWidth: 0 }}>
+                <Group gap={6} wrap="nowrap">
+                  <Text size="sm" fw={hardFail ? 600 : 500}>
+                    {checkLabel(c.key)}
+                  </Text>
+                  {warn ? (
+                    <Badge size="xs" color="yellow" variant="light">
+                      warning
+                    </Badge>
+                  ) : null}
+                </Group>
+                {c.detail ? (
+                  <Text size="xs" c={hardFail ? 'red' : 'dimmed'}>
+                    {c.detail}
+                  </Text>
+                ) : null}
+              </Box>
+            </Group>
+          );
+        })}
+        {pfChecks.length === 0 ? (
+          <Text size="sm" c="dimmed">
+            No check results returned — re-run the checks.
+          </Text>
+        ) : null}
+      </Stack>
+      <Group justify="space-between" mt="md">
+        <Button
+          variant="default"
+          size="sm"
+          loading={preflightState?.running ?? false}
+          disabled={preflightState?.publishing ?? false}
+          onClick={() => void rerunChecks()}
+        >
+          Re-run checks
+        </Button>
+        <Group gap="xs">
+          <Button
+            variant="subtle"
+            color="gray"
+            size="sm"
+            disabled={preflightState?.publishing ?? false}
+            onClick={() => setPreflightState(null)}
+          >
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            color="teal"
+            leftSection={<IconRocket size={14} />}
+            disabled={pfHardFails > 0 || pfChecks.length === 0 || (preflightState?.running ?? false)}
+            loading={preflightState?.publishing ?? false}
+            onClick={() => void publishFromModal()}
+          >
+            Publish
+          </Button>
+        </Group>
+      </Group>
+    </Modal>
+  );
 
   // ── editor ──
   if (mode === 'editor') {
@@ -1026,6 +1290,7 @@ export const LandingPagesTab = () => {
     return (
       <ProjectAssetsProvider>
         {confirmBackModal}
+        {preflightModal}
         <Box
           p="md"
           style={
@@ -1093,6 +1358,7 @@ export const LandingPagesTab = () => {
   // ── list ──
   return (
     <Box p="md">
+      {preflightModal}
       <Group justify="space-between" align="flex-start" mb="md" wrap="nowrap">
         <Group gap="xs">
           <ThemeIcon size="lg" variant="light" color="red">
