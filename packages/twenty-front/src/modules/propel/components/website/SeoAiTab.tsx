@@ -111,34 +111,36 @@ const ScoreCard = ({
 }) => (
   <Paper withBorder radius="md" p="md">
     <Group gap="md" wrap="nowrap" align="center">
-      <RingProgress
-        size={64}
-        thickness={6}
-        roundCaps
-        sections={[{ value: valuePct, color }]}
-        // Mantine's default label CSS only vertically centers (top:50% +
-        // translateY) and horizontally insets by thickness*2 — which reads as
-        // off-center in a small ring (the founder's "circles not aligned" bug).
-        // Override the label box to fill the ring and flex-center its child so the
-        // % sits dead-center at any size; lh={1} removes the line-box drift.
-        styles={{
-          label: {
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            transform: 'none',
+      {/* Ring + label. Mantine RingProgress's label slot fights centering
+          (logical-inset offsets + line-box drift) — the styles-API override
+          still read off-center (founder bug, twice). So: NO label slot at all;
+          a plain absolutely-positioned overlay flex-centers the % over the
+          ring. Geometry, not component CSS — cannot misalign. */}
+      <Box pos="relative" w={64} h={64} style={{ flex: 'none' }}>
+        <RingProgress
+          size={64}
+          thickness={6}
+          roundCaps
+          sections={[{ value: valuePct, color }]}
+        />
+        <Box
+          pos="absolute"
+          top={0}
+          left={0}
+          w={64}
+          h={64}
+          style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-          },
-        }}
-        label={
-          <Text size="xs" fw={700} lh={1} ta="center">
+            pointerEvents: 'none',
+          }}
+        >
+          <Text size="xs" fw={700} lh={1}>
             {valuePct}%
           </Text>
-        }
-      />
+        </Box>
+      </Box>
       <Stack gap={2} style={{ minWidth: 0 }}>
         <Text size="sm" fw={600} truncate>
           {label}
