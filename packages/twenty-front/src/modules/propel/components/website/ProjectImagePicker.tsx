@@ -1,9 +1,10 @@
-import { createContext, useContext, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
   ActionIcon,
   Box,
   Button,
   Center,
+  Chip,
   Group,
   Loader,
   Popover,
@@ -18,7 +19,7 @@ import {
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
-import { IconPhoto, IconSearch } from 'twenty-ui/display';
+import { IconBookmark, IconPhoto, IconSearch, IconStar } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import {
   generateImage,
@@ -28,6 +29,12 @@ import {
   type ProjectImage,
   type ProjectSearchResult,
 } from '@/propel/lib/landingPagesCrm';
+import {
+  createAsset,
+  listAssets,
+  type WebsiteAsset,
+  type WebsiteAssetSource,
+} from '@/propel/lib/websiteAssetsCrm';
 
 // LP Builder v2 — Stage 2 project-image picker (B2 / contract C4).
 //
@@ -79,7 +86,37 @@ interface ProjectImagePickerProps {
 }
 
 type Stage = 'search' | 'images';
-type PickerTab = 'renders' | 'generate' | 'upload';
+type PickerTab = 'library' | 'renders' | 'generate' | 'upload';
+
+// Library source filter chips (H1). 'ALL' is the sentinel for no source filter.
+type LibrarySourceChip = 'ALL' | WebsiteAssetSource;
+const LIBRARY_SOURCE_CHIPS: { value: LibrarySourceChip; label: string }[] = [
+  { value: 'ALL', label: 'All' },
+  { value: 'GENERATED', label: 'Generated' },
+  { value: 'PROJECT', label: 'Project' },
+  { value: 'UPLOADED', label: 'Uploaded' },
+  { value: 'BRAND', label: 'Brand' },
+  { value: 'TEAM', label: 'Team' },
+];
+
+// Client-side filter predicate for the loaded library (search + source + ★).
+// `query` is a case-insensitive substring over name + tags + projectName.
+const matchesLibraryFilter = (
+  asset: WebsiteAsset,
+  source: LibrarySourceChip,
+  favoritesOnly: boolean,
+  query: string,
+): boolean => {
+  if (source !== 'ALL' && asset.source !== source) return false;
+  if (favoritesOnly && !asset.favorite) return false;
+  const q = query.trim().toLowerCase();
+  if (q === '') return true;
+  return (
+    asset.name.toLowerCase().includes(q) ||
+    asset.tags.toLowerCase().includes(q) ||
+    asset.projectName.toLowerCase().includes(q)
+  );
+};
 
 export const ProjectImagePicker = ({
   sitePublicUrl,
@@ -91,7 +128,7 @@ export const ProjectImagePicker = ({
   const { featureOff, markFeatureOff } = useProjectAssets();
 
   const [opened, setOpened] = useState(false);
-  const [tab, setTab] = useState<PickerTab>('renders');
+  const [tab, setTab] = useState<PickerTab>('library');
   const [stage, setStage] = useState<Stage>('search');
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
@@ -107,6 +144,63 @@ export const ProjectImagePicker = ({
   // Latched per-picker when the CRM route answers FEATURE_OFF (OpenAI /
   // image-service not wired) — dims the Generate tab body, never crashes.
   const [genFeatureOff, setGenFeatureOff] = useState(false);
+
+  // ── Library tab (H1) state ────────────────────────────────────────────────
+  // Lazy-loaded once on first open of the Library tab (cap 200, newest first).
+  // Filtering (search + source chip + ★) is client-side over the loaded set, so
+  // typing never refetches. `savingPath` tracks the in-flight "Save to library".
+  const [libraryLoaded, setLibraryLoaded] = useState(false);
+  const [libraryBusy, setLibraryBusy] = useState(false);
+  const [assets, setAssets] = useState<WebsiteAsset[]>([]);
+  const [librarySearch, setLibrarySearch] = useState('');
+  const [librarySource, setLibrarySource] = useState<LibrarySourceChip>('ALL');
+  const [libraryFavorites, setLibraryFavorites] = useState(false);
+  const [savingPath, setSavingPath] = useState<string | null>(null);
+  const [savedPaths, setSavedPaths] = useState<Set<string>>(new Set());
+
+  const loadLibrary = async () => {
+    setLibraryBusy(true);
+    const res = await listAssets();
+    setLibraryBusy(false);
+    setLibraryLoaded(true);
+    if (res.ok) {
+      setAssets(res.data.assets);
+      return;
+    }
+    notify(res.error, 'error');
+  };
+
+  // Fetch the library the first time its tab is shown (while the popover is open).
+  useEffect(() => {
+    if (opened && tab === 'library' && !libraryLoaded && !libraryBusy) {
+      void loadLibrary();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opened, tab, libraryLoaded, libraryBusy]);
+
+  const saveRenderToLibrary = async (img: ProjectImage) => {
+    if (savingPath !== null || savedPaths.has(img.gatewayPath)) return;
+    setSavingPath(img.gatewayPath);
+    const res = await createAsset({
+      source: 'PROJECT',
+      gatewayPath: img.gatewayPath,
+      projectExternalId: activeProject?.externalId ?? '',
+      projectName: activeProject?.name ?? '',
+    });
+    setSavingPath(null);
+    if (res.ok) {
+      setSavedPaths((prev) => new Set(prev).add(img.gatewayPath));
+      // Force a re-fetch next time the Library tab opens so the new row shows up.
+      setLibraryLoaded(false);
+      notify('Saved to library.', 'success');
+      return;
+    }
+    notify(res.error, 'error');
+  };
+
+  const visibleAssets = assets.filter((a) =>
+    matchesLibraryFilter(a, librarySource, libraryFavorites, librarySearch),
+  );
 
   // No gateway host, or the feature is off for this workspace → no button at all.
   if (sitePublicUrl === '' || featureOff) return null;
@@ -218,11 +312,14 @@ export const ProjectImagePicker = ({
       <Popover.Dropdown>
         <Tabs
           value={tab}
-          onChange={(v) => setTab((v as PickerTab | null) ?? 'renders')}
+          onChange={(v) => setTab((v as PickerTab | null) ?? 'library')}
           color="red"
           mb="xs"
         >
           <Tabs.List>
+            <Tabs.Tab value="library" fz="xs">
+              Library
+            </Tabs.Tab>
             <Tabs.Tab value="renders" fz="xs">
               Project renders
             </Tabs.Tab>
@@ -239,7 +336,93 @@ export const ProjectImagePicker = ({
             </Tooltip>
           </Tabs.List>
         </Tabs>
-        {tab === 'generate' ? (
+        {tab === 'library' ? (
+          <Stack gap="xs">
+            <TextInput
+              size="xs"
+              placeholder="Search saved assets"
+              leftSection={<IconSearch size={14} />}
+              value={librarySearch}
+              onChange={(e) => setLibrarySearch(e.currentTarget.value)}
+              autoFocus
+            />
+            <Group gap={4} wrap="wrap">
+              {LIBRARY_SOURCE_CHIPS.map((c) => (
+                <Chip
+                  key={c.value}
+                  size="xs"
+                  color="red"
+                  variant={librarySource === c.value ? 'filled' : 'outline'}
+                  checked={librarySource === c.value}
+                  onChange={() => setLibrarySource(c.value)}
+                >
+                  {c.label}
+                </Chip>
+              ))}
+              <Tooltip label="Favorites only" withinPortal zIndex={5000}>
+                <ActionIcon
+                  size="sm"
+                  variant={libraryFavorites ? 'filled' : 'subtle'}
+                  color="yellow"
+                  aria-label="Toggle favorites only"
+                  aria-pressed={libraryFavorites}
+                  onClick={() => setLibraryFavorites((f) => !f)}
+                >
+                  <IconStar size={15} />
+                </ActionIcon>
+              </Tooltip>
+            </Group>
+            {libraryBusy ? (
+              <Center h={120}>
+                <Loader size="sm" color="red" />
+              </Center>
+            ) : visibleAssets.length > 0 ? (
+              <ScrollArea.Autosize mah={300}>
+                <SimpleGrid cols={3} spacing={6}>
+                  {visibleAssets.map((a) => (
+                    <UnstyledButton key={a.id} onClick={() => pick(a.gatewayPath)}>
+                      <Box
+                        style={{
+                          position: 'relative',
+                          aspectRatio: '1 / 1',
+                          overflow: 'hidden',
+                          borderRadius: 6,
+                          border: '1px solid var(--mantine-color-gray-3)',
+                        }}
+                      >
+                        <img
+                          src={`${sitePublicUrl}${a.gatewayPath}`}
+                          alt={a.altText || a.name}
+                          loading="lazy"
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                        {a.favorite ? (
+                          <IconStar
+                            size={13}
+                            style={{
+                              position: 'absolute',
+                              top: 3,
+                              right: 3,
+                              color: 'var(--mantine-color-yellow-5)',
+                              filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.6))',
+                              pointerEvents: 'none',
+                            }}
+                          />
+                        ) : null}
+                      </Box>
+                    </UnstyledButton>
+                  ))}
+                </SimpleGrid>
+              </ScrollArea.Autosize>
+            ) : (
+              <Text size="xs" c="dimmed" ta="center" py="md">
+                {libraryLoaded && assets.length > 0
+                  ? 'No assets match your filters.'
+                  : 'No saved assets yet — generate or save a project render.'}
+              </Text>
+            )}
+          </Stack>
+        ) : tab === 'generate' ? (
           genFeatureOff ? (
             <Text size="xs" c="dimmed" ta="center" py="md">
               AI image generation isn’t configured yet.
@@ -356,25 +539,54 @@ export const ProjectImagePicker = ({
             ) : images.length > 0 ? (
               <ScrollArea.Autosize mah={300}>
                 <SimpleGrid cols={3} spacing={6}>
-                  {images.map((img) => (
-                    <UnstyledButton key={img.id} onClick={() => pick(img.gatewayPath)}>
-                      <Box
-                        style={{
-                          aspectRatio: '1 / 1',
-                          overflow: 'hidden',
-                          borderRadius: 6,
-                          border: '1px solid var(--mantine-color-gray-3)',
-                        }}
-                      >
-                        <img
-                          src={`${sitePublicUrl}${img.gatewayPath}`}
-                          alt=""
-                          loading="lazy"
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        />
+                  {images.map((img) => {
+                    const saved = savedPaths.has(img.gatewayPath);
+                    return (
+                      <Box key={img.id} style={{ position: 'relative' }}>
+                        <UnstyledButton
+                          onClick={() => pick(img.gatewayPath)}
+                          style={{ display: 'block', width: '100%' }}
+                        >
+                          <Box
+                            style={{
+                              aspectRatio: '1 / 1',
+                              overflow: 'hidden',
+                              borderRadius: 6,
+                              border: '1px solid var(--mantine-color-gray-3)',
+                            }}
+                          >
+                            <img
+                              src={`${sitePublicUrl}${img.gatewayPath}`}
+                              alt=""
+                              loading="lazy"
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
+                          </Box>
+                        </UnstyledButton>
+                        <Tooltip
+                          label={saved ? 'Saved to library' : 'Save to library'}
+                          withinPortal
+                          zIndex={5000}
+                        >
+                          <ActionIcon
+                            size="sm"
+                            variant="filled"
+                            color={saved ? 'green' : 'dark'}
+                            aria-label="Save to library"
+                            loading={savingPath === img.gatewayPath}
+                            disabled={saved}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void saveRenderToLibrary(img);
+                            }}
+                            style={{ position: 'absolute', top: 4, right: 4, opacity: 0.92 }}
+                          >
+                            <IconBookmark size={13} />
+                          </ActionIcon>
+                        </Tooltip>
                       </Box>
-                    </UnstyledButton>
-                  ))}
+                    );
+                  })}
                 </SimpleGrid>
               </ScrollArea.Autosize>
             ) : (
