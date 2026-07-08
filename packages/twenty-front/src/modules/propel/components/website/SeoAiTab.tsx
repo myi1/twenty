@@ -51,7 +51,13 @@ import { useWebsiteSeo } from '@/propel/hooks/useWebsiteSeo';
 
 // Visible build tag (footer) — bump on user-visible fixes so stale-cache
 // debates end with a glance.
-const HERO_UI_BUILD = 'r3-capfix';
+const HERO_UI_BUILD = 'r4-biggauge';
+
+// Gauge geometry. NOTE Mantine converts px props to rem against a 16px
+// assumption; Twenty's 13px root shrinks everything by 13/16 — 96 renders
+// ~78px. Size chosen so the % label breathes and the stroke stays crisp.
+const GAUGE_SIZE = 96;
+const GAUGE_THICKNESS = 8;
 
 // SEO and AI sub-tab of the Website tab (WEBSITE-REBUILD-DESIGN.md §6 "SEO and AI").
 //
@@ -115,27 +121,27 @@ const ScoreCard = ({
 }) => (
   <Paper withBorder radius="md" p="md">
     <Group gap="md" wrap="nowrap" align="center">
-      {/* Ring + label. Mantine RingProgress's label slot fights centering
-          (logical-inset offsets + line-box drift) — the styles-API override
-          still read off-center (founder bug, twice). So: NO label slot at all;
-          a plain absolutely-positioned overlay flex-centers the % over the
-          ring. Geometry, not component CSS — cannot misalign. */}
-      <Box pos="relative" w={64} h={64} style={{ flex: 'none' }}>
+      {/* Gauge redesign (founder feedback, 3rd round): at the old 64(→52 after
+          Mantine rem-scaling on Twenty's 13px root) the gauge was cramped —
+          text crowded the stroke, sub-5px strokes shimmered, and everything
+          read as "off" even when measurably centered. Bigger gauge dissolves
+          all of it. Label = plain absolute overlay (geometry, not component
+          CSS — cannot misalign); roundCaps only on partial arcs (cap overlap
+          at 100% drew a seam at 12 o'clock). */}
+      <Box pos="relative" w={GAUGE_SIZE} h={GAUGE_SIZE} style={{ flex: 'none' }}>
         <RingProgress
-          size={64}
-          thickness={6}
-          // roundCaps ONLY for partial arcs: at 100% the start/end caps
-          // overlap at 12 o'clock and render a visible seam/bulge — the last
-          // "circles look off" artifact (verified by zoomed screenshot).
+          size={GAUGE_SIZE}
+          thickness={GAUGE_THICKNESS}
           roundCaps={valuePct > 0 && valuePct < 100}
+          rootColor="var(--mantine-color-dark-4)"
           sections={[{ value: valuePct, color }]}
         />
         <Box
           pos="absolute"
           top={0}
           left={0}
-          w={64}
-          h={64}
+          w={GAUGE_SIZE}
+          h={GAUGE_SIZE}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -143,7 +149,12 @@ const ScoreCard = ({
             pointerEvents: 'none',
           }}
         >
-          <Text size="xs" fw={700} lh={1}>
+          <Text
+            size="sm"
+            fw={700}
+            lh={1}
+            style={{ fontVariantNumeric: 'tabular-nums' }}
+          >
             {valuePct}%
           </Text>
         </Box>
