@@ -45,6 +45,12 @@ export const LANDING_SECTION_TYPES = [
 ] as const;
 export type LandingSectionType = (typeof LANDING_SECTION_TYPES)[number];
 
+// Add-section menu grouping (LP editor polish A2). Each section belongs to one
+// group; the grouped add menu renders them under these headers in this order.
+// `hero` sits at the top of Persuasion (it is the page's lead banner).
+export const LANDING_SECTION_GROUPS = ['Persuasion', 'Substance', 'Conversion', 'Trust'] as const;
+export type LandingSectionGroup = (typeof LANDING_SECTION_GROUPS)[number];
+
 export type ScalarKind = 'text' | 'textarea' | 'select';
 
 export interface ScalarFieldDef {
@@ -70,6 +76,7 @@ export interface RowGroupDef {
 
 export interface SectionDef {
   type: LandingSectionType;
+  group: LandingSectionGroup;
   label: string;
   description: string;
   scalarFields: ScalarFieldDef[];
@@ -91,6 +98,7 @@ const LEAD_FORM_TYPES = [
 export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
   {
     type: 'hero',
+    group: 'Persuasion',
     label: 'Hero',
     description: 'Headline + subheadline + CTA (optional image).',
     scalarFields: [
@@ -112,6 +120,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
   },
   {
     type: 'leadForm',
+    group: 'Conversion',
     label: 'Lead form',
     description: 'Capture form → the CRM web-lead pipeline (attributed by page slug).',
     scalarFields: [
@@ -129,6 +138,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
   },
   {
     type: 'listingsGrid',
+    group: 'Substance',
     label: 'Listings grid',
     description: 'A grid of featured properties.',
     scalarFields: [
@@ -153,6 +163,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
   },
   {
     type: 'marketReport',
+    group: 'Substance',
     label: 'Market snapshot',
     description: 'A row of headline stats (DLD/market figures).',
     scalarFields: [
@@ -173,6 +184,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
   },
   {
     type: 'testimonial',
+    group: 'Trust',
     label: 'Testimonials',
     description: 'Client quotes.',
     scalarFields: [{ key: 'heading', label: 'Heading', kind: 'text', placeholder: 'What buyers say' }],
@@ -190,6 +202,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
   },
   {
     type: 'faq',
+    group: 'Trust',
     label: 'FAQ',
     description: 'Question / answer pairs (also emitted as FAQ schema).',
     scalarFields: [{ key: 'heading', label: 'Heading', kind: 'text', placeholder: 'Frequently asked questions' }],
@@ -206,6 +219,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
   },
   {
     type: 'videoHero',
+    group: 'Persuasion',
     label: 'Video hero',
     description: 'Full-bleed autoplay background video with centered headline + CTA.',
     scalarFields: [
@@ -227,6 +241,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
   },
   {
     type: 'gallery',
+    group: 'Persuasion',
     label: 'Gallery',
     description: 'Responsive image grid with a click-to-open lightbox.',
     scalarFields: [{ key: 'heading', label: 'Heading', kind: 'text', placeholder: 'Gallery' }],
@@ -244,6 +259,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
   },
   {
     type: 'developerStrip',
+    group: 'Persuasion',
     label: 'Developer strip',
     description: 'Single row of developer / partner logos (grayscale → color on hover).',
     scalarFields: [{ key: 'heading', label: 'Heading', kind: 'text', placeholder: 'In partnership with' }],
@@ -261,6 +277,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
   },
   {
     type: 'uspGrid',
+    group: 'Persuasion',
     label: 'USP grid',
     description: 'Grid of unique-selling-point cards (emoji/glyph icon + title + body).',
     scalarFields: [
@@ -281,6 +298,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
   },
   {
     type: 'comparisonTable',
+    group: 'Persuasion',
     label: 'Comparison table',
     description: 'Two-option comparison (first column highlighted as recommended).',
     scalarFields: [{ key: 'heading', label: 'Heading', kind: 'text', placeholder: 'Buy vs rent' }],
@@ -298,6 +316,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
   },
   {
     type: 'timeline',
+    group: 'Persuasion',
     label: 'Timeline',
     description: 'Vertical milestone timeline (completed milestones get a filled dot).',
     scalarFields: [{ key: 'heading', label: 'Heading', kind: 'text', placeholder: 'Construction timeline' }],
@@ -316,6 +335,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
   },
   {
     type: 'countdown',
+    group: 'Persuasion',
     label: 'Countdown',
     description: 'Live countdown to a deadline (days / hours / min / sec).',
     scalarFields: [
@@ -327,6 +347,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
   },
   {
     type: 'paymentPlan',
+    group: 'Substance',
     label: 'Payment plan',
     description: 'Payment-schedule table (stage / % / note) with optional footnote.',
     scalarFields: [
@@ -348,6 +369,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
   },
   {
     type: 'floorPlans',
+    group: 'Substance',
     label: 'Floor plans',
     description: 'Tabbed floor-plan viewer (label tabs + active plan image + meta).',
     scalarFields: [{ key: 'heading', label: 'Heading', kind: 'text', placeholder: 'Floor plans' }],
@@ -367,6 +389,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
   },
   {
     type: 'locationMap',
+    group: 'Substance',
     label: 'Location map',
     description: 'Embedded map (Google embed or lat/lng) + nearby "X min" anchor chips.',
     scalarFields: [
@@ -388,6 +411,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
   },
   {
     type: 'agentCards',
+    group: 'Trust',
     label: 'Agent cards',
     description: 'Grid of agent cards (photo, name, title, call / WhatsApp links).',
     scalarFields: [{ key: 'heading', label: 'Heading', kind: 'text', placeholder: 'Meet the team' }],
@@ -407,6 +431,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
   },
   {
     type: 'pressStrip',
+    group: 'Substance',
     label: 'Press strip',
     description: 'Muted single-row press strip (outlet / logo + optional one-line quote).',
     scalarFields: [{ key: 'heading', label: 'Heading', kind: 'text', placeholder: 'As featured in' }],
@@ -425,6 +450,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
   },
   {
     type: 'stickyWhatsAppCta',
+    group: 'Conversion',
     label: 'Sticky WhatsApp CTA',
     description: 'Fixed WhatsApp CTA bar (mobile) / floating pill (desktop).',
     scalarFields: [
@@ -436,6 +462,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
   },
   {
     type: 'multiStepLeadForm',
+    group: 'Conversion',
     label: 'Multi-step lead form',
     description: 'Multi-step capture (interest + budget → contact) → the CRM web-lead pipeline.',
     scalarFields: [
@@ -448,6 +475,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
   },
   {
     type: 'gatedDownload',
+    group: 'Conversion',
     label: 'Gated download',
     description: 'Email-gated asset download (fires a lead, then reveals the link).',
     scalarFields: [
@@ -467,6 +495,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
   },
   {
     type: 'bookingBlock',
+    group: 'Conversion',
     label: 'Booking block',
     description: 'Pick a slot + contact → the CRM web-lead pipeline (booking form type).',
     scalarFields: [
