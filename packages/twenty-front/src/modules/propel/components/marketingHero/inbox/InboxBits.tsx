@@ -30,8 +30,24 @@ const CHANNEL_META: Record<
   WHATSAPP: { label: 'WhatsApp', mark: 'Wa', color: '#25D366' },
 };
 
+// Defensive fallback (2026-07-08): a thread with a channel value outside the
+// map (null / legacy / future enum) used to crash the ENTIRE hero at render
+// ("Cannot read properties of undefined (reading 'color')" — the whole Inbox
+// and the Marketing hero's Inbox tab died on one bad row). Unknown channels
+// now render a neutral badge instead. Never index CHANNEL_META directly.
+const UNKNOWN_CHANNEL_META = {
+  label: 'Unknown',
+  mark: '?',
+  color: '#6b7280',
+} as const;
+
+const channelMeta = (
+  channel: InboxChannel | string | null | undefined,
+): { label: string; mark: string; color: string } =>
+  CHANNEL_META[channel as InboxChannel] ?? UNKNOWN_CHANNEL_META;
+
 export const channelLabel = (channel: InboxChannel): string =>
-  CHANNEL_META[channel].label;
+  channelMeta(channel).label;
 
 export const ChannelBadge = ({
   channel,
@@ -40,7 +56,7 @@ export const ChannelBadge = ({
   channel: InboxChannel;
   size?: number;
 }) => {
-  const m = CHANNEL_META[channel];
+  const m = channelMeta(channel);
   return (
     <Box
       style={{
