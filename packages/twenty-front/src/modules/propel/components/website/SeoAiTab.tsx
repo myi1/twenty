@@ -51,7 +51,7 @@ import { useWebsiteSeo } from '@/propel/hooks/useWebsiteSeo';
 
 // Visible build tag (footer) — bump on user-visible fixes so stale-cache
 // debates end with a glance.
-const HERO_UI_BUILD = 'r5-optical';
+const HERO_UI_BUILD = 'r6-svg';
 
 // Gauge geometry. NOTE Mantine converts px props to rem against a 16px
 // assumption; Twenty's 13px root shrinks everything by 13/16 — 96 renders
@@ -121,57 +121,69 @@ const ScoreCard = ({
 }) => (
   <Paper withBorder radius="md" p="md">
     <Group gap="md" wrap="nowrap" align="center">
-      {/* Gauge redesign (founder feedback, 3rd round): at the old 64(→52 after
-          Mantine rem-scaling on Twenty's 13px root) the gauge was cramped —
-          text crowded the stroke, sub-5px strokes shimmered, and everything
-          read as "off" even when measurably centered. Bigger gauge dissolves
-          all of it. Label = plain absolute overlay (geometry, not component
-          CSS — cannot misalign); roundCaps only on partial arcs (cap overlap
-          at 100% drew a seam at 12 o'clock). */}
-      <Box pos="relative" w={GAUGE_SIZE} h={GAUGE_SIZE} style={{ flex: 'none' }}>
-        <RingProgress
-          size={GAUGE_SIZE}
-          thickness={GAUGE_THICKNESS}
-          roundCaps={valuePct > 0 && valuePct < 100}
-          rootColor="var(--mantine-color-dark-4)"
-          sections={[{ value: valuePct, color }]}
+      {/* r6 — SINGLE-SVG gauge. Five rounds of "circles look off" traced to
+          stacking an HTML label OVER a Mantine svg: two rendering systems,
+          every boundary (rem-scaling, zoom, DPR, flex rounding) a chance to
+          drift. Here the track, the arc AND the text share ONE svg coordinate
+          system — the <text> is anchored at the circle's own cx/cy, so ring
+          and label cannot disagree at any zoom or DPI. Optical centering: the
+          digits are the anchored run; the % is a smaller dimmed tspan hung
+          AFTER the anchor with its width ignored, so the eye's target — the
+          number — sits exactly on the ring axis. */}
+      <svg
+        width={78}
+        height={78}
+        viewBox="0 0 96 96"
+        style={{ flex: 'none', display: 'block' }}
+        role="img"
+        aria-label={`${label}: ${valuePct}%`}
+      >
+        <circle
+          cx={48}
+          cy={48}
+          r={40}
+          fill="none"
+          stroke="var(--mantine-color-dark-4)"
+          strokeWidth={8}
         />
-        <Box
-          pos="absolute"
-          top={0}
-          left={0}
-          w={GAUGE_SIZE}
-          h={GAUGE_SIZE}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            pointerEvents: 'none',
-          }}
+        {valuePct > 0 ? (
+          <circle
+            cx={48}
+            cy={48}
+            r={40}
+            fill="none"
+            stroke={`var(--mantine-color-${color}-6)`}
+            strokeWidth={8}
+            strokeDasharray={`${(valuePct / 100) * 2 * Math.PI * 40} ${2 * Math.PI * 40}`}
+            strokeLinecap={valuePct < 100 ? 'round' : 'butt'}
+            transform="rotate(-90 48 48)"
+          />
+        ) : null}
+        {/* text-anchor=middle centers the WHOLE run (digits + % tspan), which
+            re-creates the optical left-shift. dx shifts the run right by half
+            of (gap + %-width) so the DIGITS' center lands exactly on x=48.
+            %-glyph width measured live: 11.05px at 600 11px Inter; gap 1px →
+            dx = 6. Constant because the svg viewBox scales everything
+            uniformly — no zoom/DPR dependence. */}
+        <text
+          x={48}
+          y={48}
+          dx={6}
+          textAnchor="middle"
+          dominantBaseline="central"
+          fill="var(--mantine-color-text)"
+          style={{ font: '700 17px/1 Inter, sans-serif', fontVariantNumeric: 'tabular-nums' }}
         >
-          {/* OPTICAL centering (r5): geometric centering of "100%" measures
-              perfect yet reads left-shifted — the % glyph is mostly whitespace,
-              so the eye centers on the DIGITS. Center the number itself and
-              counterbalance the visible % with an invisible mirror twin, so
-              digits sit dead-on the ring axis and the % hangs symmetrically. */}
-          <Box style={{ display: 'flex', alignItems: 'baseline', lineHeight: 1 }}>
-            <Text size="xs" fw={600} lh={1} style={{ visibility: 'hidden' }}>
-              %
-            </Text>
-            <Text
-              size="sm"
-              fw={700}
-              lh={1}
-              style={{ fontVariantNumeric: 'tabular-nums' }}
-            >
-              {valuePct}
-            </Text>
-            <Text size="xs" fw={600} lh={1} c="dimmed">
-              %
-            </Text>
-          </Box>
-        </Box>
-      </Box>
+          {valuePct}
+          <tspan
+            dx={1}
+            style={{ font: '600 11px/1 Inter, sans-serif' }}
+            fill="var(--mantine-color-dimmed)"
+          >
+            %
+          </tspan>
+        </text>
+      </svg>
       <Stack gap={2} style={{ minWidth: 0 }}>
         <Text size="sm" fw={600} truncate>
           {label}
