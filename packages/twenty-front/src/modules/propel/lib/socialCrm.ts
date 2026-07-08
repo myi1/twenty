@@ -115,14 +115,19 @@ export async function generatePlan(
   brief: string,
   networks: SocialNetwork[],
   window?: GeneratePlanWindow,
+  // Sources grounding (SRC-1 / plan SM3): ≤8 sourceMaterial ids. The bench io
+  // loads each source's extractedText and prepends an authoritative-figures
+  // grounding block to the Strategist context. Absent/empty → unchanged behavior.
+  sourceIds?: string[],
 ): Promise<GeneratePlanResult> {
-  // FLAT body — networks + optional window sit at the top level so the route reads
-  // event.body.networks / .window directly.
+  // FLAT body — networks + optional window + optional sourceIds sit at the top
+  // level so the route reads event.body.networks / .window / .sourceIds directly.
   const body = await callPropelRoute<Envelope>(BENCH_ROUTE, {
     action: 'generate',
     brief,
     networks,
     ...(window ? { window } : {}),
+    ...(sourceIds && sourceIds.length > 0 ? { sourceIds } : {}),
   });
   if (body && body.ok === true && typeof body.planId === 'string' && body.planId !== '') {
     return { ok: true, planId: body.planId, benchLog: asBenchLog(body.benchLog) };

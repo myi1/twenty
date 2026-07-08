@@ -357,6 +357,10 @@ export interface DraftFromBriefOverrides {
   theme?: LandingTheme;
   locale?: string;
   templateKey?: string;
+  // Sources grounding (SRC-1 / plan SM3): ≤8 sourceMaterial ids. The bench io
+  // loads each source's extractedText and prepends an authoritative-figures
+  // grounding block to the Copywriter context. Absent/empty → unchanged behavior.
+  sourceIds?: string[];
 }
 
 // Same discriminated shape as the other AI routes: `featureOff` distinguishes
@@ -374,13 +378,17 @@ export async function draftFromBrief(
   overrides?: DraftFromBriefOverrides,
 ): Promise<DraftFromBriefResult> {
   // FLAT body — spread the optional overrides at the top level alongside the
-  // brief so the route reads event.body.theme / .locale / .templateKey directly.
+  // brief so the route reads event.body.theme / .locale / .templateKey /
+  // .sourceIds directly.
   const body = await callPropelRoute<Envelope>(BENCH_ROUTE, {
     action: 'generate',
     brief,
     ...(overrides?.theme ? { theme: overrides.theme } : {}),
     ...(overrides?.locale ? { locale: overrides.locale } : {}),
     ...(overrides?.templateKey ? { templateKey: overrides.templateKey } : {}),
+    ...(overrides?.sourceIds && overrides.sourceIds.length > 0
+      ? { sourceIds: overrides.sourceIds }
+      : {}),
   });
   if (body && body.ok === true && typeof body.id === 'string' && body.id !== '') {
     return { ok: true, id: body.id, benchLog: asBenchLog(body.benchLog) };

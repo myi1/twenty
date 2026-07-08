@@ -12,6 +12,8 @@ import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 //     action:'update' + {id, patch:{name?,altText?,tags?}}       → { ok, id }
 //     action:'toggleFavorite' + {id}                             → { ok, favorite }
 //     action:'delete' + {id}                                     → { ok }
+//     action:'upload' + {filename, dataBase64, title?, tags?}    → { ok, id, gatewayPath }
+//                       → { ok:false, code:'FEATURE_OFF' }  (IMAGE_SERVICE_URL unset)
 //
 // callPropelRoute sends the agent's own session token; identity + role are
 // derived server-side and the route fails CLOSED (NOT_FOUND) for a non-Manager.
@@ -147,6 +149,49 @@ export async function toggleFavorite(id: string): Promise<CrmResult<{ favorite: 
     return { ok: true, data: { favorite: body.favorite } };
   }
   return { ok: false, error: failMessage(body) };
+}
+
+// ── device upload (SRC-2 / plan SM5) ─────────────────────────────────────────
+// The hero reads the picked/dropped image client-side (main-thread FileReader →
+// bare base64, ≤4MB decoded) and POSTs it through the same flat-body route; the
+// route forwards to the image-service `/v1/images/upload` (webp normalize + store)
+// with the server-held token, then creates the UPLOADED asset row. The hero never
+// sees the image-service token. `featureOff` distinguishes "uploads aren't wired
+// on this workspace" (dim the tab) from a transient/validation error (inline).
+export type UploadAssetResult =
+  | { ok: true; id: string; gatewayPath: string }
+  | { ok: false; error: string; featureOff: boolean };
+
+const isFeatureOff = (body: Envelope | null): boolean =>
+  body !== null && body.ok === false && body.code === 'FEATURE_OFF';
+
+export async function uploadAsset(
+  filename: string,
+  dataBase64: string,
+  title?: string,
+): Promise<UploadAssetResult> {
+  const body = await callPropelRoute<Envelope>(ROUTE, {
+    action: 'upload',
+    filename,
+    dataBase64,
+    ...(title ? { title } : {}),
+  });
+  if (
+    body &&
+    body.ok === true &&
+    typeof body.id === 'string' &&
+    typeof body.gatewayPath === 'string' &&
+    body.gatewayPath !== ''
+  ) {
+    return { ok: true, id: body.id, gatewayPath: body.gatewayPath };
+  }
+  return {
+    ok: false,
+    error: isFeatureOff(body)
+      ? 'Device uploads aren’t configured on this workspace yet.'
+      : failMessage(body),
+    featureOff: isFeatureOff(body),
+  };
 }
 
 export async function deleteAsset(id: string): Promise<CrmResult<Record<string, never>>> {
