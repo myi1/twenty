@@ -11,6 +11,10 @@ import type { LandingSectionType, LandingStatus, LandingTheme } from '@/propel/l
 //     action:'save'     + {id?, title, slug?, theme, status, sections, …}
 //                                                → { ok, id, slug }
 //     action:'setStatus'+ {id, status}           → { ok, id, status }
+//       …→ LIVE re-runs the pre-flight gate server-side; any HARD fail →
+//          { ok:false, code:'PREFLIGHT_FAILED', checks } (publish blocked).
+//     action:'preflight'+ id                     → { ok, passed, checks }
+//       (Stage 3C / pinned P1 contract — checks:[{key,level,ok,detail}])
 //
 // callPropelRoute sends the agent's own session token; identity + role are
 // derived server-side and the route fails CLOSED (NOT_FOUND) for a non-Manager.
@@ -40,6 +44,9 @@ export interface LandingPageSummary {
   leads: number;
   publishedAt: string | null;
   updatedAt: string | null;
+  // Stage 3C — the stored pre-flight result (the route projects it once the P1
+  // leg lands). Tolerant: routes predating the gate simply omit it → no chip.
+  preflightJson?: unknown;
 }
 
 // Full page (editor). Adds the section list + the bench audit log (Stage 3B —
@@ -121,15 +128,118 @@ export async function saveLandingPage(
   return { ok: false, error: failMessage(body) };
 }
 
+// ── Publish pre-flight gate (Stage 3C — pinned P1 contract) ──────────────────
+// `{action:'preflight', id}` runs the hard-check gate (lead form · images ·
+// legal footer · meta · sections schema · mobile budget · Trakheesi permit),
+// stores `preflightJson`, and returns every check row. HARD fails block publish
+// server-side; SOFT rows surface as warnings only.
+
+export type PreflightLevel = 'HARD' | 'SOFT';
+
+export interface PreflightCheck {
+  key: string;
+  level: PreflightLevel;
+  ok: boolean;
+  detail: string;
+}
+
+// Tolerant row parse — drop anything that isn't {key,…}; default level to SOFT
+// so an unknown level can never hard-block a publish client-side (the server
+// gate is authoritative anyway).
+const asPreflightChecks = (v: unknown): PreflightCheck[] => {
+  if (!Array.isArray(v)) return [];
+  const out: PreflightCheck[] = [];
+  for (const item of v) {
+    if (item === null || typeof item !== 'object') continue;
+    const r = item as Record<string, unknown>;
+    if (typeof r.key !== 'string' || r.key === '') continue;
+    out.push({
+      key: r.key,
+      level: r.level === 'HARD' ? 'HARD' : 'SOFT',
+      ok: r.ok === true,
+      detail: typeof r.detail === 'string' ? r.detail : '',
+    });
+  }
+  return out;
+};
+
+// `unavailable` = the gate itself is missing on this workspace (route not
+// deployed / older route that answers `unknown action` / FEATURE_OFF). The
+// caller then falls back to DIRECT publish — a missing gate must never block
+// publishing.
+export type PreflightResult =
+  | { ok: true; passed: boolean; checks: PreflightCheck[] }
+  | { ok: false; error: string; unavailable: boolean };
+
+const isPreflightUnavailable = (body: Envelope | null): boolean => {
+  if (body === null) return true; // route unreachable / not deployed / not signed in
+  if (body.code === 'FEATURE_OFF') return true;
+  // Pre-P1 landing-admin builds answer: { error:'unknown action "preflight"', code:'LANDING_INVALID' }.
+  return typeof body.error === 'string' && body.error.toLowerCase().includes('unknown action');
+};
+
+export async function preflightPage(id: string): Promise<PreflightResult> {
+  const body = await callPropelRoute<Envelope>(ROUTE, { action: 'preflight', id });
+  if (body && body.ok === true && Array.isArray(body.checks)) {
+    return { ok: true, passed: body.passed === true, checks: asPreflightChecks(body.checks) };
+  }
+  return { ok: false, error: failMessage(body), unavailable: isPreflightUnavailable(body) };
+}
+
+// Summary of a stored `preflightJson` value for the list cards' chip. Accepts
+// the raw JSON string (the CRM field's value) or an already-parsed object;
+// anything unreadable (or a route that doesn't project it) → null → no chip.
+export interface PreflightSummary {
+  passed: boolean;
+  hardFails: number;
+  warnings: number;
+}
+
+export const readPreflightSummary = (v: unknown): PreflightSummary | null => {
+  let raw: unknown = v;
+  if (typeof raw === 'string') {
+    if (raw === '') return null;
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  if (raw === null || typeof raw !== 'object') return null;
+  const rec = raw as Record<string, unknown>;
+  const checks = asPreflightChecks(rec.checks);
+  if (checks.length === 0) return null;
+  const hardFails = checks.filter((c) => c.level === 'HARD' && !c.ok).length;
+  const warnings = checks.filter((c) => c.level === 'SOFT' && !c.ok).length;
+  return {
+    passed: typeof rec.passed === 'boolean' ? rec.passed : hardFails === 0,
+    hardFails,
+    warnings,
+  };
+};
+
+// setStatus → LIVE re-runs the gate SERVER-side (the client modal is UX, not
+// enforcement): a HARD fail comes back as { ok:false, code:'PREFLIGHT_FAILED',
+// checks } — surfaced so the modal can re-render the server's rows.
+export type SetStatusResult =
+  | { ok: true; data: { id: string; status: LandingStatus } }
+  | { ok: false; error: string; preflightFailed: boolean; checks: PreflightCheck[] };
+
 export async function setLandingStatus(
   id: string,
   status: LandingStatus,
-): Promise<CrmResult<{ id: string; status: LandingStatus }>> {
+): Promise<SetStatusResult> {
   const body = await callPropelRoute<Envelope>(ROUTE, { action: 'setStatus', id, status });
   if (body && body.ok === true && typeof body.id === 'string') {
     return { ok: true, data: { id: body.id, status } };
   }
-  return { ok: false, error: failMessage(body) };
+  const preflightFailed = body !== null && body.code === 'PREFLIGHT_FAILED';
+  return {
+    ok: false,
+    error: preflightFailed ? 'Publish blocked — pre-flight checks failed.' : failMessage(body),
+    preflightFailed,
+    checks: preflightFailed ? asPreflightChecks(body?.checks) : [],
+  };
 }
 
 // ── Project-image assets (C4) ────────────────────────────────────────────────
