@@ -107,7 +107,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
       { key: 'subheadline', label: 'Subheadline', kind: 'textarea' },
       { key: 'ctaLabel', label: 'CTA label', kind: 'text', placeholder: 'Enquire now' },
       { key: 'ctaHref', label: 'CTA link', kind: 'text', placeholder: '#enquire' },
-      { key: 'imageUrl', label: 'Image URL', kind: 'text' },
+      { key: 'imageUrl', label: 'Image', kind: 'text' },
     ],
     defaultProps: {
       eyebrow: '',
@@ -152,7 +152,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
       columns: [
         { key: 'title', label: 'Title' },
         { key: 'priceLabel', label: 'Price' },
-        { key: 'imageUrl', label: 'Image URL' },
+        { key: 'imageUrl', label: 'Image' },
         { key: 'beds', label: 'Beds' },
         { key: 'baths', label: 'Baths' },
         { key: 'area', label: 'Area' },
@@ -226,7 +226,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
       { key: 'headline', label: 'Headline', kind: 'text', placeholder: 'Live the Palm' },
       { key: 'subheadline', label: 'Subheadline', kind: 'textarea' },
       { key: 'videoUrl', label: 'Video URL', kind: 'text', placeholder: 'https://…/hero.mp4' },
-      { key: 'posterUrl', label: 'Poster image URL', kind: 'text' },
+      { key: 'posterUrl', label: 'Poster image', kind: 'text' },
       { key: 'ctaLabel', label: 'CTA label', kind: 'text', placeholder: 'Enquire now' },
       { key: 'ctaHref', label: 'CTA link', kind: 'text', placeholder: '#enquire' },
     ],
@@ -250,7 +250,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
       label: 'Images',
       addLabel: 'Add image',
       columns: [
-        { key: 'src', label: 'Image URL' },
+        { key: 'src', label: 'Image' },
         { key: 'alt', label: 'Alt text' },
         { key: 'caption', label: 'Caption' },
       ],
@@ -268,7 +268,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
       label: 'Logos',
       addLabel: 'Add logo',
       columns: [
-        { key: 'src', label: 'Logo URL' },
+        { key: 'src', label: 'Logo' },
         { key: 'alt', label: 'Alt text' },
         { key: 'href', label: 'Link' },
       ],
@@ -379,7 +379,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
       addLabel: 'Add plan',
       columns: [
         { key: 'label', label: 'Label' },
-        { key: 'imageSrc', label: 'Image URL' },
+        { key: 'imageSrc', label: 'Image' },
         { key: 'area', label: 'Area' },
         { key: 'beds', label: 'Beds' },
         { key: 'priceLabel', label: 'Price' },
@@ -422,7 +422,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
       columns: [
         { key: 'name', label: 'Name' },
         { key: 'title', label: 'Title' },
-        { key: 'photoSrc', label: 'Photo URL' },
+        { key: 'photoSrc', label: 'Photo' },
         { key: 'phone', label: 'Phone' },
         { key: 'whatsapp', label: 'WhatsApp' },
       ],
@@ -443,7 +443,7 @@ export const LANDING_SECTION_DEFS: readonly SectionDef[] = [
         { key: 'outlet', label: 'Outlet' },
         { key: 'quote', label: 'Quote', kind: 'textarea' },
         { key: 'href', label: 'Link' },
-        { key: 'logoSrc', label: 'Logo URL' },
+        { key: 'logoSrc', label: 'Logo' },
       ],
     },
     defaultProps: { heading: 'As featured in', items: [] },
