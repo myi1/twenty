@@ -8,9 +8,12 @@ import {
   Loader,
   Popover,
   ScrollArea,
+  SegmentedControl,
   SimpleGrid,
   Stack,
+  Tabs,
   Text,
+  Textarea,
   TextInput,
   Tooltip,
   UnstyledButton,
@@ -18,8 +21,10 @@ import {
 import { IconPhoto, IconSearch } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import {
+  generateImage,
   projectImages as fetchProjectImages,
   searchProjects,
+  type ImageAspect,
   type ProjectImage,
   type ProjectSearchResult,
 } from '@/propel/lib/landingPagesCrm';
@@ -68,15 +73,25 @@ interface ProjectImagePickerProps {
   // affordance) instead of the compact photo ActionIcon (row-editor / rightSection
   // usage). Purely a trigger-styling switch — the popover body is identical.
   triggerLabel?: string;
+  // Best-effort context for the AI-generate guardrail (the page draft's title).
+  // Empty is fine — the CRM route only shapes on a non-empty value.
+  projectName?: string;
 }
 
 type Stage = 'search' | 'images';
+type PickerTab = 'renders' | 'generate' | 'upload';
 
-export const ProjectImagePicker = ({ sitePublicUrl, onPick, triggerLabel }: ProjectImagePickerProps) => {
+export const ProjectImagePicker = ({
+  sitePublicUrl,
+  onPick,
+  triggerLabel,
+  projectName,
+}: ProjectImagePickerProps) => {
   const notify = usePropelToast();
   const { featureOff, markFeatureOff } = useProjectAssets();
 
   const [opened, setOpened] = useState(false);
+  const [tab, setTab] = useState<PickerTab>('renders');
   const [stage, setStage] = useState<Stage>('search');
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
@@ -84,6 +99,14 @@ export const ProjectImagePicker = ({ sitePublicUrl, onPick, triggerLabel }: Proj
   const [images, setImages] = useState<ProjectImage[]>([]);
   const [activeProject, setActiveProject] = useState<ProjectSearchResult | null>(null);
   const [searched, setSearched] = useState(false);
+
+  // ── Generate tab (I5) state ──────────────────────────────────────────────
+  const [prompt, setPrompt] = useState('');
+  const [aspect, setAspect] = useState<ImageAspect>('landscape');
+  const [generating, setGenerating] = useState(false);
+  // Latched per-picker when the CRM route answers FEATURE_OFF (OpenAI /
+  // image-service not wired) — dims the Generate tab body, never crashes.
+  const [genFeatureOff, setGenFeatureOff] = useState(false);
 
   // No gateway host, or the feature is off for this workspace → no button at all.
   if (sitePublicUrl === '' || featureOff) return null;
@@ -137,6 +160,26 @@ export const ProjectImagePicker = ({ sitePublicUrl, onPick, triggerLabel }: Proj
     close();
   };
 
+  const runGenerate = async () => {
+    const p = prompt.trim();
+    if (p === '' || generating) return;
+    setGenerating(true);
+    const res = await generateImage({ prompt: p, aspect, projectName: projectName ?? '' });
+    setGenerating(false);
+    if (res.ok) {
+      onPick(res.gatewayPath);
+      notify('Image generated.', 'success');
+      close();
+      return;
+    }
+    if (res.featureOff) {
+      // Not wired on this workspace → dim the tab body; keep the popover open.
+      setGenFeatureOff(true);
+      return;
+    }
+    notify(res.error, 'error');
+  };
+
   return (
     <Popover
       opened={opened}
@@ -173,7 +216,69 @@ export const ProjectImagePicker = ({ sitePublicUrl, onPick, triggerLabel }: Proj
         )}
       </Popover.Target>
       <Popover.Dropdown>
-        {stage === 'search' ? (
+        <Tabs
+          value={tab}
+          onChange={(v) => setTab((v as PickerTab | null) ?? 'renders')}
+          color="red"
+          mb="xs"
+        >
+          <Tabs.List>
+            <Tabs.Tab value="renders" fz="xs">
+              Project renders
+            </Tabs.Tab>
+            <Tabs.Tab value="generate" fz="xs">
+              Generate
+            </Tabs.Tab>
+            {/* Upload (task #18) — disabled shell; needs the engine byte-bridge. */}
+            <Tooltip label="Coming soon" withinPortal zIndex={5000}>
+              <Box component="span" style={{ display: 'inline-flex' }}>
+                <Tabs.Tab value="upload" fz="xs" disabled>
+                  Upload
+                </Tabs.Tab>
+              </Box>
+            </Tooltip>
+          </Tabs.List>
+        </Tabs>
+        {tab === 'generate' ? (
+          genFeatureOff ? (
+            <Text size="xs" c="dimmed" ta="center" py="md">
+              AI image generation isn’t configured yet.
+            </Text>
+          ) : (
+            <Stack gap="xs">
+              <Textarea
+                size="xs"
+                placeholder="Describe the image — e.g. sunlit modern living room with a Dubai skyline view"
+                autosize
+                minRows={3}
+                maxRows={6}
+                value={prompt}
+                onChange={(e) => setPrompt(e.currentTarget.value)}
+              />
+              <SegmentedControl
+                size="xs"
+                fullWidth
+                color="red"
+                value={aspect}
+                onChange={(v) => setAspect(v as ImageAspect)}
+                data={[
+                  { value: 'landscape', label: 'Landscape' },
+                  { value: 'portrait', label: 'Portrait' },
+                  { value: 'square', label: 'Square' },
+                ]}
+              />
+              <Button
+                size="xs"
+                color="red"
+                loading={generating}
+                disabled={prompt.trim() === '' || generating}
+                onClick={() => void runGenerate()}
+              >
+                Generate
+              </Button>
+            </Stack>
+          )
+        ) : stage === 'search' ? (
           <Stack gap="xs">
             <Group gap="xs" wrap="nowrap">
               <TextInput

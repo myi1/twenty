@@ -1,6 +1,7 @@
 import { useState, type CSSProperties, type DragEvent } from 'react';
 import {
   ActionIcon,
+  Badge,
   Box,
   Button,
   Collapse,
@@ -138,19 +139,24 @@ export const ImageField = ({
   label,
   value,
   sitePublicUrl,
+  projectName,
   onChange,
 }: {
   label: string;
   value: string;
   sitePublicUrl: string;
+  projectName?: string;
   onChange: (next: string) => void;
 }) => {
   const [showUrl, setShowUrl] = useState(false);
   const [broken, setBroken] = useState(false);
   const src = resolveThumb(value, sitePublicUrl);
   const thumbSrc = broken ? null : src;
+  // Provenance (I5): an /img/is/ gateway path is an AI-generated asset — flag it.
+  const isAiGenerated = value.trim().startsWith('/img/is/');
 
   const placeholderStyle: CSSProperties = {
+    position: 'relative',
     width: 56,
     height: 56,
     flexShrink: 0,
@@ -181,12 +187,23 @@ export const ImageField = ({
           ) : (
             <IconPhoto size={20} />
           )}
+          {isAiGenerated ? (
+            <Badge
+              size="xs"
+              color="grape"
+              variant="filled"
+              style={{ position: 'absolute', top: 2, left: 2, pointerEvents: 'none' }}
+            >
+              AI
+            </Badge>
+          ) : null}
         </Box>
         <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
           <Group gap={6} wrap="nowrap">
             <ProjectImagePicker
               sitePublicUrl={sitePublicUrl}
               triggerLabel="Change"
+              projectName={projectName}
               onPick={(path) => {
                 setBroken(false);
                 onChange(path);
@@ -224,11 +241,13 @@ const RowsEditor = ({
   rows,
   onChange,
   sitePublicUrl,
+  projectName,
 }: {
   def: NonNullable<ReturnType<typeof sectionDef>['rows']>;
   rows: Record<string, string>[];
   onChange: (next: Record<string, string>[]) => void;
   sitePublicUrl: string;
+  projectName?: string;
 }) => (
   <Stack gap="xs">
     <Group justify="space-between">
@@ -282,6 +301,7 @@ const RowsEditor = ({
                   label={col.label}
                   value={row[col.key] ?? ''}
                   sitePublicUrl={sitePublicUrl}
+                  projectName={projectName}
                   onChange={(v) => {
                     const next = rows.slice();
                     next[ri] = { ...next[ri], [col.key]: v };
@@ -317,6 +337,7 @@ export interface SectionRowProps {
   open: boolean;
   selected: boolean;
   sitePublicUrl: string;
+  projectName?: string;
   dragOver: boolean;
   onToggle: () => void;
   onChange: (next: EditSection) => void;
@@ -336,6 +357,7 @@ export const SectionRow = ({
   open,
   selected,
   sitePublicUrl,
+  projectName,
   dragOver,
   onToggle,
   onChange,
@@ -476,6 +498,7 @@ export const SectionRow = ({
                   label={f.label}
                   value={asStr(section.props[f.key])}
                   sitePublicUrl={sitePublicUrl}
+                  projectName={projectName}
                   onChange={(v) => setScalar(f.key, v)}
                 />
               ) : (
@@ -499,6 +522,7 @@ export const SectionRow = ({
                     onChange({ ...section, props: { ...section.props, [def.rows!.key]: next } })
                   }
                   sitePublicUrl={sitePublicUrl}
+                  projectName={projectName}
                 />
               </>
             ) : null}

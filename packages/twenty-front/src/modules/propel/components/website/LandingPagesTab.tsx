@@ -599,6 +599,7 @@ export const LandingPagesTab = () => {
             label="OG image"
             value={draft.ogImageUrl}
             sitePublicUrl={sitePublicUrl}
+            projectName={draft.title}
             onChange={(path) => setDraft((d) => ({ ...d, ogImageUrl: path }))}
           />
         </Stack>
@@ -707,6 +708,7 @@ export const LandingPagesTab = () => {
               open={selectedIndex === i}
               selected={selectedIndex === i}
               sitePublicUrl={sitePublicUrl}
+              projectName={draft.title}
               dragOver={dragOverIndex === i && dragIndex !== null && dragIndex !== i}
               onToggle={() => setSelectedIndex((cur) => (cur === i ? null : i))}
               onChange={(next) => updateSection(i, next)}
