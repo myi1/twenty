@@ -8,6 +8,7 @@ import {
   Center,
   Group,
   Loader,
+  Menu,
   Modal,
   Paper,
   Popover,
@@ -26,9 +27,11 @@ import {
 import {
   IconAlertTriangle,
   IconCheck,
+  IconChevronDown,
   IconDeviceFloppy,
   IconExternalLink,
   IconEye,
+  IconLanguage,
   IconLayoutGrid,
   IconPencil,
   IconPlus,
@@ -48,6 +51,8 @@ import {
   readPreflightSummary,
   saveLandingPage,
   setLandingStatus,
+  translatePage,
+  TRANSLATE_LOCALES,
   type BenchLogEntry,
   type LandingPageSummary,
   type LandingSection,
@@ -250,17 +255,29 @@ const PageCard = ({
   page,
   onEdit,
   onToggleStatus,
+  titleExtra,
+  actionsExtra,
+  footer,
 }: {
   page: LandingPageSummary;
   onEdit: () => void;
   onToggleStatus: () => void;
+  /** Stage 3D — a locale chip for an orphaned translation card. */
+  titleExtra?: React.ReactNode;
+  /** Stage 3D — the "Translate →" menu on EN parents. */
+  actionsExtra?: React.ReactNode;
+  /** Stage 3D — the nested translation-sibling rows + "Publish all". */
+  footer?: React.ReactNode;
 }) => (
   <Paper withBorder radius="md" p="md">
     <Group justify="space-between" align="flex-start" wrap="nowrap" mb="xs">
       <Box style={{ minWidth: 0 }}>
-        <Text fw={600} truncate>
-          {page.title || 'Untitled'}
-        </Text>
+        <Group gap={6} wrap="nowrap">
+          <Text fw={600} truncate>
+            {page.title || 'Untitled'}
+          </Text>
+          {titleExtra}
+        </Group>
         <Text size="xs" c="dimmed" truncate>
           /lp/{page.slug}
         </Text>
@@ -315,7 +332,9 @@ const PageCard = ({
           Open page
         </Button>
       ) : null}
+      {actionsExtra}
     </Group>
+    {footer}
   </Paper>
 );
 
@@ -323,7 +342,8 @@ const PageCard = ({
 // ── the tab ──────────────────────────────────────────────────────────────────
 export const LandingPagesTab = () => {
   const notify = usePropelToast();
-  const { phase, error, data, usingMock, sitePublicUrl, reload } = useLandingPages();
+  const { phase, error, data, usingMock, sitePublicUrl, autoTranslate, reload } =
+    useLandingPages();
   // Campaign Spine deep-link (CS4): the campaign review's "Open in editor"
   // navigates to /marketing?tab=website&sub=landing-pages&edit=<id>. There is no
   // standalone editor route (mode is local state), so we consume a one-shot
@@ -391,6 +411,22 @@ export const LandingPagesTab = () => {
     running: boolean;
     publishing: boolean;
   } | null>(null);
+  // Stage 3D — the post-publish auto-translate loop + translations queue.
+  // `translateState` drives the passive progress strip ("Translating… AR ✓ RU ⏳");
+  // `translateUnavailable` dims every translate affordance once the bench route
+  // answers unknown-action / FEATURE_OFF (the CRM leg isn't live yet);
+  // `adHocTranslating` is the in-flight ad-hoc run key (`pageId:locale`);
+  // `bulkPublishingId` is the parent whose "Publish all translations" is running.
+  // `translateRunRef` is the fire-once guard: the loop starts ONLY from a
+  // successful publish event (never a render), and never twice concurrently.
+  const [translateState, setTranslateState] = useState<{
+    pageId: string;
+    results: { locale: string; state: 'pending' | 'running' | 'done' | 'failed' }[];
+  } | null>(null);
+  const [translateUnavailable, setTranslateUnavailable] = useState(false);
+  const [adHocTranslating, setAdHocTranslating] = useState<string | null>(null);
+  const [bulkPublishingId, setBulkPublishingId] = useState<string | null>(null);
+  const translateRunRef = useRef(false);
 
   const derivedSlug = useMemo(
     () => (slugTouched ? draft.slug : slugify(draft.title)),
@@ -400,6 +436,39 @@ export const LandingPagesTab = () => {
   // A3 — the working draft is dirty when its content diverges from the snapshot.
   const currentSnapshot = useMemo(() => serializeDraft(draft, derivedSlug), [draft, derivedSlug]);
   const isDirty = mode === 'editor' && currentSnapshot !== savedSnapshot;
+
+  // ── Stage 3D — group locale siblings under their EN parent ────────────────
+  // Pages carrying a sourceLandingPageId that resolves to another listed page
+  // nest under it (locale order = the loop order); anything else — parents,
+  // pre-translator pages with no locale fields, or an orphaned sibling whose
+  // parent was deleted — stays a top-level card, exactly as before.
+  const { parentPages, siblingsByParent } = useMemo(() => {
+    const ids = new Set(data.map((p) => p.id));
+    const parents: LandingPageSummary[] = [];
+    const byParent = new Map<string, LandingPageSummary[]>();
+    for (const p of data) {
+      const src =
+        typeof p.sourceLandingPageId === 'string' && p.sourceLandingPageId !== ''
+          ? p.sourceLandingPageId
+          : null;
+      if (src !== null && ids.has(src)) {
+        byParent.set(src, [...(byParent.get(src) ?? []), p]);
+      } else {
+        parents.push(p);
+      }
+    }
+    const rank = (l: string | null | undefined): number => {
+      const i = (TRANSLATE_LOCALES as readonly string[]).indexOf((l ?? '').toUpperCase());
+      return i === -1 ? TRANSLATE_LOCALES.length : i;
+    };
+    for (const [key, list] of byParent) {
+      byParent.set(
+        key,
+        [...list].sort((a, b) => rank(a.locale) - rank(b.locale)),
+      );
+    }
+    return { parentPages: parents, siblingsByParent: byParent };
+  }, [data]);
 
   // Keep the selection valid as sections are added/removed/reordered.
   useEffect(() => {
@@ -523,6 +592,142 @@ export const LandingPagesTab = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editParam, phase, searchParams, setSearchParams]);
 
+  // ── Stage 3D — the auto-translate loop (TR2, against the pinned TR1 contract:
+  // landing-bench {action:'translate', id, locale} → {ok, id, locale}) ────────
+  // The auto-loop runs ONLY for an EN parent — a translated sibling flipping
+  // LIVE must never fan out again. A page the list doesn't know yet (a fresh
+  // editor draft) is founder-authored EN by construction.
+  const isEnParent = (id: string): boolean => {
+    const p = data.find((x) => x.id === id);
+    if (!p) return true;
+    if (typeof p.sourceLandingPageId === 'string' && p.sourceLandingPageId !== '') return false;
+    const locale = typeof p.locale === 'string' ? p.locale.toUpperCase() : '';
+    return locale === '' || locale === 'EN';
+  };
+
+  const markLocale = (locale: string, state: 'pending' | 'running' | 'done' | 'failed') =>
+    setTranslateState((s) =>
+      s
+        ? { ...s, results: s.results.map((r) => (r.locale === locale ? { ...r, state } : r)) }
+        : s,
+    );
+
+  // The 7 locales, SEQUENTIALLY (each call is a ~10s bench run — parallel calls
+  // would stampede the route). Per-locale failure → mark ✗ + continue; the loop
+  // NEVER blocks or re-opens the publish flow (fire-and-forget from the publish
+  // event), never publishes a translation (the bench creates DRAFTS only — the
+  // founder publishes), and a first-call unknown-action/FEATURE_OFF stops it
+  // quietly with one subtle note + dims the affordances.
+  const runTranslateLoop = async (pageId: string) => {
+    if (translateRunRef.current) return; // fire-once: one loop at a time
+    translateRunRef.current = true;
+    setTranslateState({
+      pageId,
+      results: TRANSLATE_LOCALES.map((locale) => ({ locale, state: 'pending' as const })),
+    });
+    let drafted = 0;
+    let failed = 0;
+    let unavailable = false;
+    for (let i = 0; i < TRANSLATE_LOCALES.length; i++) {
+      const locale = TRANSLATE_LOCALES[i];
+      markLocale(locale, 'running');
+      const res = await translatePage(pageId, locale);
+      if (res.ok) {
+        drafted += 1;
+        markLocale(locale, 'done');
+        continue;
+      }
+      if (res.unavailable && i === 0) {
+        // The action isn't on this workspace yet (older bench route /
+        // FEATURE_OFF / unreachable) — stop quietly, don't hammer 6 more calls.
+        unavailable = true;
+        break;
+      }
+      failed += 1;
+      markLocale(locale, 'failed');
+    }
+    translateRunRef.current = false;
+    if (unavailable) {
+      setTranslateUnavailable(true);
+      setTranslateState(null);
+      notify('Auto-translate isn’t available on this workspace yet.', 'info');
+      return;
+    }
+    notify(
+      failed > 0
+        ? `${drafted} translation${drafted === 1 ? '' : 's'} drafted, ${failed} failed`
+        : `${drafted} translation${drafted === 1 ? '' : 's'} drafted`,
+      failed > 0 ? 'info' : 'success',
+    );
+    reload();
+    // Let the finished strip linger briefly, then clear (guarded so it never
+    // wipes a NEWER run's strip).
+    window.setTimeout(() => {
+      setTranslateState((s) => (s && s.pageId === pageId && !translateRunRef.current ? null : s));
+    }, 4000);
+  };
+
+  // Gate + kick-off, called from the publish success path (an EVENT — the loop
+  // can never re-trigger on a re-render). meta.autoTranslate defaults ON;
+  // an explicit false keeps publishes silent (the manual menu still works).
+  const maybeStartTranslateLoop = (id: string) => {
+    if (usingMock || !autoTranslate || translateUnavailable) return;
+    if (!isEnParent(id)) return;
+    void runTranslateLoop(id);
+  };
+
+  // Ad-hoc "Translate →" (locale picker on the EN parent card; re-translate is
+  // safe — the bench dedups by (slug, locale) and overwrites the sibling DRAFT).
+  const runAdHocTranslate = async (pageId: string, locale: string) => {
+    if (usingMock) {
+      notify('Preview data — deploy the landingPage object to translate.', 'info');
+      return;
+    }
+    if (adHocTranslating !== null || translateRunRef.current) return;
+    setAdHocTranslating(`${pageId}:${locale}`);
+    const res = await translatePage(pageId, locale);
+    setAdHocTranslating(null);
+    if (res.ok) {
+      notify(`${locale} draft ready — publish it when you’re happy.`, 'success');
+      reload();
+      return;
+    }
+    if (res.unavailable) {
+      setTranslateUnavailable(true);
+      notify('Translate isn’t available on this workspace yet.', 'info');
+      return;
+    }
+    notify(res.error, 'error');
+  };
+
+  // "Publish all translations" — sequential setStatus LIVE on the DRAFT
+  // siblings. Each flip re-runs the pre-flight gate SERVER-side (authoritative);
+  // PREFLIGHT_FAILED counts as blocked, and the EN parent is never touched.
+  const publishAllTranslations = async (parentId: string, siblings: LandingPageSummary[]) => {
+    if (usingMock) {
+      notify('Preview data — deploy the landingPage object to publish.', 'info');
+      return;
+    }
+    const drafts = siblings.filter((s) => s.status === 'DRAFT');
+    if (drafts.length === 0 || bulkPublishingId !== null) return;
+    setBulkPublishingId(parentId);
+    let published = 0;
+    let blocked = 0;
+    let failedCount = 0;
+    for (const sibling of drafts) {
+      const res = await setLandingStatus(sibling.id, 'LIVE');
+      if (res.ok) published += 1;
+      else if (res.preflightFailed) blocked += 1;
+      else failedCount += 1;
+    }
+    setBulkPublishingId(null);
+    reload();
+    const parts = [`${published} published`];
+    if (blocked > 0) parts.push(`${blocked} blocked by checks`);
+    if (failedCount > 0) parts.push(`${failedCount} failed`);
+    notify(`Translations: ${parts.join(', ')}`, blocked + failedCount > 0 ? 'info' : 'success');
+  };
+
   // ── Stage 3C — the publish pre-flight gate ─────────────────────────────────
   // The actual go-live leg: setStatus LIVE (the server RE-RUNS the gate — the
   // modal is UX, not enforcement). PREFLIGHT_FAILED → re-render the server's
@@ -537,6 +742,9 @@ export const LandingPagesTab = () => {
       }
       reload();
       notify('Page published', 'success');
+      // Stage 3D — after a successful EN publish, fan out the 7 locale drafts.
+      // Fire-and-forget: the publish flow is already fully settled above.
+      maybeStartTranslateLoop(id);
       return;
     }
     if (res.preflightFailed) {
@@ -1001,6 +1209,41 @@ export const LandingPagesTab = () => {
     </Modal>
   );
 
+  // Stage 3D — the passive translate progress strip. Driven by translateState
+  // (the sequential post-publish loop / ad-hoc runs); rendered in BOTH views so
+  // the founder can navigate while translations draft. Purely visual — the loop
+  // never blocks anything.
+  const translateStrip = translateState ? (
+    <Paper withBorder radius="md" p="xs" mb="md">
+      <Group gap="xs" wrap="wrap">
+        <IconLanguage size={16} />
+        <Text size="sm" fw={500}>
+          Translating…
+        </Text>
+        {translateState.results.map((r) => (
+          <Badge
+            key={r.locale}
+            size="sm"
+            variant={r.state === 'pending' ? 'outline' : 'light'}
+            color={
+              r.state === 'done'
+                ? 'teal'
+                : r.state === 'failed'
+                  ? 'red'
+                  : r.state === 'running'
+                    ? 'blue'
+                    : 'gray'
+            }
+            leftSection={r.state === 'running' ? <Loader size={10} color="blue" /> : undefined}
+          >
+            {r.locale}
+            {r.state === 'done' ? ' ✓' : r.state === 'failed' ? ' ✗' : ''}
+          </Badge>
+        ))}
+      </Group>
+    </Paper>
+  ) : null;
+
   // ── editor ──
   if (mode === 'editor') {
     // C6 graceful degrade: with a configured site origin we render the split
@@ -1323,6 +1566,7 @@ export const LandingPagesTab = () => {
           }
         >
           {header}
+          {translateStrip}
 
           {hasPreview ? (
             <>
@@ -1465,6 +1709,8 @@ export const LandingPagesTab = () => {
         ) : null}
       </Paper>
 
+      {translateStrip}
+
       {busy ? (
         <Center h={200}>
           <Loader color="red" />
@@ -1483,14 +1729,113 @@ export const LandingPagesTab = () => {
         </Paper>
       ) : (
         <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md">
-          {data.map((page) => (
-            <PageCard
-              key={page.id}
-              page={page}
-              onEdit={() => openEdit(page.id)}
-              onToggleStatus={() => toggleStatus(page)}
-            />
-          ))}
+          {parentPages.map((page) => {
+            const sibs = siblingsByParent.get(page.id) ?? [];
+            // An orphaned translation (its EN parent isn't in the list) renders
+            // top-level with its locale made visible.
+            const orphanLocale =
+              page.sourceLandingPageId && (page.locale ?? 'EN') !== 'EN' ? page.locale : null;
+            const canTranslate = !translateUnavailable && isEnParent(page.id);
+            return (
+              <PageCard
+                key={page.id}
+                page={page}
+                onEdit={() => openEdit(page.id)}
+                onToggleStatus={() => toggleStatus(page)}
+                titleExtra={
+                  orphanLocale ? (
+                    <Badge size="xs" variant="outline" color="gray">
+                      {orphanLocale}
+                    </Badge>
+                  ) : null
+                }
+                actionsExtra={
+                  canTranslate ? (
+                    <Menu withinPortal position="bottom-end" zIndex={5000}>
+                      <Menu.Target>
+                        <Button
+                          size="xs"
+                          variant="subtle"
+                          color="gray"
+                          leftSection={<IconLanguage size={14} />}
+                          rightSection={<IconChevronDown size={12} />}
+                          loading={adHocTranslating !== null && adHocTranslating.startsWith(`${page.id}:`)}
+                        >
+                          Translate
+                        </Button>
+                      </Menu.Target>
+                      <Menu.Dropdown>
+                        {TRANSLATE_LOCALES.map((lc) => {
+                          const exists = sibs.some((s) => (s.locale ?? '') === lc);
+                          return (
+                            <Menu.Item
+                              key={lc}
+                              disabled={adHocTranslating !== null || translateRunRef.current}
+                              onClick={() => void runAdHocTranslate(page.id, lc)}
+                            >
+                              {lc}
+                              {exists ? ' (re-translate)' : ''}
+                            </Menu.Item>
+                          );
+                        })}
+                      </Menu.Dropdown>
+                    </Menu>
+                  ) : null
+                }
+                footer={
+                  sibs.length > 0 ? (
+                    <Stack
+                      gap={4}
+                      mt="sm"
+                      pl="sm"
+                      style={{ borderLeft: '2px solid var(--mantine-color-gray-3)' }}
+                    >
+                      {sibs.map((s) => (
+                        <Group key={s.id} gap="xs" wrap="nowrap" justify="space-between">
+                          <Group gap={6} wrap="nowrap" style={{ minWidth: 0 }}>
+                            <Badge size="xs" variant="outline" color="gray">
+                              {s.locale ?? '—'}
+                            </Badge>
+                            <Badge size="xs" variant="light" color={statusColor(s.status)}>
+                              {s.status}
+                            </Badge>
+                            <Text size="xs" c="dimmed" truncate>
+                              {s.title || 'Untitled'}
+                            </Text>
+                          </Group>
+                          <Group gap={4} wrap="nowrap">
+                            <Button size="compact-xs" variant="subtle" onClick={() => openEdit(s.id)}>
+                              Edit
+                            </Button>
+                            {s.status !== 'LIVE' ? (
+                              <Button
+                                size="compact-xs"
+                                variant="subtle"
+                                color="teal"
+                                onClick={() => toggleStatus(s)}
+                              >
+                                Set live
+                              </Button>
+                            ) : null}
+                          </Group>
+                        </Group>
+                      ))}
+                      <Button
+                        size="compact-xs"
+                        variant="light"
+                        mt={4}
+                        loading={bulkPublishingId === page.id}
+                        disabled={sibs.every((s) => s.status === 'LIVE')}
+                        onClick={() => void publishAllTranslations(page.id, sibs)}
+                      >
+                        Publish all translations
+                      </Button>
+                    </Stack>
+                  ) : null
+                }
+              />
+            );
+          })}
         </SimpleGrid>
       )}
 
