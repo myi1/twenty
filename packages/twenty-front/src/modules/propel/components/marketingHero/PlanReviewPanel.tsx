@@ -352,12 +352,25 @@ export const PlanReviewPanel = ({
             <IconCalendarEvent size={18} />
           </ThemeIcon>
           <Box style={{ minWidth: 0 }}>
-            <Text fw={700} truncate>
-              {detail?.plan.name || 'Campaign plan'}
-            </Text>
+            <Group gap={6} wrap="nowrap">
+              <Text fw={700} truncate>
+                {detail?.plan.name || 'Campaign plan'}
+              </Text>
+              {/* Stage 3E (SC4) — the landing-scout cron's proposed plans carry
+                  mode:'SCOUT' (tolerant: absent on older routes → no badge).
+                  Plans only surface via this review drawer (no standalone plan
+                  list renders in the Social tab), so the badge lives here. */}
+              {detail?.plan.mode === 'SCOUT' ? (
+                <Badge size="xs" variant="light" color="grape" style={{ flexShrink: 0 }}>
+                  SCOUT
+                </Badge>
+              ) : null}
+            </Group>
             <Text size="xs" c="dimmed" lineClamp={1}>
               {detail
-                ? `${detail.posts.length} proposed post${detail.posts.length === 1 ? '' : 's'} · review, edit, then approve`
+                ? detail.plan.mode === 'SCOUT' && detail.plan.scoutReason
+                  ? detail.plan.scoutReason
+                  : `${detail.posts.length} proposed post${detail.posts.length === 1 ? '' : 's'} · review, edit, then approve`
                 : 'Loading…'}
             </Text>
           </Box>

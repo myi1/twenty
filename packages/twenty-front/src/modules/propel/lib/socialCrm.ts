@@ -62,6 +62,11 @@ export interface SocialPlanSummary {
   status: PlanStatus;
   windowStart: string | null;
   windowEnd: string | null;
+  // Stage 3E — Scout-drafted plans (SC4). Both tolerant: routes/plans predating
+  // the landing-scout cron simply omit them → no badge. `mode` is 'SCOUT' on a
+  // plan the cron proposed; `scoutReason` is its one-line rationale.
+  mode: string | null;
+  scoutReason: string | null;
 }
 
 // One per-platform child socialPost as projected for review. `ideaKey` groups the
@@ -206,6 +211,8 @@ const parsePlanSummary = (raw: unknown): SocialPlanSummary | null => {
     status,
     windowStart: asStrOrNull(r.windowStart),
     windowEnd: asStrOrNull(r.windowEnd),
+    mode: asStrOrNull(r.mode),
+    scoutReason: asStrOrNull(r.scoutReason),
   };
 };
 
