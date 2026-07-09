@@ -153,6 +153,11 @@ export async function generatePlan(
   sourceIds?: string[],
   // Amplify context (4S-B): present only on publish-hook calls; spread flat.
   amplify?: AmplifyContext,
+  // Style-learning per-run opt-out (the "Use my style" toggle): only sent when
+  // OFF, so a route that predates style-grounding is byte-identical by default.
+  // The bench loads the cached Style Profile server-side; useStyle:false disables
+  // it for this run → a neutral, brand-default draft.
+  useStyle?: boolean,
 ): Promise<GeneratePlanResult> {
   // FLAT body — networks + optional window/sourceIds/amplify fields sit at the
   // top level so the route reads event.body.networks / .window / .mode directly.
@@ -162,6 +167,7 @@ export async function generatePlan(
     networks,
     ...(window ? { window } : {}),
     ...(sourceIds && sourceIds.length > 0 ? { sourceIds } : {}),
+    ...(useStyle === false ? { useStyle: false } : {}),
     ...(amplify
       ? {
           mode: amplify.mode,
