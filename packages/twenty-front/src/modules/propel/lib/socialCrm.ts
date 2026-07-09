@@ -116,6 +116,33 @@ export type GeneratePlanResult =
   | { ok: true; planId: string; benchLog: BenchLogEntry[] }
   | { ok: false; error: string; featureOff: boolean };
 
+// Amplify hooks (4S-B AM2, against the pinned AM1 contract): a blog/LP publish
+// fires generate with this context so the bench drafts posts PROMOTING the
+// source, CTAs UTM-stamped onto destinationUrl. All four fields ride FLAT on
+// the generate body; a route predating AM1 ignores them harmlessly (the plan
+// still drafts — just without the amplify grounding), so no degrade logic here.
+export type AmplifySourceKind = 'BLOG' | 'LANDING_PAGE';
+
+export interface AmplifyContext {
+  mode: 'AMPLIFY';
+  sourceKind: AmplifySourceKind;
+  sourceRef: string;
+  destinationUrl: string;
+}
+
+// Pure brief builder shared by both publish hooks: a compact "promote this"
+// instruction — title + the first ~200 chars of the excerpt/summary.
+export const amplifyBrief = (
+  kindLabel: 'blog post' | 'landing page',
+  title: string,
+  summary: string,
+): string => {
+  const blurb = summary.trim().slice(0, 200);
+  return `Promote this just-published ${kindLabel}: ${title.trim()}.${
+    blurb !== '' ? ` ${blurb}` : ''
+  }`;
+};
+
 export async function generatePlan(
   brief: string,
   networks: SocialNetwork[],
@@ -124,15 +151,25 @@ export async function generatePlan(
   // loads each source's extractedText and prepends an authoritative-figures
   // grounding block to the Strategist context. Absent/empty → unchanged behavior.
   sourceIds?: string[],
+  // Amplify context (4S-B): present only on publish-hook calls; spread flat.
+  amplify?: AmplifyContext,
 ): Promise<GeneratePlanResult> {
-  // FLAT body — networks + optional window + optional sourceIds sit at the top
-  // level so the route reads event.body.networks / .window / .sourceIds directly.
+  // FLAT body — networks + optional window/sourceIds/amplify fields sit at the
+  // top level so the route reads event.body.networks / .window / .mode directly.
   const body = await callPropelRoute<Envelope>(BENCH_ROUTE, {
     action: 'generate',
     brief,
     networks,
     ...(window ? { window } : {}),
     ...(sourceIds && sourceIds.length > 0 ? { sourceIds } : {}),
+    ...(amplify
+      ? {
+          mode: amplify.mode,
+          sourceKind: amplify.sourceKind,
+          sourceRef: amplify.sourceRef,
+          destinationUrl: amplify.destinationUrl,
+        }
+      : {}),
   });
   if (body && body.ok === true && typeof body.planId === 'string' && body.planId !== '') {
     return { ok: true, planId: body.planId, benchLog: asBenchLog(body.benchLog) };

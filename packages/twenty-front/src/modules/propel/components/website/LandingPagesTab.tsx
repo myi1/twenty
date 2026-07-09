@@ -74,6 +74,8 @@ import {
   type LandingSectionType,
 } from '@/propel/lib/landingSectionDefs';
 import { type SectionActionKind } from '@/propel/lib/landingPreviewBridge';
+import { amplifyBrief, generatePlan } from '@/propel/lib/socialCrm';
+import { ALL_NETWORKS } from '@/propel/lib/socialCalendarConfig';
 import {
   AddSourcesControl,
   type SelectedSource,
@@ -446,6 +448,13 @@ export const LandingPagesTab = () => {
   const [adHocTranslating, setAdHocTranslating] = useState<string | null>(null);
   const [bulkPublishingId, setBulkPublishingId] = useState<string | null>(null);
   const translateRunRef = useRef(false);
+  // 4S-B AM2 — the amplify hook's guards, mirroring the translate loop's ref
+  // pattern: `amplifyFiredRef` = one fire per page per session (a re-publish
+  // click can't spawn duplicate plans); `amplifyUnavailableRef` mirrors the
+  // featureOff detection — after one FEATURE_OFF answer we stop calling AND
+  // stop toasting (one soft note max).
+  const amplifyFiredRef = useRef<Set<string>>(new Set());
+  const amplifyUnavailableRef = useRef(false);
   // Stage 3E — the Scout + Refresher queues (SC4). `scoutDismissTarget` holds
   // the proposal awaiting the archive confirm; `refresherBusy` is the in-flight
   // action key (`<pageId>:<apply|dismiss>:<diffKey|*>`, one at a time);
@@ -719,6 +728,50 @@ export const LandingPagesTab = () => {
     void runTranslateLoop(id);
   };
 
+  // ── 4S-B AM2 — the amplify hook ────────────────────────────────────────────
+  // After a successful EN publish, fire-and-forget a social AMPLIFY plan
+  // promoting the page (CTAs UTM-stamped onto the live /lp/<slug> URL by the
+  // bench). Fires ALONGSIDE the translate loop from the same publish event
+  // (both fire-and-forget; order irrelevant) and NEVER blocks or fails the
+  // publish. Translated siblings never amplify (isEnParent — same gate as the
+  // translator; a fresh editor draft the list doesn't know is EN by
+  // construction).
+  const maybeAmplifyLandingPage = (id: string) => {
+    if (usingMock || amplifyUnavailableRef.current || amplifyFiredRef.current.has(id)) return;
+    if (!isEnParent(id)) return;
+    const summary = data.find((p) => p.id === id);
+    const fromEditor = mode === 'editor' && draft.id === id;
+    const title = fromEditor ? draft.title : (summary?.title ?? '');
+    const slug = fromEditor ? derivedSlug : (summary?.slug ?? '');
+    const blurb = fromEditor
+      ? draft.metaDescription || draft.headline
+      : summary?.metaDescription || summary?.headline || '';
+    if (slug === '') return; // no public URL to promote — skip quietly
+    const base =
+      sitePublicUrl !== '' ? `${sitePublicUrl.replace(/\/+$/, '')}/lp` : LIVE_LP_BASE;
+    amplifyFiredRef.current.add(id);
+    void (async () => {
+      const res = await generatePlan(
+        amplifyBrief('landing page', title, blurb),
+        ALL_NETWORKS,
+        undefined,
+        undefined,
+        {
+          mode: 'AMPLIFY',
+          sourceKind: 'LANDING_PAGE',
+          sourceRef: id,
+          destinationUrl: `${base}/${slug}`,
+        },
+      );
+      if (res.ok) {
+        notify('Social plan drafted — review in the Social tab', 'success');
+        return;
+      }
+      if (res.featureOff) amplifyUnavailableRef.current = true;
+      notify('Couldn’t draft the social plan — create one manually in the Social tab.', 'info');
+    })();
+  };
+
   // Ad-hoc "Translate →" (locale picker on the EN parent card; re-translate is
   // safe — the bench dedups by (slug, locale) and overwrites the sibling DRAFT).
   const runAdHocTranslate = async (pageId: string, locale: string) => {
@@ -844,6 +897,9 @@ export const LandingPagesTab = () => {
       // Stage 3D — after a successful EN publish, fan out the 7 locale drafts.
       // Fire-and-forget: the publish flow is already fully settled above.
       maybeStartTranslateLoop(id);
+      // 4S-B AM2 — and draft the social AMPLIFY plan (also fire-and-forget;
+      // fires alongside the translate loop, order irrelevant).
+      maybeAmplifyLandingPage(id);
       return;
     }
     if (res.preflightFailed) {

@@ -14,7 +14,7 @@ import {
   Title,
   Tooltip,
 } from '@mantine/core';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   IconAlertTriangle,
   IconCalendar,
@@ -37,6 +37,8 @@ import {
   type BlogColumns,
 } from '@/propel/hooks/useBlogPipeline';
 import { decideBlogPost, generateBlogDraft, type BlogPost } from '@/propel/lib/blogCrm';
+import { amplifyBrief, generatePlan } from '@/propel/lib/socialCrm';
+import { ALL_NETWORKS } from '@/propel/lib/socialCalendarConfig';
 import { BlogPostDrawer } from '@/propel/components/website/BlogPostDrawer';
 
 // Every card opens the detail drawer on click; withhold the click from the
@@ -146,6 +148,38 @@ const localeBadge = (locale: string): ReactNode =>
       {locale.toUpperCase()}
     </Badge>
   ) : null;
+
+// ── amplify hook helpers (4S-B AM2) ──────────────────────────────────────────
+// The public URL the amplify plan's CTAs point at. Approve fires BEFORE Ghost
+// publishes (approve → scheduled → Ghost next tick), so there's no ghostUrl yet;
+// we derive the address the same way Ghost will — the SEO optimizer's slug
+// (seoMeta.slug) or, failing that, the slugified title — under the live blog
+// base the tab already advertises (remaxhub.ae/blog). Falls back to the blog
+// index when no slug can be derived. Pure; never throws.
+const BLOG_PUBLIC_BASE = 'https://remaxhub.ae/blog';
+
+const blogPublicUrl = (post: BlogPost): string => {
+  let meta = post.seoMeta;
+  if (typeof meta === 'string') {
+    try {
+      meta = JSON.parse(meta);
+    } catch {
+      meta = null;
+    }
+  }
+  let slug = '';
+  if (meta !== null && typeof meta === 'object') {
+    const s = (meta as Record<string, unknown>).slug;
+    if (typeof s === 'string') slug = s.trim();
+  }
+  if (slug === '') {
+    slug = post.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+  return slug === '' ? BLOG_PUBLIC_BASE : `${BLOG_PUBLIC_BASE}/${slug}`;
+};
 
 const formatWhen = (iso: string | null): string => {
   if (!iso) return '';
@@ -311,6 +345,43 @@ export const BlogTab = () => {
   const [seeding, setSeeding] = useState(false);
   const [openRow, setOpenRow] = useState<BlogPost | null>(null);
 
+  // ── amplify hook (4S-B AM2) ────────────────────────────────────────────────
+  // After a successful Approve (the blog "publish" event — approve → scheduled
+  // → Ghost), fire-and-forget a social AMPLIFY plan promoting the post. Never
+  // blocks or fails the approve. `amplifyFiredRef` guards one fire per post per
+  // session (a double-click / re-approve can't spawn duplicate plans);
+  // `amplifyUnavailableRef` mirrors the featureOff detection — once the bench
+  // answers FEATURE_OFF we stop calling AND stop toasting (one soft note max).
+  const amplifyFiredRef = useRef<Set<string>>(new Set());
+  const amplifyUnavailableRef = useRef(false);
+
+  const maybeAmplifyBlog = (post: BlogPost | undefined) => {
+    if (!post || amplifyUnavailableRef.current || amplifyFiredRef.current.has(post.id)) {
+      return;
+    }
+    amplifyFiredRef.current.add(post.id);
+    void (async () => {
+      const res = await generatePlan(
+        amplifyBrief('blog post', post.title, post.excerpt),
+        ALL_NETWORKS,
+        undefined,
+        undefined,
+        {
+          mode: 'AMPLIFY',
+          sourceKind: 'BLOG',
+          sourceRef: post.id,
+          destinationUrl: blogPublicUrl(post),
+        },
+      );
+      if (res.ok) {
+        notify('Social plan drafted — review in the Social tab', 'success');
+        return;
+      }
+      if (res.featureOff) amplifyUnavailableRef.current = true;
+      notify('Couldn’t draft the social plan — create one manually in the Social tab.', 'info');
+    })();
+  };
+
   const visibleColumns: BlogColumns = useMemo(
     () => ({
       ...columns,
@@ -320,6 +391,9 @@ export const BlogTab = () => {
   );
 
   const decide = async (id: string, action: 'approve' | 'reject') => {
+    // Capture the row BEFORE the await — the reload below replaces columns and
+    // the amplify hook needs the title/excerpt/seoMeta it was approved with.
+    const post = columns.needsApproval.find((p) => p.id === id);
     setBusyId(id);
     // optimistic: hide the card now
     setDecidedIds((prev) => new Set(prev).add(id));
@@ -327,6 +401,7 @@ export const BlogTab = () => {
     setBusyId(null);
     if (res.ok) {
       notify(action === 'approve' ? 'Approved → scheduled to publish' : 'Draft rejected', 'success');
+      if (action === 'approve') maybeAmplifyBlog(post);
       reload();
     } else {
       // rollback the optimistic hide, surface the reason
