@@ -10,11 +10,11 @@ import {
 import withDragAndDrop, {
   type EventInteractionArgs,
 } from 'react-big-calendar/lib/addons/dragAndDrop';
-import format from 'date-fns/format';
-import getDay from 'date-fns/getDay';
-import enUS from 'date-fns/locale/en-US';
-import parse from 'date-fns/parse';
-import startOfWeek from 'date-fns/startOfWeek';
+import { format } from 'date-fns/format';
+import { getDay } from 'date-fns/getDay';
+import { enUS } from 'date-fns/locale/en-US';
+import { parse } from 'date-fns/parse';
+import { startOfWeek } from 'date-fns/startOfWeek';
 import { AnimatePresence, motion } from 'framer-motion';
 import { CalendarToolbar } from '@/propel/components/calendar/CalendarToolbar';
 import { EventPill } from '@/propel/components/calendar/EventPill';

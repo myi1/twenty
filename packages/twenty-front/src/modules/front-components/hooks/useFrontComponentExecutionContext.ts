@@ -177,10 +177,12 @@ export const useFrontComponentExecutionContext = ({
       }
 
       if (params.page === SidePanelPages.ViewFrontComponent) {
+        // Propel fork: the side-panel record context carries selectedRecordIds
+        // (bulk selection) — adapt the SDK's single recordId param to it.
         const recordContext =
           isDefined(params.recordId) && isDefined(params.objectNameSingular)
             ? {
-                recordId: params.recordId,
+                selectedRecordIds: [params.recordId],
                 objectNameSingular: params.objectNameSingular,
               }
             : undefined;

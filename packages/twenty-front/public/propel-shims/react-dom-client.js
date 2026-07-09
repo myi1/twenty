@@ -7,3 +7,4 @@ if (!M) throw new Error('[propel-hero] window.__propelShared[' + "\"react-dom/cl
 export default M.default;
 export const createRoot = M["createRoot"];
 export const hydrateRoot = M["hydrateRoot"];
+export const version = M["version"];

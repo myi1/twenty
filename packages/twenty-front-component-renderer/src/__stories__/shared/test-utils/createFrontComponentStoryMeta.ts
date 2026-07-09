@@ -15,6 +15,7 @@ export const hostApiMocks = {
   requestAccessTokenRefresh: fn().mockResolvedValue('refreshed-token'),
   openCommandConfirmationModal: fn().mockResolvedValue(undefined),
   copyToClipboard: fn().mockResolvedValue(undefined),
+  readFrontComponentFile: fn().mockResolvedValue(null),
 };
 
 export const FRONT_COMPONENT_STORY_DEFAULT_ARGS: NonNullable<

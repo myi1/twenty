@@ -130,6 +130,13 @@ jest.mock('~/hooks/useCopyToClipboard', () => ({
   }),
 }));
 
+// Propel fork: the hook pulls readRegisteredFrontComponentFileBytes (byte-RPC)
+// from the renderer package at runtime; jest would otherwise load the built
+// dist/index.cjs whose deps (@quilted/threads) don't survive jest resolution.
+jest.mock('twenty-front-component-renderer', () => ({
+  readRegisteredFrontComponentFileBytes: jest.fn(async () => null),
+}));
+
 const renderUseFrontComponentExecutionContext = (
   params: Omit<
     Parameters<typeof useFrontComponentExecutionContext>[0],
@@ -526,7 +533,12 @@ describe('useFrontComponentExecutionContext', () => {
         pageTitle: 'My Component',
         pageIcon: 'icon-IconBolt',
         resetNavigationStack: undefined,
-        recordContext: { recordId: 'lead-1', objectNameSingular: 'lead' },
+        // Propel fork: the side-panel record context carries selectedRecordIds
+        // (bulk selection); the single recordId param is adapted to it.
+        recordContext: {
+          selectedRecordIds: ['lead-1'],
+          objectNameSingular: 'lead',
+        },
       });
     });
   });

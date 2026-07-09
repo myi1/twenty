@@ -9,6 +9,8 @@
 // getTokenPair), but later heroes do — and a stable, typed contract now means we
 // never have to re-thread props through HeroRoute when porting them.
 
+import { type ReactElement } from 'react';
+
 export type PropelHeroNotifyVariant = 'success' | 'error' | 'info' | 'warning';
 
 export type PropelHeroHost = {
@@ -30,4 +32,4 @@ export type PropelHeroHost = {
 // takes `{ host }`. (Heroes free to ignore the prop — ListingStudio does.)
 export type PropelHeroComponent = (props: {
   host: PropelHeroHost;
-}) => JSX.Element | null;
+}) => ReactElement | null;

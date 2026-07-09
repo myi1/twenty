@@ -23,7 +23,9 @@ describe('serializeFileList', () => {
       0: { ...validFile, arrayBuffer: () => {} },
     });
 
-    expect(result).toEqual([validFile]);
+    // Propel fork: a registrable file (has arrayBuffer) also gets an opaque
+    // `token` handle for the readFrontComponentFile byte RPC — nothing else.
+    expect(result).toEqual([{ ...validFile, token: expect.any(String) }]);
   });
 
   it('should skip entries missing required fields', () => {
