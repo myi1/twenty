@@ -67,6 +67,12 @@ export interface SocialPlanSummary {
   // plan the cron proposed; `scoutReason` is its one-line rationale.
   mode: string | null;
   scoutReason: string | null;
+  // Maker-checker (Phase 2) — an agent's "Approve all" submits instead; the route
+  // stamps these so the plan carries a "Pending approval" / "Sent back" badge.
+  // Tolerant: routes predating the gate omit them → no badge.
+  submittedForApprovalAt: string | null;
+  sentBackAt: string | null;
+  sentBackNote: string | null;
 }
 
 // One per-platform child socialPost as projected for review. `ideaKey` groups the
@@ -256,6 +262,9 @@ const parsePlanSummary = (raw: unknown): SocialPlanSummary | null => {
     windowEnd: asStrOrNull(r.windowEnd),
     mode: asStrOrNull(r.mode),
     scoutReason: asStrOrNull(r.scoutReason),
+    submittedForApprovalAt: asStrOrNull(r.submittedForApprovalAt),
+    sentBackAt: asStrOrNull(r.sentBackAt),
+    sentBackNote: asStrOrNull(r.sentBackNote),
   };
 };
 

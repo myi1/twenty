@@ -23,6 +23,9 @@ import {
   IconPhoto,
 } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
+import { useCanPublish } from '@/propel/lib/canPublish';
+import { SubmissionBadge } from '@/propel/components/marketingHero/deskShared';
+import { SubmitForApprovalButton } from '@/propel/components/marketingHero/SubmitForApprovalButton';
 import {
   MediaStudioModal,
   ProjectAssetsProvider,
@@ -246,6 +249,10 @@ export const PlanReviewPanel = ({
   onApproved,
 }: PlanReviewPanelProps) => {
   const notify = usePropelToast();
+  // Maker-checker (Phase 2): a publisher keeps "Approve all"; an agent's same click
+  // becomes "Submit for approval". Fails closed to the agent view; disabled while
+  // the verdict is in flight. The backend gate stays authoritative.
+  const { canPublish, loading: publishLoading } = useCanPublish();
   const [detail, setDetail] = useState<PlanDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -365,6 +372,12 @@ export const PlanReviewPanel = ({
                   SCOUT
                 </Badge>
               ) : null}
+              <SubmissionBadge
+                size="xs"
+                submittedForApprovalAt={detail?.plan.submittedForApprovalAt}
+                sentBackAt={detail?.plan.sentBackAt}
+                sentBackNote={detail?.plan.sentBackNote}
+              />
             </Group>
             <Text size="xs" c="dimmed" lineClamp={1}>
               {detail
@@ -456,15 +469,29 @@ export const PlanReviewPanel = ({
           >
             Dismiss
           </Button>
-          <Button
-            color="teal"
-            size="sm"
-            leftSection={<IconCheck size={16} />}
-            loading={approving}
-            onClick={approve}
-          >
-            Approve all
-          </Button>
+          {publishLoading ? (
+            <Button color="teal" size="sm" leftSection={<IconCheck size={16} />} disabled>
+              Approve all
+            </Button>
+          ) : canPublish ? (
+            <Button
+              color="teal"
+              size="sm"
+              leftSection={<IconCheck size={16} />}
+              loading={approving}
+              onClick={approve}
+            >
+              Approve all
+            </Button>
+          ) : (
+            <SubmitForApprovalButton
+              kind="SOCIAL_PLAN"
+              id={planId}
+              alreadySubmitted={detail.plan.submittedForApprovalAt !== null}
+              onSubmitted={() => void load()}
+              iconSize={16}
+            />
+          )}
         </Group>
       ) : null}
     </Drawer>

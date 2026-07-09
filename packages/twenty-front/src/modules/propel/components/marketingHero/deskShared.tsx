@@ -1,5 +1,5 @@
 import { type ReactNode, useContext } from 'react';
-import { Box, Text } from '@mantine/core';
+import { Badge, Box, Text, Tooltip } from '@mantine/core';
 import { ThemeContext } from 'twenty-ui/theme-constants';
 
 // Shared theme primitives for the Marketing home surfaces (the publisher "Night
@@ -71,4 +71,63 @@ export const Seal = ({ kind }: { kind: SealKind }) => {
       }}
     />
   );
+};
+
+// The maker-checker status pill on a publishable item's OWN surface (Phase 2).
+// `submittedForApprovalAt` set → "Pending approval" (brass — it's waiting on a
+// publisher). Else `sentBackAt` set → "Sent back" (red; the manager's note rides a
+// hover tooltip). Both absent → nothing renders. Pending wins if BOTH are set (a
+// re-submitted item that once came back is, right now, waiting again). Theme-aware
+// via the brass hook; safe to drop anywhere — it self-hides when there's no state.
+export const SubmissionBadge = ({
+  submittedForApprovalAt,
+  sentBackAt,
+  sentBackNote,
+  size = 'sm',
+}: {
+  submittedForApprovalAt?: string | null;
+  sentBackAt?: string | null;
+  sentBackNote?: string | null;
+  size?: string;
+}) => {
+  const brass = useBrass();
+  const pending =
+    typeof submittedForApprovalAt === 'string' && submittedForApprovalAt !== '';
+  const sentBack = typeof sentBackAt === 'string' && sentBackAt !== '';
+
+  if (pending) {
+    return (
+      <Badge
+        size={size}
+        variant="light"
+        styles={{
+          root: {
+            color: brass,
+            backgroundColor: `${brass}1F`,
+            borderColor: `${brass}55`,
+          },
+        }}
+      >
+        Pending approval
+      </Badge>
+    );
+  }
+
+  if (sentBack) {
+    const badge = (
+      <Badge size={size} variant="light" color="red">
+        Sent back
+      </Badge>
+    );
+    const note = typeof sentBackNote === 'string' ? sentBackNote.trim() : '';
+    return note !== '' ? (
+      <Tooltip label={note} multiline maw={280} withArrow>
+        {badge}
+      </Tooltip>
+    ) : (
+      badge
+    );
+  }
+
+  return null;
 };

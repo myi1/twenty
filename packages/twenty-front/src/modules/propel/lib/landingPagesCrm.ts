@@ -63,6 +63,13 @@ export interface LandingPageSummary {
   // The Refresher's queued-diffs column (raw JSON string or parsed array) —
   // parse with readRefresherDiffs; absent/unreadable → no Refresher rows.
   refresherJson?: unknown;
+  // Maker-checker (Phase 2). An agent's "Set live" submits instead of publishing;
+  // the route stamps these so the page shows a "Pending approval" / "Sent back"
+  // badge in its own surface. All tolerant: routes predating the gate omit them.
+  // (The `list` response is passed through as-is, so a projected value survives.)
+  submittedForApprovalAt?: string | null;
+  sentBackAt?: string | null;
+  sentBackNote?: string | null;
 }
 
 // Full page (editor). Adds the section list + the bench audit log (Stage 3B —

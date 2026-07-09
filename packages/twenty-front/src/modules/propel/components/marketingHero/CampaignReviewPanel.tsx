@@ -32,7 +32,10 @@ import {
   IconX,
 } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
+import { useCanPublish } from '@/propel/lib/canPublish';
 import { PlanReviewPanel } from '@/propel/components/marketingHero/PlanReviewPanel';
+import { SubmissionBadge } from '@/propel/components/marketingHero/deskShared';
+import { SubmitForApprovalButton } from '@/propel/components/marketingHero/SubmitForApprovalButton';
 import { type PreflightCheck } from '@/propel/lib/landingPagesCrm';
 import {
   type CampaignDetailPayload,
@@ -208,6 +211,11 @@ export const CampaignReviewPanel = ({
 }: CampaignReviewPanelProps) => {
   const notify = usePropelToast();
   const navigate = useNavigate();
+  // Maker-checker (Phase 2): a publisher keeps "Approve campaign"; an agent's same
+  // click becomes "Submit for approval". The per-arm partial-approve buttons only
+  // surface after a publisher's approve hits GATES_FAILED (an agent never reaches
+  // that path), so only the primary go-live control needs to branch. Fails closed.
+  const { canPublish, loading: publishLoading } = useCanPublish();
 
   const [detail, setDetail] = useState<CampaignDetailPayload | null>(null);
   const [loading, setLoading] = useState(false);
@@ -884,6 +892,12 @@ export const CampaignReviewPanel = ({
                     {campaign.status}
                   </Badge>
                 ) : null}
+                <SubmissionBadge
+                  size="sm"
+                  submittedForApprovalAt={campaign?.submittedForApprovalAt}
+                  sentBackAt={campaign?.sentBackAt}
+                  sentBackNote={campaign?.sentBackNote}
+                />
               </Group>
               <Text size="xs" c="dimmed" lineClamp={1}>
                 {detail !== null
@@ -1015,22 +1029,58 @@ export const CampaignReviewPanel = ({
                 Regenerate campaign
               </Button>
             </Group>
-            <Button
-              color="teal"
-              size="sm"
-              leftSection={<IconCheck size={16} />}
-              loading={approving && approvingArm === null}
-              disabled={
-                (busy && !(approving && approvingArm === null)) ||
-                (lpArm === null &&
-                  socialArm === null &&
-                  emailArm === null &&
-                  blogArm === null)
+            {(() => {
+              const nothingToShip =
+                lpArm === null &&
+                socialArm === null &&
+                emailArm === null &&
+                blogArm === null;
+              if (publishLoading) {
+                return (
+                  <Button
+                    color="teal"
+                    size="sm"
+                    leftSection={<IconCheck size={16} />}
+                    disabled
+                  >
+                    Approve campaign
+                  </Button>
+                );
               }
-              onClick={() => void approve()}
-            >
-              Approve campaign
-            </Button>
+              if (canPublish) {
+                return (
+                  <Button
+                    color="teal"
+                    size="sm"
+                    leftSection={<IconCheck size={16} />}
+                    loading={approving && approvingArm === null}
+                    disabled={
+                      (busy && !(approving && approvingArm === null)) ||
+                      nothingToShip
+                    }
+                    onClick={() => void approve()}
+                  >
+                    Approve campaign
+                  </Button>
+                );
+              }
+              return (
+                <SubmitForApprovalButton
+                  kind="CAMPAIGN"
+                  id={campaignId}
+                  alreadySubmitted={
+                    campaign?.submittedForApprovalAt != null &&
+                    campaign.submittedForApprovalAt !== ''
+                  }
+                  disabled={busy || nothingToShip}
+                  onSubmitted={() => {
+                    onChanged();
+                    void load();
+                  }}
+                  iconSize={16}
+                />
+              );
+            })()}
           </Group>
         ) : null}
       </Drawer>

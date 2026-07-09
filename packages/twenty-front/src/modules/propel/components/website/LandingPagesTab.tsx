@@ -74,6 +74,9 @@ import {
   type LandingSectionType,
 } from '@/propel/lib/landingSectionDefs';
 import { type SectionActionKind } from '@/propel/lib/landingPreviewBridge';
+import { useCanPublish } from '@/propel/lib/canPublish';
+import { SubmissionBadge } from '@/propel/components/marketingHero/deskShared';
+import { SubmitForApprovalButton } from '@/propel/components/marketingHero/SubmitForApprovalButton';
 import { amplifyBrief, generatePlan } from '@/propel/lib/socialCrm';
 import { ALL_NETWORKS } from '@/propel/lib/socialCalendarConfig';
 import {
@@ -276,6 +279,9 @@ const PageCard = ({
   page,
   onEdit,
   onToggleStatus,
+  canPublish,
+  publishLoading,
+  onSubmitted,
   titleExtra,
   actionsExtra,
   footer,
@@ -283,6 +289,12 @@ const PageCard = ({
   page: LandingPageSummary;
   onEdit: () => void;
   onToggleStatus: () => void;
+  /** Maker-checker (Phase 2): true → a publisher (keeps "Set live"). */
+  canPublish: boolean;
+  /** The publish verdict is still in flight → the go-live control is disabled. */
+  publishLoading: boolean;
+  /** Fired after an agent submits this page for approval → reload the list. */
+  onSubmitted: () => void;
   /** Stage 3D — a locale chip for an orphaned translation card. */
   titleExtra?: React.ReactNode;
   /** Stage 3D — the "Translate →" menu on EN parents. */
@@ -304,6 +316,12 @@ const PageCard = ({
         </Text>
       </Box>
       <Group gap={6} wrap="nowrap">
+        <SubmissionBadge
+          size="sm"
+          submittedForApprovalAt={page.submittedForApprovalAt}
+          sentBackAt={page.sentBackAt}
+          sentBackNote={page.sentBackNote}
+        />
         <PreflightChip page={page} />
         <Badge color={statusColor(page.status)} variant="light" size="sm">
           {page.status}
@@ -330,15 +348,43 @@ const PageCard = ({
       <Button size="xs" variant="light" color="red" leftSection={<IconPencil size={14} />} onClick={onEdit}>
         Edit
       </Button>
-      <Button
-        size="xs"
-        variant="subtle"
-        color={page.status === 'LIVE' ? 'gray' : 'teal'}
-        leftSection={<IconWorld size={14} />}
-        onClick={onToggleStatus}
-      >
-        {page.status === 'LIVE' ? 'Unpublish' : 'Set live'}
-      </Button>
+      {page.status === 'LIVE' ? (
+        // Unpublish (LIVE → DRAFT) is not a go-live; unchanged for everyone.
+        <Button
+          size="xs"
+          variant="subtle"
+          color="gray"
+          leftSection={<IconWorld size={14} />}
+          onClick={onToggleStatus}
+        >
+          Unpublish
+        </Button>
+      ) : publishLoading ? (
+        <Button size="xs" variant="subtle" color="teal" leftSection={<IconWorld size={14} />} disabled>
+          Set live
+        </Button>
+      ) : canPublish ? (
+        <Button
+          size="xs"
+          variant="subtle"
+          color="teal"
+          leftSection={<IconWorld size={14} />}
+          onClick={onToggleStatus}
+        >
+          Set live
+        </Button>
+      ) : (
+        // Agent → submit instead of going live (the backend gate is authoritative).
+        <SubmitForApprovalButton
+          kind="LANDING_PAGE"
+          id={page.id}
+          alreadySubmitted={
+            page.submittedForApprovalAt != null && page.submittedForApprovalAt !== ''
+          }
+          onSubmitted={onSubmitted}
+          size="xs"
+        />
+      )}
       {page.status === 'LIVE' ? (
         <Button
           size="xs"
@@ -363,6 +409,11 @@ const PageCard = ({
 // ── the tab ──────────────────────────────────────────────────────────────────
 export const LandingPagesTab = () => {
   const notify = usePropelToast();
+  // Maker-checker (Phase 2): a publisher keeps "Set live" / "Publish"; an agent's
+  // same click becomes "Submit for approval". Read once here, threaded to the list
+  // cards + the editor toolbar. Fails closed to the agent view; the backend gate
+  // stays authoritative.
+  const { canPublish, loading: publishLoading } = useCanPublish();
   const { phase, error, data, usingMock, sitePublicUrl, autoTranslate, reload } =
     useLandingPages();
   // Campaign Spine deep-link (CS4): the campaign review's "Open in editor"
@@ -1208,6 +1259,26 @@ export const LandingPagesTab = () => {
     await openPublishGate(id);
   };
 
+  // Maker-checker (Phase 2), editor leg: an agent's "Publish" submits for approval
+  // instead of going live. The submitForApproval route keys off the page id, so a
+  // dirty/new draft is persisted first (at its current non-live status) to mint the
+  // id — the same flush the publisher's gate does — then the id is submitted.
+  const resolveEditorSubmitId = async (): Promise<string | null> => {
+    if (usingMock) {
+      notify('Preview data — deploy the landingPage object to submit.', 'info');
+      return null;
+    }
+    let id: string | null = draft.id ?? null;
+    if (isDirty || !id) {
+      id = await persist(draft.status, true);
+      if (!id) {
+        notify('Could not save the page before submitting — check the title, then retry.', 'error');
+        return null;
+      }
+    }
+    return id;
+  };
+
   const requestBack = () => {
     if (isDirty) setConfirmBackOpen(true);
     else setMode('list');
@@ -1602,7 +1673,11 @@ export const LandingPagesTab = () => {
           Unpublish
         </Button>
       </Group>
-    ) : (
+    ) : publishLoading ? (
+      <Button size="sm" color="teal" leftSection={<IconRocket size={16} />} disabled>
+        Publish
+      </Button>
+    ) : canPublish ? (
       <Button
         size="sm"
         color="teal"
@@ -1612,6 +1687,16 @@ export const LandingPagesTab = () => {
       >
         Publish
       </Button>
+    ) : (
+      // Agent → submit for approval (persists first via resolveEditorSubmitId).
+      <SubmitForApprovalButton
+        kind="LANDING_PAGE"
+        id={draft.id ?? null}
+        resolveId={resolveEditorSubmitId}
+        disabled={busy}
+        onSubmitted={reload}
+        iconSize={16}
+      />
     );
 
     const header = (
@@ -2121,6 +2206,9 @@ export const LandingPagesTab = () => {
                 page={page}
                 onEdit={() => openEdit(page.id)}
                 onToggleStatus={() => toggleStatus(page)}
+                canPublish={canPublish}
+                publishLoading={publishLoading}
+                onSubmitted={reload}
                 titleExtra={
                   orphanLocale ? (
                     <Badge size="xs" variant="outline" color="gray">

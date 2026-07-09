@@ -101,6 +101,12 @@ export interface SpineCampaign {
   destinationLandingPageId: string | null;
   windowStart: string | null;
   windowEnd: string | null;
+  // Maker-checker (Phase 2) — an agent's "Approve campaign" submits instead; the
+  // route stamps these so the campaign carries a "Pending approval" / "Sent back"
+  // badge. Tolerant: routes predating the gate omit them → no badge.
+  submittedForApprovalAt: string | null;
+  sentBackAt: string | null;
+  sentBackNote: string | null;
 }
 
 // The LP arm as projected by `get` — enough for the review card + the editor
@@ -403,6 +409,9 @@ const parseCampaign = (raw: unknown): SpineCampaign | null => {
     destinationLandingPageId: asStrOrNull(r.destinationLandingPageId),
     windowStart: asStrOrNull(r.windowStart),
     windowEnd: asStrOrNull(r.windowEnd),
+    submittedForApprovalAt: asStrOrNull(r.submittedForApprovalAt),
+    sentBackAt: asStrOrNull(r.sentBackAt),
+    sentBackNote: asStrOrNull(r.sentBackNote),
   };
 };
 

@@ -40,6 +40,9 @@ import {
 import { decideBlogPost, generateBlogDraft, type BlogPost } from '@/propel/lib/blogCrm';
 import { amplifyBrief, generatePlan } from '@/propel/lib/socialCrm';
 import { ALL_NETWORKS } from '@/propel/lib/socialCalendarConfig';
+import { useCanPublish } from '@/propel/lib/canPublish';
+import { SubmissionBadge } from '@/propel/components/marketingHero/deskShared';
+import { SubmitForApprovalButton } from '@/propel/components/marketingHero/SubmitForApprovalButton';
 import { BlogPostDrawer } from '@/propel/components/website/BlogPostDrawer';
 
 // Every card opens the detail drawer on click; withhold the click from the
@@ -231,14 +234,23 @@ const InProgressCard = ({ item, onOpen }: { item: BlogPost; onOpen: () => void }
 const NeedsApprovalCard = ({
   item,
   busy,
+  canPublish,
+  publishLoading,
   onApprove,
   onReject,
+  onSubmitted,
   onOpen,
 }: {
   item: BlogPost;
   busy: boolean;
+  /** Maker-checker (Phase 2): true → publisher (keeps "Approve"). */
+  canPublish: boolean;
+  /** The publish verdict is still in flight → the go-live control is disabled. */
+  publishLoading: boolean;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
+  /** Fired after an agent submits this post for approval → reload the board. */
+  onSubmitted: () => void;
   onOpen: () => void;
 }) => (
   <Paper
@@ -253,17 +265,25 @@ const NeedsApprovalCard = ({
         <Text size="sm" fw={600} style={{ flex: 1 }}>
           {item.title}
         </Text>
-        {typeof item.criticScore === 'number' ? (
-          <Tooltip label="AI critic score (0–100)">
-            <Badge
-              size="xs"
-              variant="light"
-              color={item.criticScore >= 80 ? 'teal' : item.criticScore >= 60 ? 'yellow' : 'red'}
-            >
-              {item.criticScore}
-            </Badge>
-          </Tooltip>
-        ) : null}
+        <Group gap={6} wrap="nowrap">
+          <SubmissionBadge
+            size="xs"
+            submittedForApprovalAt={item.submittedForApprovalAt}
+            sentBackAt={item.sentBackAt}
+            sentBackNote={item.sentBackNote}
+          />
+          {typeof item.criticScore === 'number' ? (
+            <Tooltip label="AI critic score (0–100)">
+              <Badge
+                size="xs"
+                variant="light"
+                color={item.criticScore >= 80 ? 'teal' : item.criticScore >= 60 ? 'yellow' : 'red'}
+              >
+                {item.criticScore}
+              </Badge>
+            </Tooltip>
+          ) : null}
+        </Group>
       </Group>
       {item.excerpt ? (
         <Text size="xs" c="dimmed" lineClamp={3}>
@@ -284,18 +304,38 @@ const NeedsApprovalCard = ({
         >
           Reject
         </Button>
-        <Button
-          size="compact-xs"
-          color="red"
-          leftSection={<IconCheck size={13} />}
-          loading={busy}
-          onClick={(e) => {
-            stop(e);
-            onApprove(item.id);
-          }}
-        >
-          Approve
-        </Button>
+        {publishLoading ? (
+          <Button size="compact-xs" color="red" leftSection={<IconCheck size={13} />} disabled>
+            Approve
+          </Button>
+        ) : canPublish ? (
+          <Button
+            size="compact-xs"
+            color="red"
+            leftSection={<IconCheck size={13} />}
+            loading={busy}
+            onClick={(e) => {
+              stop(e);
+              onApprove(item.id);
+            }}
+          >
+            Approve
+          </Button>
+        ) : (
+          // Agent → submit for approval; stop the click bubbling to the card open.
+          <Box onClick={stop}>
+            <SubmitForApprovalButton
+              kind="BLOG"
+              id={item.id}
+              alreadySubmitted={
+                item.submittedForApprovalAt != null && item.submittedForApprovalAt !== ''
+              }
+              onSubmitted={onSubmitted}
+              size="compact-xs"
+              iconSize={13}
+            />
+          </Box>
+        )}
       </Group>
     </Stack>
   </Paper>
@@ -336,6 +376,9 @@ const PublishedCard = ({ item, onOpen }: { item: BlogPost; onOpen: () => void })
 
 export const BlogTab = () => {
   const notify = usePropelToast();
+  // Maker-checker (Phase 2): a publisher keeps "Approve"; an agent's same click
+  // becomes "Submit for approval". Fails closed to the agent view.
+  const { canPublish, loading: publishLoading } = useCanPublish();
   const { phase, error, preview, columns, activeAgents, total, reload } = useBlogPipeline();
 
   // Optimistic overlay: ids the coordinator just approved/rejected, hidden from
@@ -576,8 +619,11 @@ export const BlogTab = () => {
                 key={item.id}
                 item={item}
                 busy={busyId === item.id}
+                canPublish={canPublish}
+                publishLoading={publishLoading}
                 onApprove={(id) => void decide(id, 'approve')}
                 onReject={(id) => void decide(id, 'reject')}
+                onSubmitted={reload}
                 onOpen={() => setOpenRow(item)}
               />
             ))}

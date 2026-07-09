@@ -27,17 +27,27 @@ import { decideBlogPost } from '@/propel/lib/blogCrm';
 
 const PENDING_ROUTE = '/marketing/pending-approvals';
 
-// The publish/approve + sendBack route per kind (the item's own route). sendBack
-// is a new publisher-only action Phase 2 adds to each; we also pass the route's
-// native id key (planId/campaignId) alongside the generic `id` for tolerance.
+// The kinds a go-live control can submit for approval. It is the four review kinds
+// PLUS `CAMPAIGN_SEND` — the email/WA campaign *send* (a marketingCampaign on the
+// `/marketing/send-request` route), which is a distinct object/route from the
+// multi-channel Campaign Spine (`CAMPAIGN`). Both read "campaign" to a human, but
+// they submit to different routes, so the send gets its own kind here. (The 4-kind
+// `MarketingWorkKind` — used by my-work / pending-approvals — is unchanged.)
+export type SubmitKind = MarketingWorkKind | 'CAMPAIGN_SEND';
+
+// The route + native id key per submittable kind (the item's own route). `sendBack`
+// and `submitForApproval` are the Phase-2 actions each route gained; we pass the
+// route's native id key (planId/campaignId) alongside the generic `id` for
+// tolerance (a route may read either).
 const ROUTE_BY_KIND: Record<
-  MarketingWorkKind,
+  SubmitKind,
   { route: string; idKey: 'id' | 'planId' | 'campaignId' }
 > = {
   LANDING_PAGE: { route: '/website/landing-admin', idKey: 'id' },
   SOCIAL_PLAN: { route: '/social/plan-approve', idKey: 'planId' },
   CAMPAIGN: { route: '/marketing/campaign-spine', idKey: 'campaignId' },
   BLOG: { route: '/blog/approve', idKey: 'id' },
+  CAMPAIGN_SEND: { route: '/marketing/send-request', idKey: 'campaignId' },
 };
 
 export interface PendingApprovalItem {
@@ -169,6 +179,33 @@ export async function approveWorkItem(
     default:
       return { ok: false, error: 'Unknown item type.' };
   }
+}
+
+// The maker-side submit: an agent's "publish / set-live / send" click routes here
+// instead of publishing. Posts `{ action:'submitForApproval', id }` (plus the
+// route's native id key for tolerance) to the item's own route; the route stamps
+// `submittedForApprovalAt` + `submittedByMemberId` (the unspoofable acting member)
+// and does NOT publish. Idempotent server-side — a double-submit is a no-op. The
+// backend gate is authoritative: even a publisher's route refuses a non-publisher
+// publish and would route here, so this is the safe convenience path.
+export async function submitForApproval(
+  kind: SubmitKind,
+  id: string,
+): Promise<WorkActionResult> {
+  const { route, idKey } = ROUTE_BY_KIND[kind];
+  const body = await callPropelRoute<Envelope>(route, {
+    action: 'submitForApproval',
+    id,
+    [idKey]: id,
+  });
+  if (body && body.ok === true) return { ok: true };
+  return {
+    ok: false,
+    error:
+      typeof body?.error === 'string' && body.error
+        ? body.error
+        : 'Could not submit this for approval.',
+  };
 }
 
 // Publisher-only sendBack: clears the submission and stamps the note on the item's

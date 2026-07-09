@@ -28,6 +28,9 @@ import {
   IconX,
 } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
+import { useCanPublish } from '@/propel/lib/canPublish';
+import { SubmissionBadge } from '@/propel/components/marketingHero/deskShared';
+import { SubmitForApprovalButton } from '@/propel/components/marketingHero/SubmitForApprovalButton';
 import {
   decideBlogPost,
   fetchBlogPost,
@@ -91,6 +94,9 @@ export const BlogPostDrawer = ({
   onChanged: () => void;
 }) => {
   const notify = usePropelToast();
+  // Maker-checker (Phase 2): publisher keeps "Approve"; agent → "Submit for
+  // approval". Fails closed to the agent view.
+  const { canPublish, loading: publishLoading } = useCanPublish();
   const opened = row !== null;
 
   const [detail, setDetail] = useState<BlogPostDetail | null>(null);
@@ -194,6 +200,11 @@ export const BlogPostDrawer = ({
             <Badge color={meta.color} variant="light" radius="sm">
               {meta.label}
             </Badge>
+            <SubmissionBadge
+              submittedForApprovalAt={post.submittedForApprovalAt}
+              sentBackAt={post.sentBackAt}
+              sentBackNote={post.sentBackNote}
+            />
             {post.locale ? (
               <Badge
                 size="sm"
@@ -463,15 +474,34 @@ export const BlogPostDrawer = ({
             >
               Reject
             </Button>
-            <Button
-              color="red"
-              size="sm"
-              leftSection={<IconCheck size={14} />}
-              loading={busy}
-              onClick={() => void decide('approve')}
-            >
-              Approve
-            </Button>
+            {publishLoading ? (
+              <Button color="red" size="sm" leftSection={<IconCheck size={14} />} disabled>
+                Approve
+              </Button>
+            ) : canPublish ? (
+              <Button
+                color="red"
+                size="sm"
+                leftSection={<IconCheck size={14} />}
+                loading={busy}
+                onClick={() => void decide('approve')}
+              >
+                Approve
+              </Button>
+            ) : (
+              <SubmitForApprovalButton
+                kind="BLOG"
+                id={row.id}
+                alreadySubmitted={
+                  post.submittedForApprovalAt != null && post.submittedForApprovalAt !== ''
+                }
+                onSubmitted={() => {
+                  onChanged();
+                  onClose();
+                }}
+                iconSize={14}
+              />
+            )}
           </Group>
         ) : null}
       </Group>

@@ -51,6 +51,12 @@ export interface BlogPost {
   scheduledAt: string | null;
   lastError: string;
   updatedAt: string | null;
+  // Maker-checker (Phase 2) — an agent's "Approve" submits instead; the route
+  // stamps these so the card carries a "Pending approval" / "Sent back" badge.
+  // Tolerant: routes predating the gate omit them → null → no badge.
+  submittedForApprovalAt: string | null;
+  sentBackAt: string | null;
+  sentBackNote: string | null;
 }
 
 export type CrmResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -99,6 +105,10 @@ const toPost = (raw: unknown): BlogPost => {
     scheduledAt: typeof r.scheduledAt === 'string' ? r.scheduledAt : null,
     lastError: typeof r.lastError === 'string' ? r.lastError : '',
     updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : null,
+    submittedForApprovalAt:
+      typeof r.submittedForApprovalAt === 'string' ? r.submittedForApprovalAt : null,
+    sentBackAt: typeof r.sentBackAt === 'string' ? r.sentBackAt : null,
+    sentBackNote: typeof r.sentBackNote === 'string' ? r.sentBackNote : null,
   };
 };
 

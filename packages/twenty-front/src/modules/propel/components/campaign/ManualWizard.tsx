@@ -27,6 +27,8 @@ import {
 } from 'twenty-ui/display';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
+import { useCanPublish } from '@/propel/lib/canPublish';
+import { SubmitForApprovalButton } from '@/propel/components/marketingHero/SubmitForApprovalButton';
 import {
   BUILDER_MERGE_FIELDS,
   dubaiLocalToIso,
@@ -103,6 +105,10 @@ export const ManualWizard = ({
   onEditRules?: () => void;
 }) => {
   const notify = usePropelToast();
+  // Maker-checker (Phase 2): a publisher keeps "Send now" / "Schedule"; an agent's
+  // same click becomes "Submit for approval" (the send-request route submits
+  // instead of firing). Fails closed to the agent view; disabled while in flight.
+  const { canPublish, loading: publishLoading } = useCanPublish();
 
   // ── campaign state ─────────────────────────────────────────────────────────
   const [activeStep, setActiveStep] = useState(0);
@@ -947,7 +953,19 @@ export const ManualWizard = ({
             </Button>
           )}
           {activeStep === 3 &&
-            (sendMode === 'now' ? (
+            (publishLoading ? (
+              <Button color="red" disabled>
+                {sendMode === 'now' ? 'Send now' : 'Schedule'}
+              </Button>
+            ) : !canPublish ? (
+              // Agent → submit the send for a manager to approve (never fires).
+              <SubmitForApprovalButton
+                kind="CAMPAIGN_SEND"
+                id={campaignId}
+                disabled={permitBlocked}
+                onSubmitted={onDone}
+              />
+            ) : sendMode === 'now' ? (
               <Button
                 color="red"
                 loading={submitting}
