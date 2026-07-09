@@ -35,8 +35,11 @@ import * as ReactRouterDom from 'react-router-dom';
 import * as FramerMotion from 'framer-motion';
 
 // ── twenty-ui shared (theme-constants is CRITICAL — shared ThemeContext identity) ─
-import * as TwentyUiDisplay from 'twenty-ui-deprecated/display';
-import * as TwentyUiThemeConstants from 'twenty-ui-deprecated/theme-constants';
+// v2.19.2: upstream deleted the old kit (`twenty-ui-deprecated`) and the promoted
+// new kit has NO `./display` subpath. Everything the fork ever consumed from
+// `display` was icons + useIcons, which live under `twenty-ui/icon` in the new kit.
+import * as TwentyUiIcon from 'twenty-ui/icon';
+import * as TwentyUiThemeConstants from 'twenty-ui/theme-constants';
 
 // ── host-internal modules (shimmed so hero SOURCE stays unchanged) ────────────
 import { getTokenPair } from '@/apollo/utils/getTokenPair';
@@ -63,9 +66,16 @@ const SHARED: Record<string, unknown> = {
   '@emotion/styled': { default: EmotionStyled },
   'react-router-dom': ReactRouterDom,
   'framer-motion': FramerMotion,
-  // twenty-ui
-  'twenty-ui/display': TwentyUiDisplay,
+  // twenty-ui — NEW canonical specifiers (post-v2.19.2 kit)
+  'twenty-ui/icon': TwentyUiIcon,
   'twenty-ui/theme-constants': TwentyUiThemeConstants,
+  // LEGACY ALIAS — hero bundles built BEFORE the v2.19.2 upgrade import
+  // 'twenty-ui/display' (a subpath the new kit no longer has). Every named
+  // export those bundles pull from it is an icon or useIcons (verified against
+  // every hero source at the time they were built), so the alias resolves to
+  // the icon namespace. Heroes rebuilt on this host import 'twenty-ui/icon'
+  // directly; drop the alias once every deployed bundle has been rebuilt.
+  'twenty-ui/display': TwentyUiIcon,
   // host-internal (named-export modules wrapped so the generated shim re-exports
   // the SAME function/value the host uses)
   '@/apollo/utils/getTokenPair': { getTokenPair },

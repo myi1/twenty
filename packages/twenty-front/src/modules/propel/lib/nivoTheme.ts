@@ -1,4 +1,4 @@
-import { themeCssVariables } from 'twenty-ui-deprecated/theme-constants';
+import { themeCssVariables } from 'twenty-ui/theme-constants';
 
 // Nivo `theme` prop built from Twenty's CSS variables so axes, grid lines, labels,
 // and tooltips track the CRM's light/dark scheme automatically (the var() strings

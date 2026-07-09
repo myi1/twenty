@@ -26,7 +26,7 @@ import {
   IconMessage,
   IconPhone,
   IconTrash,
-} from 'twenty-ui-deprecated/display';
+} from 'twenty-ui/icon';
 import { GrapesEmailBuilder } from '@/propel/components/campaign/GrapesEmailBuilder';
 import {
   type ConditionKind,

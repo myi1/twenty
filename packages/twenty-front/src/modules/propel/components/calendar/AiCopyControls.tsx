@@ -14,7 +14,7 @@ import {
   IconSparkles,
   IconTag,
   IconX,
-} from 'twenty-ui-deprecated/display';
+} from 'twenty-ui/icon';
 import {
   aiArabic,
   aiDraft,

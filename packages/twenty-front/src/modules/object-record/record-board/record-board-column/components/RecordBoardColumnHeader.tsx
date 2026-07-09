@@ -1,6 +1,6 @@
 import { styled } from '@linaria/react';
 import { useContext, useState } from 'react';
-import { themeCssVariables } from 'twenty-ui-deprecated/theme-constants';
+import { themeCssVariables } from 'twenty-ui/theme-constants';
 
 import { useObjectPermissionsForObject } from '@/object-record/hooks/useObjectPermissionsForObject';
 import { RecordBoardContext } from '@/object-record/record-board/contexts/RecordBoardContext';
@@ -8,9 +8,12 @@ import { RecordBoardColumnDropdownMenu } from '@/object-record/record-board/reco
 import { RecordBoardColumnHeaderAggregateDropdown } from '@/object-record/record-board/record-board-column/components/RecordBoardColumnHeaderAggregateDropdown';
 
 import { RECORD_BOARD_COLUMN_WIDTH } from '@/object-record/record-board/constants/RecordBoardColumnWidth';
+import { RECORD_BOARD_COLUMN_WIDTH_CSS_VARIABLE_NAME } from '@/object-record/record-board/constants/RecordBoardColumnWidthCssVariableName';
+import { RecordBoardColumnResizeHandler } from '@/object-record/record-board/record-board-column/components/RecordBoardColumnResizeHandler';
 import { RecordBoardColumnContext } from '@/object-record/record-board/record-board-column/contexts/RecordBoardColumnContext';
 import { hasAnySoftDeleteFilterOnViewComponentSelector } from '@/object-record/record-filter/states/hasAnySoftDeleteFilterOnView';
-import { RecordGroupDefinitionType } from '@/object-record/record-group/types/RecordGroupDefinition';
+import { RecordGroupChip } from '@/object-record/record-group/components/RecordGroupChip';
+import { getFieldMetadataItemGqlFieldName } from '@/object-metadata/utils/getFieldMetadataItemGqlFieldName';
 import { recordIndexAggregateDisplayLabelComponentState } from '@/object-record/record-index/states/recordIndexAggregateDisplayLabelComponentState';
 import { recordIndexAggregateDisplayValueForGroupValueComponentFamilyState } from '@/object-record/record-index/states/recordIndexAggregateDisplayValueForGroupValueComponentFamilyState';
 import { useCreateNewIndexRecord } from '@/object-record/record-table/hooks/useCreateNewIndexRecord';
@@ -20,9 +23,8 @@ import { useToggleDropdown } from '@/ui/layout/dropdown/hooks/useToggleDropdown'
 import { useAtomComponentFamilyStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomComponentFamilyStateValue';
 import { useAtomComponentSelectorValue } from '@/ui/utilities/state/jotai/hooks/useAtomComponentSelectorValue';
 import { useAtomComponentStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomComponentStateValue';
-import { Tag } from 'twenty-ui-deprecated/components';
-import { IconDotsVertical, IconPlus } from 'twenty-ui-deprecated/display';
-import { LightIconButton } from 'twenty-ui-deprecated/input';
+import { IconDotsVertical, IconPlus } from 'twenty-ui/icon';
+import { LightIconButton } from 'twenty-ui/input';
 
 const StyledHeader = styled.div`
   align-items: center;
@@ -61,8 +63,14 @@ const StyledColumn = styled.div`
   background-color: ${themeCssVariables.background.primary};
   display: flex;
   flex-direction: column;
-  max-width: ${RECORD_BOARD_COLUMN_WIDTH}px;
-  min-width: ${RECORD_BOARD_COLUMN_WIDTH}px;
+  max-width: var(
+    ${RECORD_BOARD_COLUMN_WIDTH_CSS_VARIABLE_NAME},
+    ${RECORD_BOARD_COLUMN_WIDTH}px
+  );
+  min-width: var(
+    ${RECORD_BOARD_COLUMN_WIDTH_CSS_VARIABLE_NAME},
+    ${RECORD_BOARD_COLUMN_WIDTH}px
+  );
 
   padding: ${themeCssVariables.spacing[2]};
 
@@ -122,7 +130,8 @@ export const RecordBoardColumnHeader = () => {
   const handleCreateNewRecordClick = async () => {
     await createNewIndexRecord({
       position: 'first',
-      [selectFieldMetadataItem.name]: columnDefinition.value,
+      [getFieldMetadataItemGqlFieldName(selectFieldMetadataItem)]:
+        columnDefinition.value,
     });
   };
 
@@ -144,26 +153,9 @@ export const RecordBoardColumnHeader = () => {
                 }}
                 clickableComponent={
                   <StyledTagContainer>
-                    <Tag
-                      variant={
-                        columnDefinition.type ===
-                        RecordGroupDefinitionType.Value
-                          ? 'solid'
-                          : 'outline'
-                      }
-                      color={
-                        columnDefinition.type ===
-                        RecordGroupDefinitionType.Value
-                          ? columnDefinition.color
-                          : 'transparent'
-                      }
-                      text={columnDefinition.title}
-                      weight={
-                        columnDefinition.type ===
-                        RecordGroupDefinitionType.Value
-                          ? 'regular'
-                          : 'medium'
-                      }
+                    <RecordGroupChip
+                      recordGroupDefinition={columnDefinition}
+                      fieldMetadataItem={selectFieldMetadataItem}
                     />
                   </StyledTagContainer>
                 }
@@ -202,6 +194,7 @@ export const RecordBoardColumnHeader = () => {
           </StyledRightContainer>
         </StyledHeaderContainer>
       </StyledHeader>
+      <RecordBoardColumnResizeHandler />
     </StyledColumn>
   );
 };

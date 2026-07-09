@@ -1,5 +1,5 @@
 import { Badge, Box, Card, Divider, Group, Stack, Text } from '@mantine/core';
-import { IconBuildingSkyscraper, IconMap } from 'twenty-ui-deprecated/display';
+import { IconBuildingSkyscraper, IconMap } from 'twenty-ui/icon';
 import { type StudioPreview } from '@/propel/types/listingStudio';
 
 // The live Property Finder preview pane (lane spec §6). Renders the PF-vocabulary

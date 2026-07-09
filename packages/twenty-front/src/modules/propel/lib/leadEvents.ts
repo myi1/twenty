@@ -17,7 +17,7 @@ import {
   IconSparkles,
   IconTargetArrow,
   IconUserPlus,
-} from 'twenty-ui-deprecated/display';
+} from 'twenty-ui/icon';
 import { type LeadEventNode, type LeadEventType } from '@/propel/types/inbox';
 
 // Re-export the node shape under the name the rail imports.

@@ -41,10 +41,11 @@ export const getDefaultFlatFieldMetadata = ({
       createFieldInput.isRemoteCreation,
     ),
     isSystem: createFieldInput.isSystem ?? false,
+    isSystemSideEffect: false,
     isUnique: createFieldInput.isUnique ?? false,
     label: createFieldInput.label,
     name: createFieldInput.name,
-    standardOverrides: null,
+    overrides: null,
     type: createFieldInput.type,
     universalIdentifier: createFieldInput.universalIdentifier ?? v4(),
     options: createFieldInput.options ?? null,
@@ -76,5 +77,6 @@ export const getDefaultFlatFieldMetadata = ({
     mainGroupByFieldMetadataViewUniversalIdentifiers: [],
     universalSettings: settings ?? null,
     viewSortUniversalIdentifiers: [],
+    searchFieldMetadataUniversalIdentifiers: [],
   } as const satisfies UniversalFlatFieldMetadata;
 };

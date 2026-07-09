@@ -12,7 +12,7 @@ import {
   IconCircleDot,
   IconClock,
   IconLoader,
-} from 'twenty-ui-deprecated/display';
+} from 'twenty-ui/icon';
 import {
   type SocialCalendarView,
   type SocialNetwork,

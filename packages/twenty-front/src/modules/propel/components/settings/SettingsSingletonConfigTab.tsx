@@ -1,5 +1,5 @@
 import { Alert, Center, Loader, Stack } from '@mantine/core';
-import { IconAlertTriangle } from 'twenty-ui-deprecated/display';
+import { IconAlertTriangle } from 'twenty-ui/icon';
 
 import { SettingsConfigGroupCard } from '@/propel/components/settings/SettingsConfigGroupCard';
 import { LANE_GROUPS, ROUTING_GROUP } from '@/propel/lib/settingsHubConfig';

@@ -61,9 +61,13 @@ const SHARED_SPECIFIERS = [
   '@emotion/styled',
   'react-router-dom',
   'framer-motion',
-  // twenty-ui
-  'twenty-ui/display',
+  // twenty-ui (post-v2.19.2 kit: `display` no longer exists — icons moved to `icon`)
+  'twenty-ui/icon',
   'twenty-ui/theme-constants',
+  // LEGACY ALIAS: pre-v2.19.2 hero bundles import 'twenty-ui/display'; every
+  // name they pull is an icon/useIcons, so the shim re-exports the icon
+  // namespace under the old specifier. Drop once all bundles are rebuilt.
+  'twenty-ui/display',
   // host-internal
   '@/apollo/utils/getTokenPair',
   '@/propel/lib/callPropelRoute',
@@ -73,6 +77,12 @@ const SHARED_SPECIFIERS = [
   '@/dialer-dock/utils/dialerCrmBridge',
   '~/config',
 ];
+
+// Alias specifiers whose EXPORT SURFACE is introspected from a DIFFERENT module
+// (the heroShared boot module registers the same instance under both keys).
+const INTROSPECT_AS = {
+  'twenty-ui/display': 'twenty-ui/icon',
+};
 
 // Host-internal specifiers can't be `import()`-ed from Node (they resolve via the
 // app's tsconfig path aliases, not from node_modules, and pull in the whole app).
@@ -163,7 +173,7 @@ const main = async () => {
       exportsInfo = HOST_INTERNAL_EXPORTS[spec];
     } else {
       try {
-        exportsInfo = await introspect(spec);
+        exportsInfo = await introspect(INTROSPECT_AS[spec] ?? spec);
       } catch (err) {
         console.error(`✗ ${spec}: introspection failed — ${err.message}`);
         process.exitCode = 1;

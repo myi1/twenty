@@ -1,5 +1,5 @@
 import { Badge, Group, Progress, Stack, Text } from '@mantine/core';
-import { IconChartBar } from 'twenty-ui-deprecated/display';
+import { IconChartBar } from 'twenty-ui/icon';
 import { type MarketingAnalyticsPayload } from '@/propel/types/marketingHome';
 import { WidgetCard } from '@/propel/components/WidgetCard';
 import { EmptyState } from '@/propel/widgets/EmptyState';

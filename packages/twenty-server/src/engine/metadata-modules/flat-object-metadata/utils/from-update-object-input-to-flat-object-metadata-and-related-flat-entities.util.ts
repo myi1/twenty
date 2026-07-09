@@ -30,6 +30,7 @@ type FromUpdateObjectInputToFlatObjectMetadataArgs = {
   | 'flatFieldMetadataMaps'
   | 'flatViewFieldMaps'
   | 'flatViewMaps'
+  | 'flatSearchFieldMetadataMaps'
 >;
 
 export const fromUpdateObjectInputToFlatObjectMetadataAndRelatedFlatEntities =
@@ -40,6 +41,7 @@ export const fromUpdateObjectInputToFlatObjectMetadataAndRelatedFlatEntities =
     flatFieldMetadataMaps,
     flatViewFieldMaps,
     flatViewMaps,
+    flatSearchFieldMetadataMaps,
   }: FromUpdateObjectInputToFlatObjectMetadataArgs): FlatObjectMetadataUpdateSideEffects & {
     flatObjectMetadataToUpdate: UniversalFlatObjectMetadata;
   } => {
@@ -64,7 +66,7 @@ export const fromUpdateObjectInputToFlatObjectMetadataAndRelatedFlatEntities =
     const isStandardObject = belongsToTwentyStandardApp(
       existingFlatObjectMetadata,
     );
-    const { standardOverrides, updatedEditableObjectProperties } =
+    const { overrides, updatedEditableObjectProperties } =
       sanitizeRawUpdateObjectInput({
         existingFlatObjectMetadata,
         rawUpdateObjectInput,
@@ -79,7 +81,7 @@ export const fromUpdateObjectInputToFlatObjectMetadataAndRelatedFlatEntities =
           ],
         update: updatedEditableObjectProperties,
       }),
-      standardOverrides,
+      overrides,
     };
 
     if (
@@ -100,7 +102,7 @@ export const fromUpdateObjectInputToFlatObjectMetadataAndRelatedFlatEntities =
       flatViewFieldsToCreate,
       flatViewFieldsToUpdate,
       otherObjectFlatFieldMetadatasToUpdate,
-      sameObjectFlatFieldMetadatasToUpdate,
+      searchFieldMetadatasToCreate,
     } = handleFlatObjectMetadataUpdateSideEffect({
       fromFlatObjectMetadata: existingFlatObjectMetadata,
       toFlatObjectMetadata,
@@ -109,6 +111,7 @@ export const fromUpdateObjectInputToFlatObjectMetadataAndRelatedFlatEntities =
       flatIndexMaps,
       flatViewFieldMaps,
       flatViewMaps,
+      flatSearchFieldMetadataMaps,
     });
 
     return {
@@ -117,6 +120,6 @@ export const fromUpdateObjectInputToFlatObjectMetadataAndRelatedFlatEntities =
       flatViewFieldsToCreate,
       flatViewFieldsToUpdate,
       otherObjectFlatFieldMetadatasToUpdate,
-      sameObjectFlatFieldMetadatasToUpdate,
+      searchFieldMetadatasToCreate,
     };
   };

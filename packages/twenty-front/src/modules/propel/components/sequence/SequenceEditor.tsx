@@ -17,7 +17,7 @@ import {
   IconDeviceFloppy,
   IconPlus,
   IconSend,
-} from 'twenty-ui-deprecated/display';
+} from 'twenty-ui/icon';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { EnrollmentList } from '@/propel/components/sequence/EnrollmentList';
 import { SequenceFlowMap } from '@/propel/components/sequence/SequenceFlowMap';

@@ -13,7 +13,7 @@ import {
   Table,
   Text,
 } from '@mantine/core';
-import { IconAlertTriangle } from 'twenty-ui-deprecated/display';
+import { IconAlertTriangle } from 'twenty-ui/icon';
 
 import { useLeadRoutingConfig } from '@/propel/hooks/useLeadRoutingConfig';
 import {

@@ -1,5 +1,5 @@
 import { Box, Stack, Text, UnstyledButton } from '@mantine/core';
-import { IconCheck } from 'twenty-ui-deprecated/display';
+import { IconCheck } from 'twenty-ui/icon';
 import {
   STUDIO_STEP_META,
   stepIndex,

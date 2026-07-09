@@ -11,7 +11,7 @@ import {
   Textarea,
   TextInput,
 } from '@mantine/core';
-import { IconAlertCircle } from 'twenty-ui-deprecated/display';
+import { IconAlertCircle } from 'twenty-ui/icon';
 import { ComposeToolbar } from '@/propel/components/campaign/ComposeToolbar';
 import { type FormatAction } from '@/propel/lib/campaignBuilderConfig';
 import { type MergeField } from '@/propel/lib/campaignRenderer';

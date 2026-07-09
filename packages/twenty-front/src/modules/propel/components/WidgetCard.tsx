@@ -1,6 +1,6 @@
 import { ActionIcon, Card, Group, Text } from '@mantine/core';
 import { type ReactNode } from 'react';
-import { type IconComponent, IconGripVertical } from 'twenty-ui-deprecated/display';
+import { type IconComponent, IconGripVertical } from 'twenty-ui/icon';
 
 // The shared shell every Marketing Home widget renders inside: a full-height
 // Mantine Card whose header doubles as the react-grid-layout drag handle (the

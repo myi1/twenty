@@ -3,9 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ApplicationRegistrationService } from 'src/engine/core-modules/application/application-registration/application-registration.service';
 import { ApplicationRegistrationSourceType } from 'src/engine/core-modules/application/application-registration/enums/application-registration-source-type.enum';
 import { MarketplaceService } from 'src/engine/core-modules/application/application-marketplace/marketplace.service';
-import { buildRegistryCdnUrl } from 'src/engine/core-modules/application/application-marketplace/utils/build-registry-cdn-url.util';
-import { resolveManifestAssetUrls } from 'src/engine/core-modules/application/application-marketplace/utils/resolve-manifest-asset-urls.util';
-import { TwentyConfigService } from 'src/engine/core-modules/twenty-config/twenty-config.service';
+import { ManifestAssetUrlResolverService } from 'src/engine/core-modules/application/application-registration/manifest-asset-url-resolver.service';
 
 @Injectable()
 export class MarketplaceCatalogSyncService {
@@ -14,7 +12,7 @@ export class MarketplaceCatalogSyncService {
   constructor(
     private readonly applicationRegistrationService: ApplicationRegistrationService,
     private readonly marketplaceService: MarketplaceService,
-    private readonly twentyConfigService: TwentyConfigService,
+    private readonly manifestAssetUrlResolverService: ManifestAssetUrlResolverService,
   ) {}
 
   async syncCatalog(): Promise<void> {
@@ -26,7 +24,10 @@ export class MarketplaceCatalogSyncService {
   private async syncRegistryApps(): Promise<void> {
     const packages = await this.marketplaceService.fetchAppsFromRegistry();
 
+    this.logger.log(`${packages.length} packages detected`);
+
     for (const pkg of packages) {
+      this.logger.log(`Synchronizing ${pkg.name}...`);
       try {
         const fetchedManifest =
           await this.marketplaceService.fetchManifestFromRegistryCdn(
@@ -42,39 +43,16 @@ export class MarketplaceCatalogSyncService {
         const universalIdentifier =
           fetchedManifest.application.universalIdentifier;
 
-        const aboutDescription =
-          fetchedManifest.application.aboutDescription ??
-          (await this.marketplaceService.fetchReadmeFromRegistryCdn(
-            pkg.name,
-            pkg.version,
-          ));
-
-        const manifest = aboutDescription
-          ? {
-              ...fetchedManifest,
-              application: {
-                ...fetchedManifest.application,
-                aboutDescription,
-              },
-            }
-          : fetchedManifest;
-
-        const cdnBaseUrl = this.twentyConfigService.get('APP_REGISTRY_CDN_URL');
-
-        const manifestWithResolvedUrls = resolveManifestAssetUrls(
-          manifest,
-          (filePath) =>
-            buildRegistryCdnUrl({
-              cdnBaseUrl,
-              packageName: pkg.name,
-              version: pkg.version,
-              filePath,
-            }),
-        );
+        const manifestWithResolvedUrls =
+          this.manifestAssetUrlResolverService.resolveFromRegistrySource({
+            manifest: fetchedManifest,
+            packageName: pkg.name,
+            version: pkg.version,
+          });
 
         await this.applicationRegistrationService.upsertFromCatalog({
           universalIdentifier,
-          name: manifest.application.displayName ?? pkg.name,
+          name: fetchedManifest.application.displayName ?? pkg.name,
           sourceType: ApplicationRegistrationSourceType.NPM,
           sourcePackage: pkg.name,
           latestAvailableVersion: pkg.version ?? null,

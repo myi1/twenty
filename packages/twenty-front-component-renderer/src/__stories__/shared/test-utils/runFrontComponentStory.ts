@@ -23,7 +23,7 @@ export const runFrontComponentStory = ({
       userId: null,
       recordId: null,
       selectedRecordIds: [],
-      colorScheme: 'Light',
+      colorScheme: 'light',
     },
   },
   play,

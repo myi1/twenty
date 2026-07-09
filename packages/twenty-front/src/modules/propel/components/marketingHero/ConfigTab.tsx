@@ -7,7 +7,7 @@ import {
   IconMoon,
   IconUsers,
   IconWorld,
-} from 'twenty-ui-deprecated/display';
+} from 'twenty-ui/icon';
 
 import { SettingsAgentProfilesTab } from '@/propel/components/settings/SettingsAgentProfilesTab';
 import { SettingsCustomFieldsTab } from '@/propel/components/settings/SettingsCustomFieldsTab';

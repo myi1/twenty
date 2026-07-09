@@ -92,7 +92,11 @@ export type {
   FieldMetadataDefaultValueForAnyType,
   FieldMetadataDefaultValue,
 } from './FieldMetadataDefaultValue';
-export { fieldMetadataDefaultValueFunctionName } from './FieldMetadataDefaultValue';
+export {
+  fieldMetadataDefaultValueFunctionName,
+  FIELD_METADATA_TYPES_WITHOUT_DEFAULT_VALUE,
+  isFieldMetadataTypeWithDefaultValue,
+} from './FieldMetadataDefaultValue';
 export type { FieldMetadataMultiItemSettings } from './FieldMetadataMultiItemSettings';
 export { FieldMetadataSettingsOnClickAction } from './FieldMetadataMultiItemSettings';
 export type {
@@ -211,6 +215,7 @@ export type {
 } from './page-layout/page-layout-widget-position.type';
 export type { PageLayoutWidgetUniversalConfiguration } from './page-layout/page-layout-widget-universal-configuration.type';
 export { PageLayoutTabLayoutMode } from './page-layout/PageLayoutTabLayoutMode';
+export { PageLayoutType } from './page-layout/PageLayoutType';
 export type { PageLayoutWidgetConditionalDisplay } from './page-layout/PageLayoutWidgetConditionalDisplay';
 export type { RatioAggregateConfig } from './page-layout/ratio-aggregate-config.type';
 export type { PartialFieldMetadataItem } from './PartialFieldMetadataItem';
@@ -296,3 +301,5 @@ export { ViewOpenRecordIn } from './ViewOpenRecordIn';
 export { ViewSortDirection } from './ViewSortDirection';
 export { ViewType } from './ViewType';
 export { ViewVisibility } from './ViewVisibility';
+export { WebhookSubscriptionChannelType } from './WebhookSubscriptionChannelType';
+export { WebhookSubscriptionStatus } from './WebhookSubscriptionStatus';

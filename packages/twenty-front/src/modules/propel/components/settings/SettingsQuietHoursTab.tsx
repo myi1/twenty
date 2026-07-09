@@ -14,7 +14,7 @@ import {
   Text,
 } from '@mantine/core';
 import { useEffect, useMemo, useState } from 'react';
-import { IconAlertTriangle, IconClock, IconMoon } from 'twenty-ui-deprecated/display';
+import { IconAlertTriangle, IconClock, IconMoon } from 'twenty-ui/icon';
 
 import { useSendRules } from '@/propel/hooks/useSendRules';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';

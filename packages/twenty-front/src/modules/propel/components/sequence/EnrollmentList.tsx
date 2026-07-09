@@ -17,7 +17,7 @@ import {
   IconAlertTriangle,
   IconRefresh,
   IconUsers,
-} from 'twenty-ui-deprecated/display';
+} from 'twenty-ui/icon';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import {
   type EnrollmentRow,

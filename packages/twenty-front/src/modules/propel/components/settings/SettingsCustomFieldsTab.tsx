@@ -21,7 +21,7 @@ import {
   IconPencil,
   IconPlus,
   IconTrash,
-} from 'twenty-ui-deprecated/display';
+} from 'twenty-ui/icon';
 
 import { useCustomFields } from '@/propel/hooks/useCustomFields';
 import {

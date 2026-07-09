@@ -117,6 +117,7 @@ export type AdminPanelWorkspaceBilling = {
   creditBalance?: Maybe<Scalars['Float']['output']>;
   stripeCustomerId?: Maybe<Scalars['String']['output']>;
   subscription?: Maybe<AdminPanelWorkspaceSubscription>;
+  usage?: Maybe<AdminPanelWorkspaceUsage>;
 };
 
 export type AdminPanelWorkspaceSubscription = {
@@ -144,6 +145,17 @@ export type AdminPanelWorkspaceSubscriptionItem = {
   quantity?: Maybe<Scalars['Float']['output']>;
   stripePriceId: Scalars['String']['output'];
   unitAmount?: Maybe<Scalars['Float']['output']>;
+};
+
+export type AdminPanelWorkspaceUsage = {
+  __typename?: 'AdminPanelWorkspaceUsage';
+  grantedCredits: Scalars['Float']['output'];
+  periodEnd: Scalars['DateTime']['output'];
+  periodStart: Scalars['DateTime']['output'];
+  remainingCredits: Scalars['Float']['output'];
+  rolloverCredits: Scalars['Float']['output'];
+  totalGrantedCredits: Scalars['Float']['output'];
+  usedCredits: Scalars['Float']['output'];
 };
 
 export type AdminWorkspaceChatThread = {
@@ -190,12 +202,26 @@ export type ApplicationRegistration = {
   updatedAt: Scalars['DateTime']['output'];
 };
 
+export type ApplicationRegistrationInstalledWorkspaces = {
+  __typename?: 'ApplicationRegistrationInstalledWorkspaces';
+  hasMore: Scalars['Boolean']['output'];
+  totalCount: Scalars['Int']['output'];
+  workspaces: Array<InstalledWorkspace>;
+};
+
 export enum ApplicationRegistrationSourceType {
   LOCAL = 'LOCAL',
   NPM = 'NPM',
   OAUTH_ONLY = 'OAUTH_ONLY',
   TARBALL = 'TARBALL'
 }
+
+export type ApplicationRegistrationStats = {
+  __typename?: 'ApplicationRegistrationStats';
+  activeInstalls: Scalars['Int']['output'];
+  mostInstalledVersion?: Maybe<Scalars['String']['output']>;
+  versionDistribution: Array<VersionDistributionEntry>;
+};
 
 export type ApplicationRegistrationVariableDto = {
   __typename?: 'ApplicationRegistrationVariableDTO';
@@ -206,6 +232,8 @@ export type ApplicationRegistrationVariableDto = {
   isRequired: Scalars['Boolean']['output'];
   isSecret: Scalars['Boolean']['output'];
   key: Scalars['String']['output'];
+  options?: Maybe<Scalars['JSON']['output']>;
+  type: Scalars['String']['output'];
   updatedAt: Scalars['DateTime']['output'];
   value?: Maybe<Scalars['String']['output']>;
 };
@@ -285,17 +313,21 @@ export type FeatureFlag = {
 };
 
 export enum FeatureFlagKey {
-  IS_CALL_RECORDING_ENABLED = 'IS_CALL_RECORDING_ENABLED',
   IS_EMAIL_GROUP_ENABLED = 'IS_EMAIL_GROUP_ENABLED',
   IS_JSON_FILTER_ENABLED = 'IS_JSON_FILTER_ENABLED',
   IS_JUNCTION_RELATIONS_ENABLED = 'IS_JUNCTION_RELATIONS_ENABLED',
   IS_LOGIC_FUNCTION_PREBUILT_MODE_ENABLED = 'IS_LOGIC_FUNCTION_PREBUILT_MODE_ENABLED',
-  IS_MARKETPLACE_SETTING_TAB_VISIBLE = 'IS_MARKETPLACE_SETTING_TAB_VISIBLE',
-  IS_PUBLIC_DOMAIN_ENABLED = 'IS_PUBLIC_DOMAIN_ENABLED',
+  IS_MESSAGING_CALENDAR_WEBHOOK_ENABLED = 'IS_MESSAGING_CALENDAR_WEBHOOK_ENABLED',
   IS_REST_METADATA_API_NEW_FORMAT_DIRECT = 'IS_REST_METADATA_API_NEW_FORMAT_DIRECT',
   IS_SETTINGS_DISCOVERY_HERO_ENABLED = 'IS_SETTINGS_DISCOVERY_HERO_ENABLED',
   IS_UNIQUE_INDEXES_ENABLED = 'IS_UNIQUE_INDEXES_ENABLED'
 }
+
+export type FindApplicationRegistrationInstalledWorkspacesInput = {
+  id: Scalars['String']['input'];
+  page?: Scalars['Int']['input'];
+  searchTerm?: InputMaybe<Scalars['String']['input']>;
+};
 
 export enum HealthIndicatorId {
   app = 'app',
@@ -304,6 +336,14 @@ export enum HealthIndicatorId {
   redis = 'redis',
   worker = 'worker'
 }
+
+export type InstalledWorkspace = {
+  __typename?: 'InstalledWorkspace';
+  displayName?: Maybe<Scalars['String']['output']>;
+  id: Scalars['UUID']['output'];
+  logo?: Maybe<Scalars['String']['output']>;
+  version?: Maybe<Scalars['String']['output']>;
+};
 
 export type InstanceAndAllWorkspacesUpgradeStatus = {
   __typename?: 'InstanceAndAllWorkspacesUpgradeStatus';
@@ -388,6 +428,7 @@ export type Mutation = {
   __typename?: 'Mutation';
   addAiProvider: Scalars['Boolean']['output'];
   addModelToProvider: Scalars['Boolean']['output'];
+  backfillApplicationInstallation: Scalars['Boolean']['output'];
   clearMaintenanceMode: Scalars['Boolean']['output'];
   createDatabaseConfigVariable: Scalars['Boolean']['output'];
   deleteDatabaseConfigVariable: Scalars['Boolean']['output'];
@@ -403,6 +444,8 @@ export type Mutation = {
   setAdminAiModelsRecommended: Scalars['Boolean']['output'];
   setAdminDefaultAiModel: Scalars['Boolean']['output'];
   setMaintenanceMode: Scalars['Boolean']['output'];
+  syncMarketplaceCatalog: Scalars['Boolean']['output'];
+  updateAdminApplicationRegistration: ApplicationRegistration;
   updateAdminApplicationRegistrationVariable: ApplicationRegistrationVariableDto;
   updateDatabaseConfigVariable: Scalars['Boolean']['output'];
   updateServerAdminAccess: ServerAdmin;
@@ -419,6 +462,11 @@ export type MutationAddAiProviderArgs = {
 export type MutationAddModelToProviderArgs = {
   modelConfig: Scalars['JSON']['input'];
   providerName: Scalars['String']['input'];
+};
+
+
+export type MutationBackfillApplicationInstallationArgs = {
+  applicationRegistrationId: Scalars['String']['input'];
 };
 
 
@@ -498,6 +546,11 @@ export type MutationSetMaintenanceModeArgs = {
 };
 
 
+export type MutationUpdateAdminApplicationRegistrationArgs = {
+  input: UpdateApplicationRegistrationInput;
+};
+
+
 export type MutationUpdateAdminApplicationRegistrationVariableArgs = {
   input: UpdateApplicationRegistrationVariableInput;
 };
@@ -527,6 +580,8 @@ export type Query = {
   __typename?: 'Query';
   adminPanelRecentUsers: Array<AdminPanelRecentUser>;
   adminPanelTopWorkspaces: Array<AdminPanelTopWorkspace>;
+  findAdminApplicationRegistrationInstalledWorkspaces: ApplicationRegistrationInstalledWorkspaces;
+  findAdminApplicationRegistrationStats: ApplicationRegistrationStats;
   findAdminApplicationRegistrationVariables: Array<ApplicationRegistrationVariableDto>;
   findAllApplicationRegistrations: Array<ApplicationRegistration>;
   findOneAdminApplicationRegistration: ApplicationRegistration;
@@ -562,6 +617,16 @@ export type QueryAdminPanelRecentUsersArgs = {
 
 export type QueryAdminPanelTopWorkspacesArgs = {
   searchTerm?: InputMaybe<Scalars['String']['input']>;
+};
+
+
+export type QueryFindAdminApplicationRegistrationInstalledWorkspacesArgs = {
+  input: FindApplicationRegistrationInstalledWorkspacesInput;
+};
+
+
+export type QueryFindAdminApplicationRegistrationStatsArgs = {
+  id: Scalars['String']['input'];
 };
 
 
@@ -762,6 +827,20 @@ export type SystemHealthService = {
   status: AdminPanelHealthServiceStatus;
 };
 
+export type UpdateApplicationRegistrationInput = {
+  id: Scalars['String']['input'];
+  update: UpdateApplicationRegistrationPayload;
+};
+
+export type UpdateApplicationRegistrationPayload = {
+  isFeatured?: InputMaybe<Scalars['Boolean']['input']>;
+  isListed?: InputMaybe<Scalars['Boolean']['input']>;
+  isPreInstalled?: InputMaybe<Scalars['Boolean']['input']>;
+  name?: InputMaybe<Scalars['String']['input']>;
+  oAuthRedirectUris?: InputMaybe<Array<Scalars['String']['input']>>;
+  oAuthScopes?: InputMaybe<Array<Scalars['String']['input']>>;
+};
+
 export type UpdateApplicationRegistrationVariableInput = {
   id: Scalars['String']['input'];
   update: UpdateApplicationRegistrationVariablePayload;
@@ -800,6 +879,12 @@ export type UserLookup = {
   __typename?: 'UserLookup';
   user?: Maybe<UserInfo>;
   workspaces: Array<WorkspaceInfo>;
+};
+
+export type VersionDistributionEntry = {
+  __typename?: 'VersionDistributionEntry';
+  count: Scalars['Int']['output'];
+  version: Scalars['String']['output'];
 };
 
 export type VersionInfo = {
@@ -964,6 +1049,25 @@ export type GetModelsDevSuggestionsQueryVariables = Exact<{
 
 export type GetModelsDevSuggestionsQuery = { __typename?: 'Query', getModelsDevSuggestions: Array<{ __typename?: 'ModelsDevModelSuggestion', modelId: string, name: string, inputCostPerMillionTokens: number, outputCostPerMillionTokens: number, cachedInputCostPerMillionTokens?: number | null, cacheCreationCostPerMillionTokens?: number | null, contextWindowTokens: number, maxOutputTokens: number, modalities: Array<string>, supportsReasoning: boolean }> };
 
+export type BackfillApplicationInstallationMutationVariables = Exact<{
+  applicationRegistrationId: Scalars['String']['input'];
+}>;
+
+
+export type BackfillApplicationInstallationMutation = { __typename?: 'Mutation', backfillApplicationInstallation: boolean };
+
+export type SyncMarketplaceCatalogMutationVariables = Exact<{ [key: string]: never; }>;
+
+
+export type SyncMarketplaceCatalogMutation = { __typename?: 'Mutation', syncMarketplaceCatalog: boolean };
+
+export type UpdateAdminApplicationRegistrationMutationVariables = Exact<{
+  input: UpdateApplicationRegistrationInput;
+}>;
+
+
+export type UpdateAdminApplicationRegistrationMutation = { __typename?: 'Mutation', updateAdminApplicationRegistration: { __typename?: 'ApplicationRegistration', id: string, universalIdentifier: string, name: string, logoUrl?: string | null, oAuthClientId: string, oAuthRedirectUris: Array<string>, oAuthScopes: Array<string>, sourceType: ApplicationRegistrationSourceType, sourcePackage?: string | null, latestAvailableVersion?: string | null, isListed: boolean, isFeatured: boolean, isPreInstalled: boolean, isConfigured: boolean, ownerWorkspaceId?: string | null, createdAt: string, updatedAt: string } };
+
 export type UpdateAdminApplicationRegistrationVariableMutationVariables = Exact<{
   input: UpdateApplicationRegistrationVariableInput;
 }>;
@@ -971,12 +1075,26 @@ export type UpdateAdminApplicationRegistrationVariableMutationVariables = Exact<
 
 export type UpdateAdminApplicationRegistrationVariableMutation = { __typename?: 'Mutation', updateAdminApplicationRegistrationVariable: { __typename?: 'ApplicationRegistrationVariableDTO', id: string, key: string, description: string, isSecret: boolean, isRequired: boolean, isFilled: boolean, createdAt: string, updatedAt: string } };
 
+export type FindAdminApplicationRegistrationInstalledWorkspacesQueryVariables = Exact<{
+  input: FindApplicationRegistrationInstalledWorkspacesInput;
+}>;
+
+
+export type FindAdminApplicationRegistrationInstalledWorkspacesQuery = { __typename?: 'Query', findAdminApplicationRegistrationInstalledWorkspaces: { __typename?: 'ApplicationRegistrationInstalledWorkspaces', totalCount: number, hasMore: boolean, workspaces: Array<{ __typename?: 'InstalledWorkspace', id: string, displayName?: string | null, logo?: string | null, version?: string | null }> } };
+
+export type FindAdminApplicationRegistrationStatsQueryVariables = Exact<{
+  id: Scalars['String']['input'];
+}>;
+
+
+export type FindAdminApplicationRegistrationStatsQuery = { __typename?: 'Query', findAdminApplicationRegistrationStats: { __typename?: 'ApplicationRegistrationStats', activeInstalls: number, mostInstalledVersion?: string | null, versionDistribution: Array<{ __typename?: 'VersionDistributionEntry', version: string, count: number }> } };
+
 export type FindAdminApplicationRegistrationVariablesQueryVariables = Exact<{
   applicationRegistrationId: Scalars['String']['input'];
 }>;
 
 
-export type FindAdminApplicationRegistrationVariablesQuery = { __typename?: 'Query', findAdminApplicationRegistrationVariables: Array<{ __typename?: 'ApplicationRegistrationVariableDTO', id: string, key: string, value?: string | null, description: string, isSecret: boolean, isRequired: boolean, isFilled: boolean, createdAt: string, updatedAt: string }> };
+export type FindAdminApplicationRegistrationVariablesQuery = { __typename?: 'Query', findAdminApplicationRegistrationVariables: Array<{ __typename?: 'ApplicationRegistrationVariableDTO', id: string, key: string, value?: string | null, description: string, isSecret: boolean, isRequired: boolean, isFilled: boolean, type: string, options?: any | null, createdAt: string, updatedAt: string }> };
 
 export type FindAllApplicationRegistrationsQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -1096,7 +1214,7 @@ export type WorkspaceBillingAdminPanelQueryVariables = Exact<{
 }>;
 
 
-export type WorkspaceBillingAdminPanelQuery = { __typename?: 'Query', workspaceBillingAdminPanel?: { __typename?: 'AdminPanelWorkspaceBilling', stripeCustomerId?: string | null, creditBalance?: number | null, subscription?: { __typename?: 'AdminPanelWorkspaceSubscription', stripeSubscriptionId: string, status: SubscriptionStatus, interval?: SubscriptionInterval | null, currency: string, planKey?: string | null, currentPeriodStart: string, currentPeriodEnd: string, trialStart?: string | null, trialEnd?: string | null, cancelAt?: string | null, canceledAt?: string | null, cancelAtPeriodEnd: boolean, items: Array<{ __typename?: 'AdminPanelWorkspaceSubscriptionItem', productName: string, productKey?: string | null, stripePriceId: string, quantity?: number | null, unitAmount?: number | null, includedCredits?: number | null }> } | null } | null };
+export type WorkspaceBillingAdminPanelQuery = { __typename?: 'Query', workspaceBillingAdminPanel?: { __typename?: 'AdminPanelWorkspaceBilling', stripeCustomerId?: string | null, creditBalance?: number | null, usage?: { __typename?: 'AdminPanelWorkspaceUsage', periodStart: string, periodEnd: string, usedCredits: number, grantedCredits: number, rolloverCredits: number, totalGrantedCredits: number, remainingCredits: number } | null, subscription?: { __typename?: 'AdminPanelWorkspaceSubscription', stripeSubscriptionId: string, status: SubscriptionStatus, interval?: SubscriptionInterval | null, currency: string, planKey?: string | null, currentPeriodStart: string, currentPeriodEnd: string, trialStart?: string | null, trialEnd?: string | null, cancelAt?: string | null, canceledAt?: string | null, cancelAtPeriodEnd: boolean, items: Array<{ __typename?: 'AdminPanelWorkspaceSubscriptionItem', productName: string, productKey?: string | null, stripePriceId: string, quantity?: number | null, unitAmount?: number | null, includedCredits?: number | null }> } | null } | null };
 
 export type UserLookupAdminPanelQueryVariables = Exact<{
   userIdentifier: Scalars['String']['input'];
@@ -1217,8 +1335,13 @@ export const GetAdminAiUsageByWorkspaceDocument = {"kind":"Document","definition
 export const GetAiProvidersDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"GetAiProviders"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"getAiProviders"}}]}}]} as unknown as DocumentNode<GetAiProvidersQuery, GetAiProvidersQueryVariables>;
 export const GetModelsDevProvidersDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"GetModelsDevProviders"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"getModelsDevProviders"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"modelCount"}},{"kind":"Field","name":{"kind":"Name","value":"npm"}}]}}]}}]} as unknown as DocumentNode<GetModelsDevProvidersQuery, GetModelsDevProvidersQueryVariables>;
 export const GetModelsDevSuggestionsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"GetModelsDevSuggestions"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"providerType"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"getModelsDevSuggestions"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"providerType"},"value":{"kind":"Variable","name":{"kind":"Name","value":"providerType"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"modelId"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"inputCostPerMillionTokens"}},{"kind":"Field","name":{"kind":"Name","value":"outputCostPerMillionTokens"}},{"kind":"Field","name":{"kind":"Name","value":"cachedInputCostPerMillionTokens"}},{"kind":"Field","name":{"kind":"Name","value":"cacheCreationCostPerMillionTokens"}},{"kind":"Field","name":{"kind":"Name","value":"contextWindowTokens"}},{"kind":"Field","name":{"kind":"Name","value":"maxOutputTokens"}},{"kind":"Field","name":{"kind":"Name","value":"modalities"}},{"kind":"Field","name":{"kind":"Name","value":"supportsReasoning"}}]}}]}}]} as unknown as DocumentNode<GetModelsDevSuggestionsQuery, GetModelsDevSuggestionsQueryVariables>;
+export const BackfillApplicationInstallationDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"BackfillApplicationInstallation"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"applicationRegistrationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"backfillApplicationInstallation"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"applicationRegistrationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"applicationRegistrationId"}}}]}]}}]} as unknown as DocumentNode<BackfillApplicationInstallationMutation, BackfillApplicationInstallationMutationVariables>;
+export const SyncMarketplaceCatalogDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"SyncMarketplaceCatalog"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"syncMarketplaceCatalog"}}]}}]} as unknown as DocumentNode<SyncMarketplaceCatalogMutation, SyncMarketplaceCatalogMutationVariables>;
+export const UpdateAdminApplicationRegistrationDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"UpdateAdminApplicationRegistration"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UpdateApplicationRegistrationInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"updateAdminApplicationRegistration"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"ApplicationRegistrationFragment"}}]}}]}},{"kind":"FragmentDefinition","name":{"kind":"Name","value":"ApplicationRegistrationFragment"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"ApplicationRegistration"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"universalIdentifier"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"logoUrl"}},{"kind":"Field","name":{"kind":"Name","value":"oAuthClientId"}},{"kind":"Field","name":{"kind":"Name","value":"oAuthRedirectUris"}},{"kind":"Field","name":{"kind":"Name","value":"oAuthScopes"}},{"kind":"Field","name":{"kind":"Name","value":"sourceType"}},{"kind":"Field","name":{"kind":"Name","value":"sourcePackage"}},{"kind":"Field","name":{"kind":"Name","value":"latestAvailableVersion"}},{"kind":"Field","name":{"kind":"Name","value":"isListed"}},{"kind":"Field","name":{"kind":"Name","value":"isFeatured"}},{"kind":"Field","name":{"kind":"Name","value":"isPreInstalled"}},{"kind":"Field","name":{"kind":"Name","value":"isConfigured"}},{"kind":"Field","name":{"kind":"Name","value":"ownerWorkspaceId"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}},{"kind":"Field","name":{"kind":"Name","value":"updatedAt"}}]}}]} as unknown as DocumentNode<UpdateAdminApplicationRegistrationMutation, UpdateAdminApplicationRegistrationMutationVariables>;
 export const UpdateAdminApplicationRegistrationVariableDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"UpdateAdminApplicationRegistrationVariable"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UpdateApplicationRegistrationVariableInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"updateAdminApplicationRegistrationVariable"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"isSecret"}},{"kind":"Field","name":{"kind":"Name","value":"isRequired"}},{"kind":"Field","name":{"kind":"Name","value":"isFilled"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}},{"kind":"Field","name":{"kind":"Name","value":"updatedAt"}}]}}]}}]} as unknown as DocumentNode<UpdateAdminApplicationRegistrationVariableMutation, UpdateAdminApplicationRegistrationVariableMutationVariables>;
-export const FindAdminApplicationRegistrationVariablesDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"FindAdminApplicationRegistrationVariables"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"applicationRegistrationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"findAdminApplicationRegistrationVariables"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"applicationRegistrationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"applicationRegistrationId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"isSecret"}},{"kind":"Field","name":{"kind":"Name","value":"isRequired"}},{"kind":"Field","name":{"kind":"Name","value":"isFilled"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}},{"kind":"Field","name":{"kind":"Name","value":"updatedAt"}}]}}]}}]} as unknown as DocumentNode<FindAdminApplicationRegistrationVariablesQuery, FindAdminApplicationRegistrationVariablesQueryVariables>;
+export const FindAdminApplicationRegistrationInstalledWorkspacesDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"FindAdminApplicationRegistrationInstalledWorkspaces"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"input"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"FindApplicationRegistrationInstalledWorkspacesInput"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"findAdminApplicationRegistrationInstalledWorkspaces"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"input"},"value":{"kind":"Variable","name":{"kind":"Name","value":"input"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"totalCount"}},{"kind":"Field","name":{"kind":"Name","value":"hasMore"}},{"kind":"Field","name":{"kind":"Name","value":"workspaces"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"displayName"}},{"kind":"Field","name":{"kind":"Name","value":"logo"}},{"kind":"Field","name":{"kind":"Name","value":"version"}}]}}]}}]}}]} as unknown as DocumentNode<FindAdminApplicationRegistrationInstalledWorkspacesQuery, FindAdminApplicationRegistrationInstalledWorkspacesQueryVariables>;
+export const FindAdminApplicationRegistrationStatsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"FindAdminApplicationRegistrationStats"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"id"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"findAdminApplicationRegistrationStats"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"id"},"value":{"kind":"Variable","name":{"kind":"Name","value":"id"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"activeInstalls"}},{"kind":"Field","name":{"kind":"Name","value":"mostInstalledVersion"}},{"kind":"Field","name":{"kind":"Name","value":"versionDistribution"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"version"}},{"kind":"Field","name":{"kind":"Name","value":"count"}}]}}]}}]}}]} as unknown as DocumentNode<FindAdminApplicationRegistrationStatsQuery, FindAdminApplicationRegistrationStatsQueryVariables>;
+export const FindAdminApplicationRegistrationVariablesDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"FindAdminApplicationRegistrationVariables"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"applicationRegistrationId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"findAdminApplicationRegistrationVariables"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"applicationRegistrationId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"applicationRegistrationId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"value"}},{"kind":"Field","name":{"kind":"Name","value":"description"}},{"kind":"Field","name":{"kind":"Name","value":"isSecret"}},{"kind":"Field","name":{"kind":"Name","value":"isRequired"}},{"kind":"Field","name":{"kind":"Name","value":"isFilled"}},{"kind":"Field","name":{"kind":"Name","value":"type"}},{"kind":"Field","name":{"kind":"Name","value":"options"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}},{"kind":"Field","name":{"kind":"Name","value":"updatedAt"}}]}}]}}]} as unknown as DocumentNode<FindAdminApplicationRegistrationVariablesQuery, FindAdminApplicationRegistrationVariablesQueryVariables>;
 export const FindAllApplicationRegistrationsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"FindAllApplicationRegistrations"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"findAllApplicationRegistrations"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"ApplicationRegistrationFragment"}}]}}]}},{"kind":"FragmentDefinition","name":{"kind":"Name","value":"ApplicationRegistrationFragment"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"ApplicationRegistration"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"universalIdentifier"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"logoUrl"}},{"kind":"Field","name":{"kind":"Name","value":"oAuthClientId"}},{"kind":"Field","name":{"kind":"Name","value":"oAuthRedirectUris"}},{"kind":"Field","name":{"kind":"Name","value":"oAuthScopes"}},{"kind":"Field","name":{"kind":"Name","value":"sourceType"}},{"kind":"Field","name":{"kind":"Name","value":"sourcePackage"}},{"kind":"Field","name":{"kind":"Name","value":"latestAvailableVersion"}},{"kind":"Field","name":{"kind":"Name","value":"isListed"}},{"kind":"Field","name":{"kind":"Name","value":"isFeatured"}},{"kind":"Field","name":{"kind":"Name","value":"isPreInstalled"}},{"kind":"Field","name":{"kind":"Name","value":"isConfigured"}},{"kind":"Field","name":{"kind":"Name","value":"ownerWorkspaceId"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}},{"kind":"Field","name":{"kind":"Name","value":"updatedAt"}}]}}]} as unknown as DocumentNode<FindAllApplicationRegistrationsQuery, FindAllApplicationRegistrationsQueryVariables>;
 export const CreateDatabaseConfigVariableDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"CreateDatabaseConfigVariable"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"key"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"value"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"JSON"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"createDatabaseConfigVariable"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"key"},"value":{"kind":"Variable","name":{"kind":"Name","value":"key"}}},{"kind":"Argument","name":{"kind":"Name","value":"value"},"value":{"kind":"Variable","name":{"kind":"Name","value":"value"}}}]}]}}]} as unknown as DocumentNode<CreateDatabaseConfigVariableMutation, CreateDatabaseConfigVariableMutationVariables>;
 export const DeleteDatabaseConfigVariableDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"DeleteDatabaseConfigVariable"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"key"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"deleteDatabaseConfigVariable"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"key"},"value":{"kind":"Variable","name":{"kind":"Name","value":"key"}}}]}]}}]} as unknown as DocumentNode<DeleteDatabaseConfigVariableMutation, DeleteDatabaseConfigVariableMutationVariables>;
@@ -1235,7 +1358,7 @@ export const GetAdminWorkspaceChatThreadsDocument = {"kind":"Document","definiti
 export const GetServerAdminsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"GetServerAdmins"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"getServerAdmins"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"email"}},{"kind":"Field","name":{"kind":"Name","value":"firstName"}},{"kind":"Field","name":{"kind":"Name","value":"lastName"}},{"kind":"Field","name":{"kind":"Name","value":"canAccessFullAdminPanel"}},{"kind":"Field","name":{"kind":"Name","value":"canImpersonate"}}]}}]}}]} as unknown as DocumentNode<GetServerAdminsQuery, GetServerAdminsQueryVariables>;
 export const GetUpgradeStatusDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"GetUpgradeStatus"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"workspaceIds"}},"type":{"kind":"NonNullType","type":{"kind":"ListType","type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UUID"}}}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"getUpgradeStatus"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"workspaceIds"},"value":{"kind":"Variable","name":{"kind":"Name","value":"workspaceIds"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"workspaceId"}},{"kind":"Field","name":{"kind":"Name","value":"displayName"}},{"kind":"Field","name":{"kind":"Name","value":"inferredVersion"}},{"kind":"Field","name":{"kind":"Name","value":"health"}},{"kind":"Field","name":{"kind":"Name","value":"latestCommand"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"executedByVersion"}},{"kind":"Field","name":{"kind":"Name","value":"errorMessage"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}}]}}]}}]}}]} as unknown as DocumentNode<GetUpgradeStatusQuery, GetUpgradeStatusQueryVariables>;
 export const GetVersionInfoDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"GetVersionInfo"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"versionInfo"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"currentVersion"}},{"kind":"Field","name":{"kind":"Name","value":"latestVersion"}}]}}]}}]} as unknown as DocumentNode<GetVersionInfoQuery, GetVersionInfoQueryVariables>;
-export const WorkspaceBillingAdminPanelDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"WorkspaceBillingAdminPanel"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"workspaceId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UUID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"workspaceBillingAdminPanel"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"workspaceId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"workspaceId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"stripeCustomerId"}},{"kind":"Field","name":{"kind":"Name","value":"creditBalance"}},{"kind":"Field","name":{"kind":"Name","value":"subscription"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"stripeSubscriptionId"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"interval"}},{"kind":"Field","name":{"kind":"Name","value":"currency"}},{"kind":"Field","name":{"kind":"Name","value":"planKey"}},{"kind":"Field","name":{"kind":"Name","value":"currentPeriodStart"}},{"kind":"Field","name":{"kind":"Name","value":"currentPeriodEnd"}},{"kind":"Field","name":{"kind":"Name","value":"trialStart"}},{"kind":"Field","name":{"kind":"Name","value":"trialEnd"}},{"kind":"Field","name":{"kind":"Name","value":"cancelAt"}},{"kind":"Field","name":{"kind":"Name","value":"canceledAt"}},{"kind":"Field","name":{"kind":"Name","value":"cancelAtPeriodEnd"}},{"kind":"Field","name":{"kind":"Name","value":"items"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"productName"}},{"kind":"Field","name":{"kind":"Name","value":"productKey"}},{"kind":"Field","name":{"kind":"Name","value":"stripePriceId"}},{"kind":"Field","name":{"kind":"Name","value":"quantity"}},{"kind":"Field","name":{"kind":"Name","value":"unitAmount"}},{"kind":"Field","name":{"kind":"Name","value":"includedCredits"}}]}}]}}]}}]}}]} as unknown as DocumentNode<WorkspaceBillingAdminPanelQuery, WorkspaceBillingAdminPanelQueryVariables>;
+export const WorkspaceBillingAdminPanelDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"WorkspaceBillingAdminPanel"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"workspaceId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UUID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"workspaceBillingAdminPanel"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"workspaceId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"workspaceId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"stripeCustomerId"}},{"kind":"Field","name":{"kind":"Name","value":"creditBalance"}},{"kind":"Field","name":{"kind":"Name","value":"usage"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"periodStart"}},{"kind":"Field","name":{"kind":"Name","value":"periodEnd"}},{"kind":"Field","name":{"kind":"Name","value":"usedCredits"}},{"kind":"Field","name":{"kind":"Name","value":"grantedCredits"}},{"kind":"Field","name":{"kind":"Name","value":"rolloverCredits"}},{"kind":"Field","name":{"kind":"Name","value":"totalGrantedCredits"}},{"kind":"Field","name":{"kind":"Name","value":"remainingCredits"}}]}},{"kind":"Field","name":{"kind":"Name","value":"subscription"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"stripeSubscriptionId"}},{"kind":"Field","name":{"kind":"Name","value":"status"}},{"kind":"Field","name":{"kind":"Name","value":"interval"}},{"kind":"Field","name":{"kind":"Name","value":"currency"}},{"kind":"Field","name":{"kind":"Name","value":"planKey"}},{"kind":"Field","name":{"kind":"Name","value":"currentPeriodStart"}},{"kind":"Field","name":{"kind":"Name","value":"currentPeriodEnd"}},{"kind":"Field","name":{"kind":"Name","value":"trialStart"}},{"kind":"Field","name":{"kind":"Name","value":"trialEnd"}},{"kind":"Field","name":{"kind":"Name","value":"cancelAt"}},{"kind":"Field","name":{"kind":"Name","value":"canceledAt"}},{"kind":"Field","name":{"kind":"Name","value":"cancelAtPeriodEnd"}},{"kind":"Field","name":{"kind":"Name","value":"items"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"productName"}},{"kind":"Field","name":{"kind":"Name","value":"productKey"}},{"kind":"Field","name":{"kind":"Name","value":"stripePriceId"}},{"kind":"Field","name":{"kind":"Name","value":"quantity"}},{"kind":"Field","name":{"kind":"Name","value":"unitAmount"}},{"kind":"Field","name":{"kind":"Name","value":"includedCredits"}}]}}]}}]}}]}}]} as unknown as DocumentNode<WorkspaceBillingAdminPanelQuery, WorkspaceBillingAdminPanelQueryVariables>;
 export const UserLookupAdminPanelDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"UserLookupAdminPanel"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"userIdentifier"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"userLookupAdminPanel"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"userIdentifier"},"value":{"kind":"Variable","name":{"kind":"Name","value":"userIdentifier"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"user"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"UserInfoFragment"}}]}},{"kind":"Field","name":{"kind":"Name","value":"workspaces"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"logo"}},{"kind":"Field","name":{"kind":"Name","value":"totalUsers"}},{"kind":"Field","name":{"kind":"Name","value":"activationStatus"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}},{"kind":"Field","name":{"kind":"Name","value":"allowImpersonation"}},{"kind":"Field","name":{"kind":"Name","value":"workspaceUrls"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"customUrl"}},{"kind":"Field","name":{"kind":"Name","value":"subdomainUrl"}}]}},{"kind":"Field","name":{"kind":"Name","value":"users"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"email"}},{"kind":"Field","name":{"kind":"Name","value":"firstName"}},{"kind":"Field","name":{"kind":"Name","value":"lastName"}}]}},{"kind":"Field","name":{"kind":"Name","value":"featureFlags"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"value"}}]}}]}}]}}]}},{"kind":"FragmentDefinition","name":{"kind":"Name","value":"UserInfoFragment"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"UserInfo"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"email"}},{"kind":"Field","name":{"kind":"Name","value":"firstName"}},{"kind":"Field","name":{"kind":"Name","value":"lastName"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}}]}}]} as unknown as DocumentNode<UserLookupAdminPanelQuery, UserLookupAdminPanelQueryVariables>;
 export const WorkspaceLookupAdminPanelDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"query","name":{"kind":"Name","value":"WorkspaceLookupAdminPanel"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"workspaceId"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"UUID"}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"workspaceLookupAdminPanel"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"workspaceId"},"value":{"kind":"Variable","name":{"kind":"Name","value":"workspaceId"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"user"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"FragmentSpread","name":{"kind":"Name","value":"UserInfoFragment"}}]}},{"kind":"Field","name":{"kind":"Name","value":"workspaces"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"name"}},{"kind":"Field","name":{"kind":"Name","value":"allowImpersonation"}},{"kind":"Field","name":{"kind":"Name","value":"logo"}},{"kind":"Field","name":{"kind":"Name","value":"totalUsers"}},{"kind":"Field","name":{"kind":"Name","value":"activationStatus"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}},{"kind":"Field","name":{"kind":"Name","value":"workspaceUrls"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"customUrl"}},{"kind":"Field","name":{"kind":"Name","value":"subdomainUrl"}}]}},{"kind":"Field","name":{"kind":"Name","value":"users"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"email"}},{"kind":"Field","name":{"kind":"Name","value":"firstName"}},{"kind":"Field","name":{"kind":"Name","value":"lastName"}},{"kind":"Field","name":{"kind":"Name","value":"avatarUrl"}}]}},{"kind":"Field","name":{"kind":"Name","value":"featureFlags"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"key"}},{"kind":"Field","name":{"kind":"Name","value":"value"}}]}}]}}]}}]}},{"kind":"FragmentDefinition","name":{"kind":"Name","value":"UserInfoFragment"},"typeCondition":{"kind":"NamedType","name":{"kind":"Name","value":"UserInfo"}},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"id"}},{"kind":"Field","name":{"kind":"Name","value":"email"}},{"kind":"Field","name":{"kind":"Name","value":"firstName"}},{"kind":"Field","name":{"kind":"Name","value":"lastName"}},{"kind":"Field","name":{"kind":"Name","value":"createdAt"}}]}}]} as unknown as DocumentNode<WorkspaceLookupAdminPanelQuery, WorkspaceLookupAdminPanelQueryVariables>;
 export const DeleteJobsDocument = {"kind":"Document","definitions":[{"kind":"OperationDefinition","operation":"mutation","name":{"kind":"Name","value":"DeleteJobs"},"variableDefinitions":[{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"queueName"}},"type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}},{"kind":"VariableDefinition","variable":{"kind":"Variable","name":{"kind":"Name","value":"jobIds"}},"type":{"kind":"NonNullType","type":{"kind":"ListType","type":{"kind":"NonNullType","type":{"kind":"NamedType","name":{"kind":"Name","value":"String"}}}}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"deleteJobs"},"arguments":[{"kind":"Argument","name":{"kind":"Name","value":"queueName"},"value":{"kind":"Variable","name":{"kind":"Name","value":"queueName"}}},{"kind":"Argument","name":{"kind":"Name","value":"jobIds"},"value":{"kind":"Variable","name":{"kind":"Name","value":"jobIds"}}}],"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"deletedCount"}},{"kind":"Field","name":{"kind":"Name","value":"results"},"selectionSet":{"kind":"SelectionSet","selections":[{"kind":"Field","name":{"kind":"Name","value":"jobId"}},{"kind":"Field","name":{"kind":"Name","value":"success"}},{"kind":"Field","name":{"kind":"Name","value":"error"}}]}}]}}]}}]} as unknown as DocumentNode<DeleteJobsMutation, DeleteJobsMutationVariables>;

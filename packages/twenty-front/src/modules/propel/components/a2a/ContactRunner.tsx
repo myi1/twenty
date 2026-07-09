@@ -13,7 +13,7 @@ import {
   TextInput,
 } from '@mantine/core';
 import { useState } from 'react';
-import { IconSearch, IconUser, IconUserPlus } from 'twenty-ui-deprecated/display';
+import { IconSearch, IconUser, IconUserPlus } from 'twenty-ui/icon';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import {
   type CounterpartyDraft,

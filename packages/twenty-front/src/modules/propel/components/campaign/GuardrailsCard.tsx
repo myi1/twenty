@@ -4,7 +4,7 @@ import {
   IconCalendarX,
   IconClock,
   IconShield,
-} from 'twenty-ui-deprecated/display';
+} from 'twenty-ui/icon';
 import {
   type CapPreview,
   type SendRulesPayload,

@@ -20,7 +20,7 @@ const meta: Meta<typeof FrontComponentRenderer> = {
       userId: null,
       recordId: null,
       selectedRecordIds: [],
-      colorScheme: 'Light',
+      colorScheme: 'light',
     },
   },
   beforeEach: () => {
@@ -124,7 +124,7 @@ export const SdkContext: Story = {
       userId: 'test-user-abc-123',
       recordId: null,
       selectedRecordIds: [],
-      colorScheme: 'Light',
+      colorScheme: 'light',
     },
   },
   play: async ({ canvasElement }) => {

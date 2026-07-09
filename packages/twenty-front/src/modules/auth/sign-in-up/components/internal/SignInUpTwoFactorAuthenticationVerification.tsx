@@ -18,9 +18,9 @@ import { OTPInput, type SlotProps } from 'input-otp';
 import { useState } from 'react';
 import { Controller } from 'react-hook-form';
 import { AppPath } from 'twenty-shared/types';
-import { MainButton } from 'twenty-ui-deprecated/input';
-import { ClickToActionLink } from 'twenty-ui-deprecated/navigation';
-import { themeCssVariables } from 'twenty-ui-deprecated/theme-constants';
+import { MainButton } from 'twenty-ui/input';
+import { ClickToActionLink } from 'twenty-ui/navigation';
+import { themeCssVariables } from 'twenty-ui/theme-constants';
 import { useNavigateApp } from '~/hooks/useNavigateApp';
 import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomStateValue';
 import { useSetAtomState } from '@/ui/utilities/state/jotai/hooks/useSetAtomState';
@@ -135,7 +135,8 @@ const StyledDashContainer = styled.div`
 
 const StyledDash = styled.div`
   background-color: ${themeCssVariables.font.color.primary};
-  border-radius: 9999px;
+  border-radius: ${themeCssVariables.border.radius.pill};
+  corner-shape: round;
   height: 0.25rem;
   width: 0.75rem;
 `;

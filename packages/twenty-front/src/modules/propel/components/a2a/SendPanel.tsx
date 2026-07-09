@@ -16,7 +16,7 @@ import {
   IconMail,
   IconSend,
   IconUserPlus,
-} from 'twenty-ui-deprecated/display';
+} from 'twenty-ui/icon';
 import { type CounterpartyPerson, type SendChannel } from '@/propel/types/a2a';
 
 // The "send" step (design §5 SendPanel / D4): contextual WhatsApp / email /

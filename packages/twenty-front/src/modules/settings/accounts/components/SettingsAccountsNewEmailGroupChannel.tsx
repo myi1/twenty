@@ -4,8 +4,8 @@ import { z } from 'zod';
 
 import { SettingsPath } from 'twenty-shared/types';
 import { getSettingsPath } from 'twenty-shared/utils';
-import { H2Title } from 'twenty-ui-deprecated/display';
-import { Section } from 'twenty-ui-deprecated/layout';
+import { H2Title } from 'twenty-ui/typography';
+import { Section } from 'twenty-ui/layout';
 
 import { useCreateEmailGroupChannel } from '@/settings/accounts/hooks/useCreateEmailGroupChannel';
 import { SaveAndCancelButtons } from '@/settings/components/SaveAndCancelButtons/SaveAndCancelButtons';
@@ -53,8 +53,8 @@ export const SettingsAccountsNewEmailGroupChannel = () => {
           href: getSettingsPath(SettingsPath.General),
         },
         {
-          children: t`Email`,
-          href: getSettingsPath(SettingsPath.WorkspaceEmail),
+          children: t`Communications`,
+          href: getSettingsPath(SettingsPath.WorkspaceCommunications),
         },
         { children: t`New Email Channel` },
       ]}
@@ -63,7 +63,7 @@ export const SettingsAccountsNewEmailGroupChannel = () => {
           isSaveDisabled={!canSave}
           isCancelDisabled={loading}
           isLoading={loading}
-          onCancel={() => navigate(SettingsPath.WorkspaceEmail)}
+          onCancel={() => navigate(SettingsPath.WorkspaceCommunications)}
           onSave={handleSave}
         />
       }
@@ -80,6 +80,11 @@ export const SettingsAccountsNewEmailGroupChannel = () => {
             placeholder="support@mycompany.com"
             value={handle}
             onChange={setHandle}
+            onInputEnter={() => {
+              if (canSave) {
+                handleSave();
+              }
+            }}
             disabled={loading}
           />
         </Section>

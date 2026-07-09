@@ -15,7 +15,7 @@ import {
   IconPlayerPlay,
   IconPlus,
   IconUserPlus,
-} from 'twenty-ui-deprecated/display';
+} from 'twenty-ui/icon';
 import { OOO_DAYS } from '@/propel/lib/oneOnOneConfig';
 import { type ManagerBlock } from '@/propel/types/oneOnOne';
 

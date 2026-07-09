@@ -10,7 +10,7 @@ import {
   IconSend,
   IconSettings,
   IconTargetArrow,
-} from 'twenty-ui-deprecated/display';
+} from 'twenty-ui/icon';
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { AdsTab } from '@/propel/components/marketingHero/AdsTab';

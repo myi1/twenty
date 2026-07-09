@@ -39,20 +39,31 @@ export const FieldWidgetRelationTable = ({
     ? widget.configuration.viewId
     : undefined;
 
-  const targetObjectMetadataId =
+  const relationObjectMetadataId =
     fieldDefinition.metadata.relationObjectMetadataId;
+  const recordPageObjectMetadataNameSingular =
+    fieldDefinition.metadata.objectMetadataNameSingular;
 
-  if (!isDefined(viewId) || !isDefined(targetObjectMetadataId)) {
+  if (
+    !isDefined(viewId) ||
+    !isDefined(relationObjectMetadataId) ||
+    !isDefined(recordPageObjectMetadataNameSingular)
+  ) {
     return null;
   }
 
   return (
     <RecordFilterValueDependenciesContext.Provider
-      value={{ currentRecordId: recordId }}
+      value={{
+        currentRecord: {
+          id: recordId,
+          objectMetadataNameSingular: recordPageObjectMetadataNameSingular,
+        },
+      }}
     >
       <StyledContainer>
         <RecordTableWidgetRendererContent
-          objectMetadataId={targetObjectMetadataId}
+          objectMetadataId={relationObjectMetadataId}
           viewId={viewId}
           widgetId={widget.id}
           isReadOnly={isPageLayoutInEditMode}

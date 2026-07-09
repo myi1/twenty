@@ -8,7 +8,7 @@ import {
   IconCheck,
   IconPencil,
   IconPlus,
-} from 'twenty-ui-deprecated/display';
+} from 'twenty-ui/icon';
 import { MarketingDashboardGrid } from '@/propel/components/MarketingDashboardGrid';
 import { useMarketingDashboardData } from '@/propel/hooks/useMarketingDashboardData';
 import { type AnalyticsRange } from '@/propel/types/marketingHome';

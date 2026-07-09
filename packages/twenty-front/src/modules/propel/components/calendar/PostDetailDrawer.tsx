@@ -29,7 +29,7 @@ import {
   IconTrash,
   IconVideo,
   IconX,
-} from 'twenty-ui-deprecated/display';
+} from 'twenty-ui/icon';
 import {
   StyledDrawerBackdrop,
   StyledDrawerOverlay,

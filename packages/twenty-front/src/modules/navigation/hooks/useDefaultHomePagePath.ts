@@ -2,11 +2,15 @@ import { currentUserState } from '@/auth/states/currentUserState';
 import { getDefaultHomeRoute } from '@/propel/runtime/propelNavConfig';
 import { usePropelNavConfig } from '@/propel/runtime/usePropelNavConfig';
 import { metadataStoreState } from '@/metadata-store/states/metadataStoreState';
-import { lastVisitedObjectMetadataItemIdState } from '@/navigation/states/lastVisitedObjectMetadataItemIdState';
+import { metadataStoreStatusFamilySelector } from '@/metadata-store/states/metadataStoreStatusFamilySelector';
+import { useNavigationMenuItemSectionItems } from '@/navigation-menu-item/display/hooks/useNavigationMenuItemSectionItems';
 import { type ObjectPathInfo } from '@/navigation/types/ObjectPathInfo';
+import { getFirstNavigationMenuItemLink } from '@/navigation/utils/getFirstNavigationMenuItemLink';
 import { useFilteredObjectMetadataItems } from '@/object-metadata/hooks/useFilteredObjectMetadataItems';
+import { objectMetadataItemsSelector } from '@/object-metadata/states/objectMetadataItemsSelector';
 import { filterReadableActiveObjectMetadataItems } from '@/object-metadata/utils/filterReadableActiveObjectMetadataItems';
 import { useObjectPermissions } from '@/object-record/hooks/useObjectPermissions';
+import { useAtomFamilySelectorValue } from '@/ui/utilities/state/jotai/hooks/useAtomFamilySelectorValue';
 import { useAtomFamilyStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomFamilyStateValue';
 import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomStateValue';
 import { viewsSelector } from '@/views/states/selectors/viewsSelector';
@@ -14,10 +18,8 @@ import isEmpty from 'lodash.isempty';
 import { useCallback, useMemo } from 'react';
 import { AppPath, SettingsPath } from 'twenty-shared/types';
 import { getAppPath, getSettingsPath, isDefined } from 'twenty-shared/utils';
-import { useStore } from 'jotai';
 
 export const useDefaultHomePagePath = () => {
-  const store = useStore();
   const currentUser = useAtomStateValue(currentUserState);
   // Propel (2026-07-08): deterministic "/" landing. When the nav registry
   // (baked default ∪ mounted nav.config.json) configures `defaultHome`, it
@@ -32,8 +34,17 @@ export const useDefaultHomePagePath = () => {
     'objectMetadataItems',
   );
   const areObjectMetadataItemsLoaded = metadataStore.status === 'up-to-date';
+  const navigationMenuItemsStatus = useAtomFamilySelectorValue(
+    metadataStoreStatusFamilySelector,
+    'navigationMenuItems',
+  );
+  const areNavigationMenuItemsLoaded =
+    navigationMenuItemsStatus === 'up-to-date';
 
   const { activeObjectMetadataItems } = useFilteredObjectMetadataItems();
+  const objectMetadataItems = useAtomStateValue(objectMetadataItemsSelector);
+  const views = useAtomStateValue(viewsSelector);
+  const navigationMenuItemsInDisplayOrder = useNavigationMenuItemSectionItems();
 
   const readableNonSystemObjectMetadataItems = useMemo(
     () =>
@@ -46,17 +57,6 @@ export const useDefaultHomePagePath = () => {
     [activeObjectMetadataItems, objectPermissionsByObjectMetadataId],
   );
 
-  const getActiveObjectMetadataItemMatchingId = useCallback(
-    (objectMetadataId: string) => {
-      return readableNonSystemObjectMetadataItems.find(
-        (item) => item.id === objectMetadataId,
-      );
-    },
-    [readableNonSystemObjectMetadataItems],
-  );
-
-  const views = useAtomStateValue(viewsSelector);
-
   const getFirstView = useCallback(
     (objectMetadataItemId: string | undefined | null) => {
       return views.find(
@@ -66,6 +66,22 @@ export const useDefaultHomePagePath = () => {
     [views],
   );
 
+  const firstNavigationMenuItemLink = useMemo(
+    () =>
+      getFirstNavigationMenuItemLink({
+        navigationMenuItemsInDisplayOrder,
+        objectMetadataItems,
+        views,
+        objectPermissionsByObjectMetadataId,
+      }),
+    [
+      objectMetadataItems,
+      objectPermissionsByObjectMetadataId,
+      views,
+      navigationMenuItemsInDisplayOrder,
+    ],
+  );
+
   const firstObjectPathInfo = useMemo<ObjectPathInfo | null>(() => {
     const [firstObjectMetadataItem] = readableNonSystemObjectMetadataItems;
 
@@ -73,36 +89,10 @@ export const useDefaultHomePagePath = () => {
       return null;
     }
 
-    const view = getFirstView(firstObjectMetadataItem?.id);
+    const view = getFirstView(firstObjectMetadataItem.id);
 
     return { objectMetadataItem: firstObjectMetadataItem, view };
   }, [getFirstView, readableNonSystemObjectMetadataItems]);
-
-  const getDefaultObjectPathInfo = useCallback(() => {
-    const lastVisitedObjectMetadataItemId = store.get(
-      lastVisitedObjectMetadataItemIdState.atom,
-    );
-
-    const lastVisitedObjectMetadataItem = isDefined(
-      lastVisitedObjectMetadataItemId,
-    )
-      ? getActiveObjectMetadataItemMatchingId(lastVisitedObjectMetadataItemId)
-      : undefined;
-
-    if (isDefined(lastVisitedObjectMetadataItem)) {
-      return {
-        view: getFirstView(lastVisitedObjectMetadataItemId),
-        objectMetadataItem: lastVisitedObjectMetadataItem,
-      };
-    }
-
-    return firstObjectPathInfo;
-  }, [
-    firstObjectPathInfo,
-    getActiveObjectMetadataItemMatchingId,
-    getFirstView,
-    store,
-  ]);
 
   const defaultHomePagePath = useMemo(() => {
     if (!isDefined(currentUser)) {
@@ -127,26 +117,36 @@ export const useDefaultHomePagePath = () => {
       return getSettingsPath(SettingsPath.ProfilePage);
     }
 
-    const defaultObjectPathInfo = getDefaultObjectPathInfo();
+    // The navigation menu drives the redirect and loads after the minimal-
+    // metadata fast path. Wait for it instead of falling back to the
+    // alphabetically-first object during the post-login window.
+    if (!areNavigationMenuItemsLoaded) {
+      return AppPath.Index;
+    }
 
-    if (!isDefined(defaultObjectPathInfo)) {
+    if (isDefined(firstNavigationMenuItemLink)) {
+      return firstNavigationMenuItemLink;
+    }
+
+    if (!isDefined(firstObjectPathInfo)) {
       return AppPath.NotFound;
     }
 
-    const namePlural = defaultObjectPathInfo.objectMetadataItem?.namePlural;
-    const viewId = defaultObjectPathInfo.view?.id;
-
     return getAppPath(
       AppPath.RecordIndexPage,
-      { objectNamePlural: namePlural },
-      viewId ? { viewId } : undefined,
+      { objectNamePlural: firstObjectPathInfo.objectMetadataItem?.namePlural },
+      firstObjectPathInfo.view?.id
+        ? { viewId: firstObjectPathInfo.view.id }
+        : undefined,
     );
   }, [
     currentUser,
     propelNavConfig,
-    getDefaultObjectPathInfo,
     readableNonSystemObjectMetadataItems,
     areObjectMetadataItemsLoaded,
+    areNavigationMenuItemsLoaded,
+    firstNavigationMenuItemLink,
+    firstObjectPathInfo,
   ]);
 
   return { defaultHomePagePath };

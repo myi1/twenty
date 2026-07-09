@@ -16,7 +16,6 @@ import react from '@vitejs/plugin-react-swc';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
-import tsconfigPaths from 'vite-tsconfig-paths';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -36,9 +35,12 @@ const EXTERNAL = [
   '@emotion/styled',
   'react-router-dom',
   'framer-motion',
-  // twenty-ui subpaths
-  'twenty-ui/display',
+  // twenty-ui subpaths (post-v2.19.2 kit: icons live under `icon`; the
+  // `display` entry stays for any not-yet-migrated import — both resolve to
+  // the same host icon namespace via the import map)
+  'twenty-ui/icon',
   'twenty-ui/theme-constants',
+  'twenty-ui/display',
   // host-internal (resolved bare in the browser via the import map → shims)
   '@/apollo/utils/getTokenPair',
   '@/propel/lib/callPropelRoute',
@@ -141,11 +143,21 @@ export default defineConfig(() => {
     // Don't copy the front's public/ dir (manifest, mockServiceWorker, images, …)
     // into each hero output — the heroes volume serves only index.js.
     publicDir: false,
-    plugins: [
-      react(),
-      tsconfigPaths({ root: __dirname, projects: ['tsconfig.json'] }),
-      injectHeroCss(heroName),
-    ],
+    plugins: [react(), injectHeroCss(heroName)],
+    resolve: {
+      // Vite 8 resolves tsconfig path aliases natively (upstream #22100 dropped
+      // the vite-tsconfig-paths plugin repo-wide; it is no longer installed).
+      tsconfigPaths: true,
+      alias: [
+        // Mirror the app vite.config.ts fallback aliases so non-TS resolvers
+        // (CSS, url()) see the same mapping.
+        {
+          find: /^@\//,
+          replacement: resolve(__dirname, 'src/modules') + '/',
+        },
+        { find: /^~\//, replacement: resolve(__dirname, 'src') + '/' },
+      ],
+    },
     define: {
       // Hero source may reference these (shared with the app); fix them at build time.
       'process.env.NODE_ENV': JSON.stringify('production'),

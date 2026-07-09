@@ -3,7 +3,7 @@ import { NavigationDrawerOpenedSection } from '@/navigation-menu-item/display/se
 import { PropelNavigationSections } from '@/navigation/components/PropelNavigationSections';
 import { styled } from '@linaria/react';
 
-import { themeCssVariables } from 'twenty-ui-deprecated/theme-constants';
+import { themeCssVariables } from 'twenty-ui/theme-constants';
 
 const StyledScrollableItemsContainer = styled.div`
   display: flex;

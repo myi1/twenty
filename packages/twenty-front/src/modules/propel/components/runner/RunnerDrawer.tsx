@@ -24,7 +24,7 @@ import {
   IconCheck,
   IconExternalLink,
   IconRefresh,
-} from 'twenty-ui-deprecated/display';
+} from 'twenty-ui/icon';
 import {
   fmtMoney,
   parseDetails,

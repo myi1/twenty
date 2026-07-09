@@ -1,5 +1,5 @@
 import { Badge, Group, Progress, Stack, Text } from '@mantine/core';
-import { IconBolt, IconMail, IconMessage } from 'twenty-ui-deprecated/display';
+import { IconBolt, IconMail, IconMessage } from 'twenty-ui/icon';
 import {
   type MarketingHubPayload,
   type SendingNowRow,

@@ -12,7 +12,7 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
-import { IconInbox, IconRefresh, IconSearch } from 'twenty-ui-deprecated/display';
+import { IconInbox, IconRefresh, IconSearch } from 'twenty-ui/icon';
 import { type InboxChannel, type InboxPayload } from '@/propel/types/inbox';
 import { fetchInbox } from '@/propel/lib/inboxApi';
 import { effectiveNeedsTriage } from '@/propel/lib/inboxTriage';

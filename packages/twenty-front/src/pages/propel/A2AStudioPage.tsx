@@ -5,7 +5,7 @@ import {
   IconAlertTriangle,
   IconFileText,
   IconRefresh,
-} from 'twenty-ui-deprecated/display';
+} from 'twenty-ui/icon';
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { PropelMantineProvider } from '@/propel/components/PropelMantineProvider';

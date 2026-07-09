@@ -1,10 +1,12 @@
 import { useDeleteOneFieldMetadataItem } from '@/object-metadata/hooks/useDeleteOneFieldMetadataItem';
 import { useFieldMetadataItem } from '@/object-metadata/hooks/useFieldMetadataItem';
+import { useGetIsMetadataItemCustom } from '@/object-metadata/hooks/useGetIsMetadataItemCustom';
 import { useGetRelationMetadata } from '@/object-metadata/hooks/useGetRelationMetadata';
 import { isLabelIdentifierField } from '@/object-metadata/utils/isLabelIdentifierField';
 import { isDDLLockedState } from '@/client-config/states/isDDLLockedState';
 import { isObjectMetadataReadOnly } from '@/object-record/read-only/utils/isObjectMetadataReadOnly';
 import { SettingsItemTypeTag } from '@/settings/components/SettingsItemTypeTag';
+import { SettingsNameCellSecondaryLabel } from '@/settings/components/SettingsNameCellSecondaryLabel';
 import { RELATION_TYPES } from '@/settings/data-model/constants/RelationTypes';
 import { SettingsObjectFieldInactiveActionDropdown } from '@/settings/data-model/object-details/components/SettingsObjectFieldDisabledActionDropdown';
 import { settingsObjectFieldsFamilyState } from '@/settings/data-model/object-details/states/settingsObjectFieldsFamilyState';
@@ -23,13 +25,10 @@ import {
   IconMinus,
   IconPlus,
   useIcons,
-} from 'twenty-ui-deprecated/display';
-import { LightIconButton } from 'twenty-ui-deprecated/input';
-import { UndecoratedLink } from 'twenty-ui-deprecated/navigation';
-import {
-  ThemeContext,
-  themeCssVariables,
-} from 'twenty-ui-deprecated/theme-constants';
+} from 'twenty-ui/icon';
+import { LightIconButton } from 'twenty-ui/input';
+import { UndecoratedLink } from 'twenty-ui/navigation';
+import { ThemeContext, themeCssVariables } from 'twenty-ui/theme-constants';
 import { RelationType } from '~/generated-metadata/graphql';
 import { useNavigateSettings } from '~/hooks/useNavigateSettings';
 import { type SettingsObjectDetailTableItem } from '~/pages/settings/data-model/types/SettingsObjectDetailTableItem';
@@ -58,21 +57,6 @@ const StyledNameLabel = styled.div`
   white-space: nowrap;
 `;
 
-const StyledInactiveLabel = styled.span`
-  color: ${themeCssVariables.font.color.extraLight};
-  flex: 0 999 auto;
-  font-size: ${themeCssVariables.font.size.sm};
-  min-width: 48px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-
-  &::before {
-    content: '·';
-    margin-right: ${themeCssVariables.spacing[1]};
-  }
-`;
-
 const StyledIconChevronRightContainer = styled.span`
   align-items: center;
   color: ${themeCssVariables.font.color.tertiary};
@@ -88,6 +72,8 @@ export const SettingsObjectFieldItemTableRow = ({
   const { t } = useLingui();
   const { fieldMetadataItem, objectMetadataItem } =
     settingsObjectDetailTableItem;
+
+  const getIsMetadataItemCustom = useGetIsMetadataItemCustom();
 
   const isDDLLocked = useAtomStateValue(isDDLLockedState);
 
@@ -159,9 +145,9 @@ export const SettingsObjectFieldItemTableRow = ({
 
   if (!isFieldTypeSupported) return null;
 
-  const isRelatedObjectLinkable =
-    isDefined(relationObjectMetadataItem?.namePlural) &&
-    !relationObjectMetadataItem.isSystem;
+  const isRelatedObjectLinkable = isDefined(
+    relationObjectMetadataItem?.namePlural,
+  );
 
   const morphRelationCount = fieldMetadataItem.morphRelations?.length;
   const morphRelationLabel =
@@ -199,7 +185,9 @@ export const SettingsObjectFieldItemTableRow = ({
               {fieldMetadataItem.label}
             </StyledNameLabel>
             {!fieldMetadataItem.isActive && (
-              <StyledInactiveLabel>{t`Deactivated`}</StyledInactiveLabel>
+              <SettingsNameCellSecondaryLabel>
+                {t`Deactivated`}
+              </SettingsNameCellSecondaryLabel>
             )}
           </StyledNameContainer>
         </TableCell>
@@ -209,7 +197,6 @@ export const SettingsObjectFieldItemTableRow = ({
         <SettingsItemTypeTag
           item={{
             applicationId: fieldMetadataItem.applicationId,
-            isCustom: fieldMetadataItem.isCustom ?? undefined,
           }}
         />
       </TableCell>
@@ -260,7 +247,7 @@ export const SettingsObjectFieldItemTableRow = ({
           )
         ) : mode === 'view' ? (
           <SettingsObjectFieldInactiveActionDropdown
-            isCustomField={fieldMetadataItem.isCustom === true}
+            isCustomField={getIsMetadataItemCustom(fieldMetadataItem)}
             isSystemField={fieldMetadataItem.isSystem === true}
             readonly={readonly}
             fieldMetadataItemId={fieldMetadataItem.id}

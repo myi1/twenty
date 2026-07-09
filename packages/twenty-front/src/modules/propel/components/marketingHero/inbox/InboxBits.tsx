@@ -6,7 +6,7 @@ import {
   IconDownload,
   IconFile,
   IconVideo,
-} from 'twenty-ui-deprecated/display';
+} from 'twenty-ui/icon';
 import {
   type InboxChannel,
   type InboxMediaKind,

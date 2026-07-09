@@ -13,7 +13,7 @@ import {
   Title,
 } from '@mantine/core';
 import { useCallback, useEffect, useState } from 'react';
-import { IconPhone, IconSearch } from 'twenty-ui-deprecated/display';
+import { IconPhone, IconSearch } from 'twenty-ui/icon';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import { fetchOwnedNumbers, type OwnedNumber } from '@/propel/lib/numbersCrm';

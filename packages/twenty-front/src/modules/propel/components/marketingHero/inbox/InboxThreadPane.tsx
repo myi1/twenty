@@ -7,7 +7,7 @@ import {
 } from 'react';
 import { Anchor, Box, Button, Group, Loader, Text } from '@mantine/core';
 import { useNavigate } from 'react-router-dom';
-import { IconArrowDown, IconReload, IconUser } from 'twenty-ui-deprecated/display';
+import { IconArrowDown, IconReload, IconUser } from 'twenty-ui/icon';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import {
   type InboxChannel,

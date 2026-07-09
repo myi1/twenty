@@ -33,7 +33,7 @@ import {
   IconPlayerPlay,
   IconRefresh,
   IconTargetArrow,
-} from 'twenty-ui-deprecated/display';
+} from 'twenty-ui/icon';
 
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';

@@ -1,5 +1,9 @@
+import { currentWorkspaceState } from '@/auth/states/currentWorkspaceState';
+import { domainConfigurationState } from '@/domain-manager/states/domainConfigurationState';
 import { FrontComponentRendererProvider } from '@/front-components/components/FrontComponentRendererProvider';
 import { FrontComponentRendererWithSdkClient } from '@/front-components/components/FrontComponentRendererWithSdkClient';
+import { getFunctionsBaseUrl } from '@/settings/logic-functions/utils/getLogicFunctionHttpUrl';
+import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomStateValue';
 import { useFrontComponentExecutionContext } from '@/front-components/hooks/useFrontComponentExecutionContext';
 import { useOnFrontComponentUpdated } from '@/front-components/hooks/useOnFrontComponentUpdated';
 import { frontComponentApplicationTokenPairComponentState } from '@/front-components/states/frontComponentApplicationTokenPairComponentState';
@@ -10,7 +14,7 @@ import { t } from '@lingui/core/macro';
 import { useCallback, useContext, useEffect } from 'react';
 import { FrontComponentRenderer as SharedFrontComponentRenderer } from 'twenty-front-component-renderer';
 import { isDefined } from 'twenty-shared/utils';
-import { ThemeContext } from 'twenty-ui-deprecated/theme-constants';
+import { ThemeContext } from 'twenty-ui/theme-constants';
 import { REACT_APP_SERVER_BASE_URL } from '~/config';
 import { useQuery } from '@apollo/client/react';
 import { FindOneFrontComponentDocument } from '~/generated-metadata/graphql';
@@ -29,6 +33,9 @@ export const FrontComponentRenderer = ({
   const { colorScheme } = useContext(ThemeContext);
   const { enqueueErrorSnackBar } = useSnackBar();
 
+  const { publicFunctionDomain } = useAtomStateValue(domainConfigurationState);
+  const currentWorkspace = useAtomStateValue(currentWorkspaceState);
+
   const setFrontComponentApplicationTokenPair = useSetAtomComponentState(
     frontComponentApplicationTokenPairComponentState,
     frontComponentId,
@@ -39,6 +46,7 @@ export const FrontComponentRenderer = ({
       frontComponentId,
       commandMenuItemId,
       selectedRecordIds,
+      colorScheme,
     });
 
   const handleError = useCallback(
@@ -103,6 +111,12 @@ export const FrontComponentRenderer = ({
   const applicationVariables =
     data.frontComponent.applicationVariables ?? undefined;
 
+  const functionsBaseUrl =
+    getFunctionsBaseUrl({
+      publicFunctionDomain,
+      workspaceSubdomain: currentWorkspace?.subdomain,
+    }) ?? `${REACT_APP_SERVER_BASE_URL}/s`;
+
   if (usesSdkClient) {
     return (
       <FrontComponentRendererProvider frontComponentId={frontComponentId}>
@@ -111,6 +125,7 @@ export const FrontComponentRenderer = ({
           componentUrl={componentUrl}
           applicationAccessToken={accessToken}
           applicationId={data.frontComponent.applicationId}
+          functionsBaseUrl={functionsBaseUrl}
           executionContext={executionContext}
           frontComponentHostCommunicationApi={
             frontComponentHostCommunicationApi
@@ -129,6 +144,7 @@ export const FrontComponentRenderer = ({
         componentUrl={componentUrl}
         applicationAccessToken={accessToken}
         apiUrl={REACT_APP_SERVER_BASE_URL}
+        functionsBaseUrl={functionsBaseUrl}
         executionContext={executionContext}
         frontComponentHostCommunicationApi={frontComponentHostCommunicationApi}
         applicationVariables={applicationVariables}

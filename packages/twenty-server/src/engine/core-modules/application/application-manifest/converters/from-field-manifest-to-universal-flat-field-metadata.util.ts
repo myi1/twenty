@@ -88,12 +88,14 @@ export const fromFieldManifestToUniversalFlatFieldMetadata = ({
     label: fieldManifest.label,
     description: fieldManifest.description ?? null,
     icon: fieldManifest.icon ?? null,
-    standardOverrides: null,
+    overrides: null,
     options: fieldManifest.options ?? null,
     defaultValue,
     universalSettings: fieldManifest.universalSettings ?? null,
     isActive: true,
     isSystem: fieldManifest.name in PARTIAL_SYSTEM_FLAT_FIELD_METADATAS,
+    isSystemSideEffect:
+      fieldManifest.name in PARTIAL_SYSTEM_FLAT_FIELD_METADATAS,
     isUIEditable: fieldManifest.isUIEditable ?? true,
     isNullable: fieldManifest.isNullable ?? true,
     isUnique: fieldManifest.isUnique ?? false,
@@ -112,6 +114,7 @@ export const fromFieldManifestToUniversalFlatFieldMetadata = ({
     calendarViewUniversalIdentifiers: [],
     mainGroupByFieldMetadataViewUniversalIdentifiers: [],
     viewSortUniversalIdentifiers: [],
+    searchFieldMetadataUniversalIdentifiers: [],
     createdAt: now,
     updatedAt: now,
   };

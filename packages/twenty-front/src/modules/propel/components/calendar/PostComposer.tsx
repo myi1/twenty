@@ -29,7 +29,7 @@ import {
   IconShield,
   IconUpload,
   IconX,
-} from 'twenty-ui-deprecated/display';
+} from 'twenty-ui/icon';
 import { AiCopyControls } from '@/propel/components/calendar/AiCopyControls';
 import { AiImageControls } from '@/propel/components/calendar/AiImageControls';
 import { CanvaControls } from '@/propel/components/calendar/CanvaControls';

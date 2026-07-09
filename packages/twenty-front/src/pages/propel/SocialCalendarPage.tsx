@@ -1,6 +1,6 @@
 import { Box, Button, Group, Stack } from '@mantine/core';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { IconCalendarEvent, IconPlus } from 'twenty-ui-deprecated/display';
+import { IconCalendarEvent, IconPlus } from 'twenty-ui/icon';
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { PropelMantineProvider } from '@/propel/components/PropelMantineProvider';

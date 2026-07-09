@@ -101,11 +101,12 @@ export const createStandardRelationFieldFlatMetadata = <
     icon,
     isActive: true,
     isSystem: false,
+    isSystemSideEffect: false,
     isNullable,
     isUnique: false,
     isUIEditable,
     isLabelSyncedWithName: false,
-    standardOverrides: null,
+    overrides: null,
     defaultValue,
     settings,
     options: fieldOptions,
@@ -137,6 +138,8 @@ export const createStandardRelationFieldFlatMetadata = <
     mainGroupByFieldMetadataViewUniversalIdentifiers: [],
     viewSortIds: [],
     viewSortUniversalIdentifiers: [],
+    searchFieldMetadataIds: [],
+    searchFieldMetadataUniversalIdentifiers: [],
     universalSettings: {
       ...settings,
       ...(junctionTargetFieldUniversalIdentifier && {

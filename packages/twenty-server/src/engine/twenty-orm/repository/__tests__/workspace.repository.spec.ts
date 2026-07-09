@@ -70,6 +70,7 @@ describe('WorkspaceRepository', () => {
       type: FieldMetadataType.UUID,
       objectMetadataId: 'test-metadata-id',
       isActive: true,
+      isSystemSideEffect: false,
       isNullable: false,
       isUnique: true,
       isSystem: true,
@@ -86,7 +87,7 @@ describe('WorkspaceRepository', () => {
       options: null,
       settings: null,
       morphId: null,
-      standardOverrides: null,
+      overrides: null,
       applicationId: 'application-id',
       relationTargetFieldMetadataId: null,
       relationTargetObjectMetadataId: null,
@@ -108,6 +109,8 @@ describe('WorkspaceRepository', () => {
       fieldPermissionUniversalIdentifiers: [],
       viewSortIds: [],
       viewSortUniversalIdentifiers: [],
+      searchFieldMetadataIds: [],
+      searchFieldMetadataUniversalIdentifiers: [],
       universalSettings: null,
     };
 
@@ -404,6 +407,7 @@ describe('WorkspaceRepository', () => {
         'test-entity',
         { id: 'test-id' },
         { name: 'test' },
+        undefined,
         {
           shouldBypassPermissionChecks: false,
           objectRecordsPermissions: mockObjectRecordsPermissions,
