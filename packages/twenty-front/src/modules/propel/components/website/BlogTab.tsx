@@ -14,7 +14,8 @@ import {
   Title,
   Tooltip,
 } from '@mantine/core';
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   IconAlertTriangle,
   IconCalendar,
@@ -344,6 +345,40 @@ export const BlogTab = () => {
   const [topicSeed, setTopicSeed] = useState('');
   const [seeding, setSeeding] = useState(false);
   const [openRow, setOpenRow] = useState<BlogPost | null>(null);
+
+  // Campaign Spine V2 deep-link: the campaign review's blog arm "Open in Blog"
+  // navigates to /marketing?tab=website&sub=blog&post=<id>. There is no
+  // standalone post route (the drawer rides local state), so — same one-shot
+  // pattern as LandingPagesTab's ?edit= — once the pipeline load settles, open
+  // that post's drawer and strip the param so back/refresh don't re-trigger it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const postParam = searchParams.get('post');
+  const consumedPostRef = useRef(false);
+
+  useEffect(() => {
+    if (postParam === null || consumedPostRef.current) return;
+    if (phase !== 'ready') return;
+    consumedPostRef.current = true;
+    const next = new URLSearchParams(searchParams);
+    next.delete('post');
+    setSearchParams(next, { replace: true });
+    const hit = [
+      ...columns.failed,
+      ...columns.inProgress,
+      ...columns.needsApproval,
+      ...columns.scheduled,
+      ...columns.published,
+    ].find((p) => p.id === postParam);
+    if (hit !== undefined) {
+      setOpenRow(hit);
+    } else {
+      notify(
+        'That blog post isn’t on the board yet — refresh once the pipeline catches up.',
+        'info',
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [postParam, phase, columns, searchParams, setSearchParams]);
 
   // ── amplify hook (4S-B AM2) ────────────────────────────────────────────────
   // After a successful Approve (the blog "publish" event — approve → scheduled
