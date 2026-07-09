@@ -37,6 +37,7 @@ import {
 import { MarketingDashboardGrid } from '@/propel/components/MarketingDashboardGrid';
 import { CampaignReviewPanel } from '@/propel/components/marketingHero/CampaignReviewPanel';
 import { CampaignSpinePanel } from '@/propel/components/marketingHero/CampaignSpinePanel';
+import { PlanReviewPanel } from '@/propel/components/marketingHero/PlanReviewPanel';
 import { SlaAgeChip } from '@/propel/components/website/SlaAgeChip';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { useMarketingDashboardData } from '@/propel/hooks/useMarketingDashboardData';
@@ -59,6 +60,14 @@ import {
   refresherDismiss,
 } from '@/propel/lib/landingPagesCrm';
 import { getStyle } from '@/propel/lib/socialStyleCrm';
+import {
+  type AiCostSummary,
+  getAiCostSummary,
+} from '@/propel/lib/aiCostCrm';
+import {
+  type SocialPlanListItem,
+  listSocialPlans,
+} from '@/propel/lib/socialCrm';
 import { ageMinutes, relativeAge, type SiteLead } from '@/propel/lib/websiteCrm';
 import { type AnalyticsRange, type AttentionRow } from '@/propel/types/marketingHome';
 
@@ -435,6 +444,42 @@ const DraftRow = ({ page }: { page: LandingPageSummary }) => {
   );
 };
 
+// ── One PROPOSED social plan to review (opens the shared PlanReviewPanel) ─────
+const SocialPlanRow = ({
+  plan,
+  onReview,
+}: {
+  plan: SocialPlanListItem;
+  onReview: (id: string) => void;
+}) => {
+  const brass = useBrass();
+  return (
+    <Paper withBorder radius="md" p="sm">
+      <Group justify="space-between" wrap="nowrap" gap="sm">
+        <Box style={{ minWidth: 0 }}>
+          <Text fw={600} size="sm" truncate>
+            {plan.name || 'Untitled plan'}
+          </Text>
+          <Text size="xs" c="dimmed">
+            Social plan
+            {plan.createdAt ? ` · ${plan.createdAt.slice(0, 10)}` : ''}
+          </Text>
+        </Box>
+        <Button
+          size="xs"
+          variant="light"
+          color="gray"
+          leftSection={<IconSparkles size={13} color={brass} />}
+          onClick={() => onReview(plan.id)}
+          style={{ flexShrink: 0 }}
+        >
+          Review
+        </Button>
+      </Group>
+    </Paper>
+  );
+};
+
 // ── One stale live page (the Refresher queue) ─────────────────────────────────
 const StaleRow = ({
   page,
@@ -551,6 +596,8 @@ export const MarketingHomeTab = () => {
     id: string;
     failed: SpineArm[];
   } | null>(null);
+  // Social plan review — same home-level pattern (id → PlanReviewPanel drawer).
+  const [planReviewId, setPlanReviewId] = useState<string | null>(null);
   // Bumped to re-fetch the queue sources after a mutation.
   const [needsRefresh, setNeedsRefresh] = useState(0);
   // Ticks so the SLA clocks + greeting recompute live (client-side).
@@ -662,6 +709,44 @@ export const MarketingHomeTab = () => {
     };
   }, []);
 
+  // ── Social plans (PROPOSED) → the "Drafts to review" second half + Review ────
+  const [socialPlans, setSocialPlans] = useState<{
+    available: boolean;
+    pending: SocialPlanListItem[];
+  } | null>(null);
+  useEffect(() => {
+    let live = true;
+    void listSocialPlans().then((res) => {
+      if (!live) return;
+      if (res.ok) {
+        setSocialPlans({
+          available: true,
+          pending: res.plans.filter((p) => p.status === 'PROPOSED'),
+        });
+      } else {
+        setSocialPlans({ available: false, pending: [] });
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, [needsRefresh]);
+
+  // ── AI-cost ledger → the "What it cost" block (re-reads on the range change) ──
+  const [aiCost, setAiCost] = useState<AiCostSummary | null>(null);
+  useEffect(() => {
+    let live = true;
+    void getAiCostSummary(range).then((res) => {
+      if (!live) return;
+      // null = route unavailable / transient / non-Manager → cost lines show "—";
+      // a live-but-idle ledger returns a real summary (totalAed:0) → "AED 0".
+      setAiCost(res.ok ? res.summary : null);
+    });
+    return () => {
+      live = false;
+    };
+  }, [range]);
+
   // ── Agent directory (for the lead-assign picker) ────────────────────────────
   const [agents, setAgents] = useState<InboxAgentOption[]>([]);
   useEffect(() => {
@@ -700,6 +785,8 @@ export const MarketingHomeTab = () => {
   const landingAvailable = landing?.available === true;
   const draftPages = landing?.drafts ?? [];
   const stalePagesList = landing?.stale ?? [];
+  const socialPlansAvailable = socialPlans?.available === true;
+  const pendingPlans = socialPlans?.pending ?? [];
 
   // Counts — the single source of truth the seals AND the brief both read.
   const counts = {
@@ -707,18 +794,27 @@ export const MarketingHomeTab = () => {
     replies: repliesAvailable ? hotReplies.length : 0,
     scout: campaignsAvailable ? scoutItems.length : 0,
     drafts: landingAvailable ? draftPages.length : 0,
+    // PROPOSED social plans — folded into the "Drafts to review" row (the second
+    // half of the breakdown). Only counted when the list route is live.
+    socialPlans: socialPlansAvailable ? pendingPlans.length : 0,
     stale: landingAvailable ? stalePagesList.length : 0,
   };
+  // The "Drafts to review" row spans BOTH landing-page drafts and pending social
+  // plans; the seal badge + the brief read this combined figure so they agree.
+  const draftsToReview = counts.drafts + counts.socialPlans;
   const totalToSignOff =
     counts.slaLeads +
     counts.replies +
     counts.scout +
-    counts.drafts +
+    draftsToReview +
     counts.stale;
 
   // The overnight engine "ran" if any of its report sources resolved.
   const engineRan =
-    style?.available === true || campaignsAvailable || landingAvailable;
+    style?.available === true ||
+    campaignsAvailable ||
+    landingAvailable ||
+    socialPlansAvailable;
 
   const brief = useMemo(
     () =>
@@ -727,7 +823,7 @@ export const MarketingHomeTab = () => {
         slaLeads: counts.slaLeads,
         replies: counts.replies,
         scoutCampaigns: counts.scout,
-        drafts: counts.drafts,
+        drafts: draftsToReview,
         stalePages: counts.stale,
         engineRan,
       }),
@@ -737,7 +833,7 @@ export const MarketingHomeTab = () => {
       counts.slaLeads,
       counts.replies,
       counts.scout,
-      counts.drafts,
+      draftsToReview,
       counts.stale,
       engineRan,
     ],
@@ -848,23 +944,35 @@ export const MarketingHomeTab = () => {
       key: 'drafts',
       seal: 'brass',
       label: 'Drafts to review',
-      count: counts.drafts,
-      // Only the landing-page draft source is wired in the fork; there is no
-      // list route for PROPOSED social plans, so that half of the breakdown is
-      // honestly omitted rather than shown as a fake 0.
+      count: draftsToReview,
+      // Full breakdown restored: landing-page drafts + PROPOSED social plans (the
+      // latter only when the plan-bench list route is live; otherwise the row
+      // stays at landing-pages-only rather than showing a fake 0).
       summary:
-        counts.drafts === 0
+        draftsToReview === 0
           ? 'No drafts waiting'
-          : `${counts.drafts} landing ${plural('page', counts.drafts)} to review`,
+          : [
+              `${counts.drafts} landing ${plural('page', counts.drafts)}`,
+              socialPlansAvailable
+                ? `${counts.socialPlans} social ${plural('plan', counts.socialPlans)}`
+                : null,
+            ]
+              .filter((s): s is string => s !== null)
+              .join(' · '),
       body:
-        counts.drafts === 0 ? (
+        draftsToReview === 0 ? (
           <Text size="sm" c="dimmed">
-            No landing-page drafts to review.
+            {socialPlansAvailable
+              ? 'No landing-page drafts or social plans to review.'
+              : 'No landing-page drafts to review.'}
           </Text>
         ) : (
           <Stack gap="xs">
             {draftPages.map((p) => (
               <DraftRow key={p.id} page={p} />
+            ))}
+            {pendingPlans.map((p) => (
+              <SocialPlanRow key={p.id} plan={p} onReview={setPlanReviewId} />
             ))}
           </Stack>
         ),
@@ -912,6 +1020,26 @@ export const MarketingHomeTab = () => {
     revenue && revenue.present === true
       ? `AED ${revenue.value.total.toLocaleString('en-US')}`
       : '— no closed deals yet';
+
+  // ── "What it cost" — the AI-cost ledger is the ONLY priced source today ──────
+  // aiCost === null → the ledger is unavailable (route missing / non-Manager /
+  // transient) → the AI lines show "—", never a fabricated number. A live-but-idle
+  // ledger returns a real summary with totalAed:0 → "AED 0" (a legitimate value).
+  // The whole ledger is AI spend, so AI drafting AND Spent both read totalAed;
+  // ads & sends are genuinely un-tracked and stay "—".
+  const hasCost = aiCost !== null;
+  const fmtAed = (n: number): string =>
+    `AED ${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+  const aiDraftingValue = hasCost
+    ? fmtAed(aiCost.totalAed)
+    : '— (tracking coming)';
+  const spentValue = hasCost ? fmtAed(aiCost.totalAed) : '—';
+  // Cost per lead = the AI total ÷ leads, only when we have both a real total and
+  // a positive lead count (`replies` is the leads metric on this desk).
+  const costPerLead =
+    hasCost && typeof replies === 'number' && replies > 0
+      ? fmtAed(aiCost.totalAed / replies)
+      : '—';
 
   // ── Dashboard grid plumbing (unchanged — "Full →" reveals it intact) ────────
   const handleLayoutChange = useCallback(
@@ -1030,6 +1158,13 @@ export const MarketingHomeTab = () => {
         onClose={() => setSpineReview(null)}
         onChanged={reloadQueue}
         onRegenerated={(id, failed) => setSpineReview({ id, failed })}
+      />
+
+      {/* Shared social-plan review drawer — opened by a "Drafts to review" plan. */}
+      <PlanReviewPanel
+        planId={planReviewId}
+        onClose={() => setPlanReviewId(null)}
+        onApproved={reloadQueue}
       />
 
       {/* ── Two aligned columns ─────────────────────────────────────────────── */}
@@ -1249,16 +1384,25 @@ export const MarketingHomeTab = () => {
                     value="—"
                     note="no per-message rate set"
                   />
-                  <CostLine label="AI drafting" value="— (tracking coming)" />
+                  <CostLine label="AI drafting" value={aiDraftingValue} />
                   <Box
                     style={{
                       borderTop: '1px solid var(--mantine-color-default-border)',
                       paddingTop: 8,
                     }}
                   >
-                    <CostLine label="Spent" value="—" accent note="no priced source yet" />
+                    <CostLine
+                      label="Spent"
+                      value={spentValue}
+                      accent
+                      note={
+                        hasCost
+                          ? 'AI drafting only — ads & sends not tracked yet'
+                          : 'no priced source yet'
+                      }
+                    />
                   </Box>
-                  <CostLine label="Cost per lead" value="—" />
+                  <CostLine label="Cost per lead" value={costPerLead} />
                   <CostLine label="Earned" value={earned} accent />
                 </Stack>
               </Paper>

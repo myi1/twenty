@@ -353,6 +353,89 @@ export async function dismissPlan(planId: string): Promise<DismissPlanResult> {
   return { ok: false, error: failMessage(body) };
 }
 
+// ── list (the Night-desk "Drafts to review" pending-plans count) ─────────────────
+//
+//   POST /s/social/plan-bench  body { action:'list', filter?:{ status? } }
+//     → { ok, plans:[{ id, name, status, createdAt }] }   (default filter = PROPOSED)
+//     → { ok:false, error:'unknown action …' }             (route predates the action)
+//
+// A lightweight projection — just enough to COUNT pending plans and open each for
+// review. `unavailable` (route missing / non-Manager / pre-list route) keeps the
+// desk row at landing-pages-only rather than toasting.
+
+export interface SocialPlanListItem {
+  id: string;
+  name: string;
+  status: PlanStatus;
+  createdAt: string | null;
+}
+
+const isUnavailable = (body: Envelope | null): boolean => {
+  if (body === null) return true;
+  if (body.ok === false && body.code === 'FEATURE_OFF') return true;
+  return (
+    typeof body.error === 'string' &&
+    body.error.toLowerCase().includes('unknown action')
+  );
+};
+
+// Tolerant projection: a row missing an id (or malformed) is skipped, not thrown.
+const parsePlanListItem = (raw: unknown): SocialPlanListItem | null => {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== 'string' || r.id === '') return null;
+  const status: PlanStatus =
+    r.status === 'GENERATING' ||
+    r.status === 'PROPOSED' ||
+    r.status === 'APPROVED' ||
+    r.status === 'SCHEDULED' ||
+    r.status === 'ARCHIVED'
+      ? (r.status as PlanStatus)
+      : 'PROPOSED';
+  return {
+    id: r.id,
+    name: typeof r.name === 'string' ? r.name : '',
+    status,
+    createdAt: asStrOrNull(r.createdAt),
+  };
+};
+
+export type ListSocialPlansResult =
+  | { ok: true; plans: SocialPlanListItem[] }
+  | { ok: false; error: string; unavailable: boolean };
+
+/**
+ * listSocialPlans — the pending-plans read feeding the desk's "Drafts to review"
+ * count. `filter.status` is optional (the route defaults to PROPOSED). A route
+ * that predates the `list` action answers unknown-action → `unavailable:true`,
+ * and the caller keeps the row at landing-pages-only.
+ */
+export async function listSocialPlans(filter?: {
+  status?: string;
+}): Promise<ListSocialPlansResult> {
+  const body = await callPropelRoute<Envelope & { plans?: unknown }>(
+    BENCH_ROUTE,
+    {
+      action: 'list',
+      ...(filter && filter.status ? { filter } : {}),
+    },
+  );
+  if (body && body.ok === true) {
+    const rows = Array.isArray(body.plans) ? body.plans : [];
+    return {
+      ok: true,
+      plans: rows
+        .map(parsePlanListItem)
+        .filter((p): p is SocialPlanListItem => p !== null),
+    };
+  }
+  return {
+    ok: false,
+    error: failMessage(body),
+    unavailable: isUnavailable(body),
+  };
+}
+
 // ── review helpers (pure) ──────────────────────────────────────────────────────
 
 // A property post that lacks a permit cannot be approved (the RERA checkpoint —
