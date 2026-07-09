@@ -17,10 +17,11 @@ import {
   Title,
   UnstyledButton,
 } from '@mantine/core';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { type Layouts } from 'react-grid-layout';
 import { AppPath } from 'twenty-shared/types';
+import { ThemeContext } from 'twenty-ui/theme-constants';
 import {
   IconArrowRight,
   IconBolt,
@@ -86,18 +87,42 @@ import { type AnalyticsRange, type AttentionRow } from '@/propel/types/marketing
 
 // The ONE brass/gold accent — reserved for the working MACHINE (engine report +
 // cost + trend + the review seals). It carries meaning; it is never decoration.
-const BRASS = '#C6A15B';
-const BRASS_TINT_BG = 'rgba(198, 161, 91, 0.055)';
+//
+// Theme-aware: the #C6A15B gold sits well on the dark "warm-ink" ground but washes
+// out to near-illegible on a white surface, so light mode uses a deeper antique
+// gold that keeps contrast. We resolve to a CONCRETE hex per scheme (not a
+// light-dark() CSS value) so the same string is safe everywhere it's used —
+// tabler-icon `color=` / SVG `stroke=` attributes AND the `${seal}22` alpha-tint
+// string concats, neither of which reliably parse CSS color functions.
+const BRASS_DARK = '#C6A15B';
+const BRASS_LIGHT = '#8A6A29';
+
+const useBrass = (): string => {
+  const { colorScheme } = useContext(ThemeContext);
+  return colorScheme === 'dark' ? BRASS_DARK : BRASS_LIGHT;
+};
+
+// The soft brass tint behind the "Running for you" rail — a translucent wash that
+// composites over whichever ground is active (warm paper in light, warm ink in
+// dark), so it flips without a branch.
+const BRASS_TINT_BG = 'rgba(198, 161, 91, 0.06)';
 const BRASS_TINT_BORDER = 'rgba(198, 161, 91, 0.22)';
 
-// Seal colors — the status dot on each sign-off row.
-const SEAL = {
-  red: 'var(--mantine-color-red-6)', // act now
-  amber: 'var(--mantine-color-yellow-6)', // attention
-  brass: BRASS, // review (the machine's drafts)
-  grey: 'var(--mantine-color-gray-5)', // routine
-} as const;
-type SealKind = keyof typeof SEAL;
+// Seal colors — the status dot on each sign-off row. Red/amber/grey are Mantine
+// semantic tokens; we pick a slightly deeper shade in light mode so the dots (and
+// the tinted count badges) stay legible on white, and a brighter shade on the dark
+// ground. Brass is the theme-aware gold above.
+type SealKind = 'red' | 'amber' | 'brass' | 'grey';
+const useSeal = (): Record<SealKind, string> => {
+  const { colorScheme } = useContext(ThemeContext);
+  const dark = colorScheme === 'dark';
+  return {
+    red: `var(--mantine-color-red-${dark ? 5 : 6})`, // act now
+    amber: `var(--mantine-color-yellow-${dark ? 5 : 7})`, // attention
+    brass: dark ? BRASS_DARK : BRASS_LIGHT, // review (the machine's drafts)
+    grey: `var(--mantine-color-gray-${dark ? 5 : 6})`, // routine
+  };
+};
 
 // Lead-system first-touch SLA (LEAD-SYSTEM-SPEC §2 = 10 minutes) — the same
 // target SiteLeadsTab / SiteLeadDrawer use, so the clock reads identically.
@@ -129,21 +154,25 @@ const Eyebrow = ({ children }: { children: React.ReactNode }) => (
   </Text>
 );
 
-const Seal = ({ kind }: { kind: SealKind }) => (
-  <Box
-    style={{
-      width: 9,
-      height: 9,
-      borderRadius: 999,
-      background: SEAL[kind],
-      flexShrink: 0,
-      boxShadow: `0 0 0 3px ${SEAL[kind]}22`,
-    }}
-  />
-);
+const Seal = ({ kind }: { kind: SealKind }) => {
+  const seal = useSeal();
+  return (
+    <Box
+      style={{
+        width: 9,
+        height: 9,
+        borderRadius: 999,
+        background: seal[kind],
+        flexShrink: 0,
+        boxShadow: `0 0 0 3px ${seal[kind]}22`,
+      }}
+    />
+  );
+};
 
 // ── Brass sparkline (trend) — pure SVG, no deps ──────────────────────────────
 const Sparkline = ({ points }: { points: number[] }) => {
+  const brass = useBrass();
   if (points.length < 2) return null;
   const w = 96;
   const h = 26;
@@ -163,7 +192,7 @@ const Sparkline = ({ points }: { points: number[] }) => {
       <path
         d={d}
         fill="none"
-        stroke={BRASS}
+        stroke={brass}
         strokeWidth={1.6}
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -309,6 +338,7 @@ const ScoutRow = ({
   onChanged: () => void;
 }) => {
   const notify = usePropelToast();
+  const brass = useBrass();
   const [busy, setBusy] = useState(false);
   const win =
     item.windowStart && item.windowEnd
@@ -350,7 +380,7 @@ const ScoutRow = ({
           size="xs"
           variant="light"
           color="gray"
-          leftSection={<IconSparkles size={13} color={BRASS} />}
+          leftSection={<IconSparkles size={13} color={brass} />}
           onClick={() => onReview(item.id)}
         >
           Review
@@ -372,6 +402,7 @@ const ScoutRow = ({
 // ── One landing-page draft to review (distinct object from Scout campaigns) ───
 const DraftRow = ({ page }: { page: LandingPageSummary }) => {
   const navigate = useNavigate();
+  const brass = useBrass();
   return (
     <Paper withBorder radius="md" p="sm">
       <Group justify="space-between" wrap="nowrap" gap="sm">
@@ -387,7 +418,7 @@ const DraftRow = ({ page }: { page: LandingPageSummary }) => {
           size="xs"
           variant="light"
           color="gray"
-          leftSection={<IconPencil size={13} color={BRASS} />}
+          leftSection={<IconPencil size={13} color={brass} />}
           onClick={() =>
             navigate(
               `${AppPath.MarketingHub}?tab=website&sub=landing-pages&edit=${encodeURIComponent(
@@ -480,26 +511,36 @@ const CostLine = ({
   value: string;
   note?: string;
   accent?: boolean;
-}) => (
-  <Group justify="space-between" align="baseline" wrap="nowrap" gap="sm">
-    <Text size="sm" c="dimmed">
-      {label}
-    </Text>
-    <Box style={{ textAlign: 'right', minWidth: 0 }}>
-      <Text size="sm" fw={accent ? 700 : 500} c={accent ? undefined : 'var(--mantine-color-text)'} style={accent ? { color: BRASS } : undefined}>
-        {value}
+}) => {
+  const brass = useBrass();
+  return (
+    <Group justify="space-between" align="baseline" wrap="nowrap" gap="sm">
+      <Text size="sm" c="dimmed">
+        {label}
       </Text>
-      {note ? (
-        <Text size="xs" c="dimmed">
-          {note}
+      <Box style={{ textAlign: 'right', minWidth: 0 }}>
+        <Text
+          size="sm"
+          fw={accent ? 700 : 500}
+          c={accent ? undefined : 'var(--mantine-color-text)'}
+          style={accent ? { color: brass } : undefined}
+        >
+          {value}
         </Text>
-      ) : null}
-    </Box>
-  </Group>
-);
+        {note ? (
+          <Text size="xs" c="dimmed">
+            {note}
+          </Text>
+        ) : null}
+      </Box>
+    </Group>
+  );
+};
 
 export const MarketingHomeTab = () => {
   const navigate = useNavigate();
+  const brass = useBrass();
+  const seal = useSeal();
 
   const [range, setRange] = useState<AnalyticsRange>('30d');
   const [editMode, setEditMode] = useState(false);
@@ -955,7 +996,7 @@ export const MarketingHomeTab = () => {
           <Button
             variant="default"
             size="sm"
-            leftSection={<IconSparkles size={15} color={BRASS} />}
+            leftSection={<IconSparkles size={15} color={brass} />}
             rightSection={
               <IconChevronDown
                 size={14}
@@ -1049,8 +1090,8 @@ export const MarketingHomeTab = () => {
                               radius="sm"
                               styles={{
                                 root: {
-                                  background: `${SEAL[row.seal]}1e`,
-                                  color: SEAL[row.seal],
+                                  background: `${seal[row.seal]}1e`,
+                                  color: seal[row.seal],
                                 },
                               }}
                             >
@@ -1092,7 +1133,7 @@ export const MarketingHomeTab = () => {
               ) : (
                 overnightLines.map((l, i) => (
                   <Group key={i} gap={8} wrap="nowrap" align="flex-start">
-                    <Text style={{ color: BRASS, lineHeight: 1.5 }}>◆</Text>
+                    <Text style={{ color: brass, lineHeight: 1.5 }}>◆</Text>
                     <Text size="sm" c="var(--mantine-color-text)">
                       {l.text}
                     </Text>
@@ -1186,7 +1227,7 @@ export const MarketingHomeTab = () => {
             {/* What it cost (honest) */}
             <Box>
               <Group gap={6} mb="xs">
-                <IconLayoutDashboard size={13} color={BRASS} />
+                <IconLayoutDashboard size={13} color={brass} />
                 <Eyebrow>What it cost</Eyebrow>
               </Group>
               <Paper
