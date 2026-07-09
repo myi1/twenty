@@ -38,10 +38,35 @@ import {
   listAssets,
   toggleFavorite,
   updateAsset,
+  uploadAsset,
   WEBSITE_ASSET_SOURCES,
   type WebsiteAsset,
   type WebsiteAssetSource,
 } from '@/propel/lib/websiteAssetsCrm';
+
+// Device-upload caps mirror the image-service route (image mime, ≤4MB) so the
+// user gets an instant, specific error instead of a round-trip 4xx. Same posture
+// as MediaStudioBody's upload panel — this reuses the identical uploadAsset lib fn.
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+const UPLOAD_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+// Main-thread FileReader → bare base64 (data:-URL prefix stripped). Mirrors
+// MediaStudioBody.fileToBase64 / inboxApi.fileToBase64.
+const fileToBase64 = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== 'string') {
+        reject(new Error('unreadable'));
+        return;
+      }
+      const comma = result.indexOf(',');
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('read failed'));
+    reader.readAsDataURL(file);
+  });
 
 // H2 — the standalone Website → Assets curation hero. A responsive grid over the
 // websiteAsset object with search + source chips + ★ favorites filter; each card
@@ -205,6 +230,12 @@ export const WebsiteAssetsTab = () => {
   const [pendingDelete, setPendingDelete] = useState<WebsiteAsset | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Device upload — hidden <input type=file> + the same uploadAsset flow the Media
+  // Studio upload panel uses (client-read → base64 → route creates an UPLOADED
+  // asset). On success we reload the grid so the new row shows.
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
+
   const load = useCallback(async () => {
     setPhase('loading');
     const res = await listAssets();
@@ -291,6 +322,43 @@ export const WebsiteAssetsTab = () => {
     notify('Asset deleted.', 'success');
   };
 
+  const handleUploadFile = async (file: File) => {
+    if (uploading) return;
+    if (!UPLOAD_MIME_TYPES.includes(file.type)) {
+      notify('That file isn’t a supported image — use JPEG, PNG, WebP, or GIF.', 'error');
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      notify(
+        `That image is ${(file.size / (1024 * 1024)).toFixed(1)}MB — the limit is 4MB.`,
+        'error',
+      );
+      return;
+    }
+    setUploading(true);
+    try {
+      const dataBase64 = await fileToBase64(file);
+      const res = await uploadAsset(file.name, dataBase64);
+      if (!mounted.current) return;
+      if (res.ok) {
+        notify('Image uploaded to the library.', 'success');
+        await load();
+      } else {
+        notify(res.error, 'error');
+      }
+    } catch {
+      if (mounted.current) notify('Could not read that file — try again.', 'error');
+    }
+    if (mounted.current) setUploading(false);
+  };
+
+  const onUploadInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.currentTarget.files?.[0];
+    // Reset so picking the SAME file again re-fires change (retry after an error).
+    e.currentTarget.value = '';
+    if (file) void handleUploadFile(file);
+  };
+
   const visible = useMemo(
     () => assets.filter((a) => matchesFilter(a, source, favoritesOnly, search)),
     [assets, source, favoritesOnly, search],
@@ -309,18 +377,24 @@ export const WebsiteAssetsTab = () => {
             {assets.length}
           </Badge>
         </Group>
-        <Tooltip label="Coming with device upload" withinPortal zIndex={5000}>
-          <Box component="span" style={{ display: 'inline-flex' }}>
-            <Button
-              size="xs"
-              color="red"
-              leftSection={<IconUpload size={14} />}
-              disabled
-            >
-              Upload
-            </Button>
-          </Box>
-        </Tooltip>
+        <>
+          <input
+            ref={uploadInputRef}
+            type="file"
+            accept={UPLOAD_MIME_TYPES.join(',')}
+            style={{ display: 'none' }}
+            onChange={onUploadInputChange}
+          />
+          <Button
+            size="xs"
+            color="red"
+            leftSection={<IconUpload size={14} />}
+            loading={uploading}
+            onClick={() => uploadInputRef.current?.click()}
+          >
+            Upload
+          </Button>
+        </>
       </Group>
 
       {/* Filters — search + source chips + ★ favorites. */}

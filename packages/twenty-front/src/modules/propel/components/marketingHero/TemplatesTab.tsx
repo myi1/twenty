@@ -7,6 +7,7 @@ import {
   Group,
   Loader,
   SegmentedControl,
+  Select,
   SimpleGrid,
   Stack,
   Text,
@@ -507,6 +508,7 @@ export const TemplatesTab = ({
 }) => {
   const notify = usePropelToast();
   const [filter, setFilter] = useState<TplFilter>('ALL');
+  const [langFilter, setLangFilter] = useState<string>('ALL');
   const [syncing, setSyncing] = useState(false);
   const [waEdit, setWaEdit] = useState<WaTemplateOption | 'new' | null>(null);
   const [emailEdit, setEmailEdit] = useState<
@@ -519,8 +521,24 @@ export const TemplatesTab = ({
 
   const showEmail = filter === 'ALL' || filter === 'EMAIL';
   const showWa = filter === 'ALL' || filter === 'WHATSAPP';
+
+  // Distinct languages present across the loaded templates (email + WhatsApp),
+  // powering the language filter. Client-side only — no extra fetch.
+  const languageOptions = Array.from(
+    new Set(
+      [...emailTemplates, ...waTemplates]
+        .map((t) => t.languageCode)
+        .filter((c): c is string => typeof c === 'string' && c !== ''),
+    ),
+  ).sort();
+
+  const matchesLang = (code: string): boolean =>
+    langFilter === 'ALL' || code === langFilter;
+
+  const visibleEmail = emailTemplates.filter((t) => matchesLang(t.languageCode));
+  const visibleWa = waTemplates.filter((t) => matchesLang(t.languageCode));
   const visibleCount =
-    (showEmail ? emailTemplates.length : 0) + (showWa ? waTemplates.length : 0);
+    (showEmail ? visibleEmail.length : 0) + (showWa ? visibleWa.length : 0);
 
   const deleteTemplate = async (
     templateId: string,
@@ -703,17 +721,31 @@ export const TemplatesTab = ({
         </Group>
       </Group>
 
-      <SegmentedControl
-        mb="md"
-        value={filter}
-        onChange={(v) => setFilter(v as TplFilter)}
-        data={[
-          { label: 'All', value: 'ALL' },
-          { label: 'Email', value: 'EMAIL' },
-          { label: 'WhatsApp', value: 'WHATSAPP' },
-          { label: 'Merge tags', value: 'CUSTOM' },
-        ]}
-      />
+      <Group gap="sm" mb="md" align="center" wrap="wrap">
+        <SegmentedControl
+          value={filter}
+          onChange={(v) => setFilter(v as TplFilter)}
+          data={[
+            { label: 'All', value: 'ALL' },
+            { label: 'Email', value: 'EMAIL' },
+            { label: 'WhatsApp', value: 'WHATSAPP' },
+            { label: 'Merge tags', value: 'CUSTOM' },
+          ]}
+        />
+        {filter !== 'CUSTOM' && languageOptions.length > 0 ? (
+          <Select
+            size="sm"
+            w={170}
+            aria-label="Filter by language"
+            value={langFilter}
+            onChange={(v) => setLangFilter(v ?? 'ALL')}
+            data={[
+              { value: 'ALL', label: 'All languages' },
+              ...languageOptions.map((c) => ({ value: c, label: c })),
+            ]}
+          />
+        ) : null}
+      </Group>
 
       {filter === 'CUSTOM' ? (
         <MergeTagsView payload={payload ?? {}} reload={reload} />
@@ -731,7 +763,7 @@ export const TemplatesTab = ({
       ) : (
         <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md">
           {showEmail &&
-            emailTemplates.map((t) => (
+            visibleEmail.map((t) => (
               <Card
                 key={`e-${t.id}`}
                 withBorder
@@ -775,7 +807,7 @@ export const TemplatesTab = ({
               </Card>
             ))}
           {showWa &&
-            waTemplates.map((t) => (
+            visibleWa.map((t) => (
               <Card
                 key={`w-${t.id}`}
                 withBorder

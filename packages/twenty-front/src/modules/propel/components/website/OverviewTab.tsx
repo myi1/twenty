@@ -66,11 +66,12 @@ const MetricCard = ({
 }) => {
   const isUp = deltaPct !== null && deltaPct !== undefined && deltaPct >= 0;
   return (
-    <UnstyledButton onClick={onClick} style={{ display: 'block' }}>
+    <UnstyledButton onClick={onClick} style={{ display: 'block', height: '100%' }}>
       <Paper
         withBorder
         radius="md"
         p="md"
+        h="100%"
         style={{ transition: 'border-color 120ms' }}
         className="propel-hoverable"
       >
