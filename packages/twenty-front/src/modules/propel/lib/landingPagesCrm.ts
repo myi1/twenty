@@ -54,6 +54,15 @@ export interface LandingPageSummary {
   locale?: string | null;
   // Set on a translated sibling: the EN parent's id. Absent/empty ⇒ a parent.
   sourceLandingPageId?: string | null;
+  // Stage 3E — the Scout + Refresher queues (pinned SC1 contract). All three are
+  // tolerant: routes predating 3E simply omit them → neither queue renders.
+  // `source` marks who created the page ('SCOUT' for the cron's proposals).
+  source?: string | null;
+  // The Scout's one-line rationale ("New listing: Marina 2BR — AED 2.4M").
+  scoutReason?: string | null;
+  // The Refresher's queued-diffs column (raw JSON string or parsed array) —
+  // parse with readRefresherDiffs; absent/unreadable → no Refresher rows.
+  refresherJson?: unknown;
 }
 
 // Full page (editor). Adds the section list + the bench audit log (Stage 3B —
@@ -680,3 +689,98 @@ export async function translatePage(id: string, locale: string): Promise<Transla
   }
   return { ok: false, error: failMessage(body), unavailable: isTranslateUnavailable(body) };
 }
+
+// ── Refresher queue (Stage 3E — pinned SC1/SC3 contracts) ─────────────────────
+// The `landing-refresher` cron writes staleness findings for LIVE pages into
+// `landingPage.refresherJson` as an array of queued diffs — NEVER a silent edit:
+//   [{ key, kind:'COUNTDOWN_PAST'|'DATE_PAST'|'PERMIT_EXPIRED'|'LISTING_GONE'|
+//      'COPY_STALE', sectionIndex?, detail, proposal? }]
+// The founder applies/dismisses them one-click via landing-admin:
+//   action:'refresherApply'   + { id, keys? }  → { ok }   (keys absent ⇒ all)
+//   action:'refresherDismiss' + { id, keys? }  → { ok }
+// `kind` stays an open string client-side so an unknown kind the CRM leg adds
+// later renders with a generic badge instead of being dropped.
+
+export const REFRESHER_KINDS = [
+  'COUNTDOWN_PAST',
+  'DATE_PAST',
+  'PERMIT_EXPIRED',
+  'LISTING_GONE',
+  'COPY_STALE',
+] as const;
+
+export interface RefresherDiff {
+  key: string;
+  kind: string;
+  sectionIndex: number | null;
+  detail: string;
+  proposal: string | null;
+}
+
+// Tolerant parse of a stored refresherJson value (the raw JSON string or an
+// already-parsed value; also accepts a `{diffs:[…]}` wrapper). Anything that
+// isn't a {key,…} row is dropped; absent/unreadable/empty → [] → no queue row.
+export const readRefresherDiffs = (v: unknown): RefresherDiff[] => {
+  let raw: unknown = v;
+  if (typeof raw === 'string') {
+    if (raw === '') return [];
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+  if (raw !== null && typeof raw === 'object' && !Array.isArray(raw)) {
+    raw = (raw as Record<string, unknown>).diffs;
+  }
+  if (!Array.isArray(raw)) return [];
+  const out: RefresherDiff[] = [];
+  for (const item of raw) {
+    if (item === null || typeof item !== 'object') continue;
+    const r = item as Record<string, unknown>;
+    if (typeof r.key !== 'string' || r.key === '') continue;
+    out.push({
+      key: r.key,
+      kind: typeof r.kind === 'string' && r.kind !== '' ? r.kind : 'COPY_STALE',
+      sectionIndex: typeof r.sectionIndex === 'number' ? r.sectionIndex : null,
+      detail: typeof r.detail === 'string' ? r.detail : '',
+      proposal: typeof r.proposal === 'string' && r.proposal !== '' ? r.proposal : null,
+    });
+  }
+  return out;
+};
+
+// `unavailable` = the ACTION itself is missing on this workspace (route
+// unreachable / FEATURE_OFF / a pre-3E landing-admin answering "unknown
+// action") → the caller dims the queue's buttons and toasts once, no crash.
+export type RefresherActionResult =
+  | { ok: true }
+  | { ok: false; error: string; unavailable: boolean };
+
+const isRefresherUnavailable = (body: Envelope | null): boolean => {
+  if (body === null) return true; // route unreachable / not deployed / not signed in
+  if (body.code === 'FEATURE_OFF') return true;
+  // Pre-SC3 landing-admin builds answer: { error:'unknown action "refresherApply"', … }.
+  return typeof body.error === 'string' && body.error.toLowerCase().includes('unknown action');
+};
+
+const runRefresherAction = async (
+  action: 'refresherApply' | 'refresherDismiss',
+  id: string,
+  keys?: string[],
+): Promise<RefresherActionResult> => {
+  // FLAT body, per the gotcha; keys omitted entirely ⇒ the route acts on ALL diffs.
+  const body = await callPropelRoute<Envelope>(ROUTE, {
+    action,
+    id,
+    ...(keys && keys.length > 0 ? { keys } : {}),
+  });
+  if (body && body.ok === true) return { ok: true };
+  return { ok: false, error: failMessage(body), unavailable: isRefresherUnavailable(body) };
+};
+
+export const refresherApply = (id: string, keys?: string[]): Promise<RefresherActionResult> =>
+  runRefresherAction('refresherApply', id, keys);
+
+export const refresherDismiss = (id: string, keys?: string[]): Promise<RefresherActionResult> =>
+  runRefresherAction('refresherDismiss', id, keys);
