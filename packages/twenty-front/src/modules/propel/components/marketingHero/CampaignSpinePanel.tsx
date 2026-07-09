@@ -11,7 +11,7 @@ import {
   Textarea,
   TextInput,
 } from '@mantine/core';
-import { IconCheck, IconSparkles } from 'twenty-ui/display';
+import { IconCheck, IconRefresh, IconSparkles, IconX } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import {
   AddSourcesControl,
@@ -20,62 +20,66 @@ import {
 import {
   type CampaignWindow,
   type SpineArm,
+  generateArm,
   generateCampaign,
 } from '@/propel/lib/campaignSpineCrm';
 
-// Campaign Spine v1 (CS4) — the "New multi-channel campaign" brief box at the top
-// of the Campaigns tab. One brief → the spine meta-bench (Strategist → parallel
-// LP bench + Social bench) → a campaign in REVIEW with two linked arms sharing
-// one narrative, destination, and UTM tag. Mirrors the 4S-A box (brief +
-// optimistic agent strip over the single synchronous ~60s await); on
-// {ok, campaignId} the parent opens the campaign review. Nothing ships here —
-// approval is the gated step in CampaignReviewPanel.
+// Campaign Spine (CS4 v1 → V2 progressive review) — the "New multi-channel
+// campaign" brief box at the top of the Campaigns tab. One brief → the spine
+// meta-bench: the Strategist plans the channel mix (armsOnly generate), then the
+// fork fires ONE generateArm call per planned channel in PARALLEL
+// (Promise.allSettled inside generateCampaign) — so the agent strip is per-arm:
+// Strategist ✓ → LP / Social / Email / Blog pills each spinning independently
+// and ticking as their own call returns. A failed arm shows ✗ + a Retry that
+// re-fires generateArm (idempotent-safe — an arm that actually landed answers
+// alreadyExists, never a duplicate). Nothing ships here — approval is the gated
+// step in CampaignReviewPanel.
 //
-// Graceful degrade: the route missing / FEATURE_OFF / "unknown action" (the CRM
-// leg builds in parallel) → the box dims with "multi-channel campaigns aren't
-// enabled yet" — never a dead-end toast loop.
+// Graceful degrade: a v1 route ignores `armsOnly` and generates lp+social
+// in-request — generateCampaign detects the full-shape response, skips the
+// fan-out, and settles the pills from its result (no per-arm liveness; the 10s
+// optimistic tick below covers the visual meanwhile). The route missing /
+// FEATURE_OFF / "unknown action" → the box dims with "multi-channel campaigns
+// aren't enabled yet" — never a dead-end toast loop.
 
-// The spine strip differs from the linear bench strips: the Strategist runs
-// FIRST, then the two arm benches run in PARALLEL — so after the strategist
-// phase BOTH arm pills spin at once (honest visual of Promise.all).
-const spinePhaseFor = (
-  name: 'Strategist' | 'Landing page' | 'Social',
-  phase: SpinePhase,
-): 'pending' | 'active' | 'done' => {
-  if (phase === 'done') return 'done';
-  if (name === 'Strategist') return phase === 'strategist' ? 'active' : 'done';
-  return phase === 'arms' ? 'active' : 'pending';
+type PillState = 'pending' | 'active' | 'done' | 'failed';
+
+const ARM_ORDER: SpineArm[] = ['lp', 'social', 'email', 'blog'];
+
+const ARM_LABEL: Record<SpineArm, string> = {
+  lp: 'Landing page',
+  social: 'Social',
+  email: 'Email',
+  blog: 'Blog',
 };
 
-type SpinePhase = 'strategist' | 'arms' | 'done';
-
-const SPINE_AGENTS = ['Strategist', 'Landing page', 'Social'] as const;
-
-const AgentStrip = ({ phase }: { phase: SpinePhase }) => (
-  <Group gap="xs" mt="sm" wrap="wrap">
-    {SPINE_AGENTS.map((name) => {
-      const state = spinePhaseFor(name, phase);
-      return (
-        <Badge
-          key={name}
-          size="sm"
-          variant={
-            state === 'active' ? 'filled' : state === 'done' ? 'light' : 'outline'
-          }
-          color={state === 'done' ? 'teal' : state === 'active' ? 'red' : 'gray'}
-          leftSection={
-            state === 'done' ? (
-              <IconCheck size={12} />
-            ) : state === 'active' ? (
-              <Loader size={10} color="white" />
-            ) : undefined
-          }
-        >
-          {name}
-        </Badge>
-      );
-    })}
-  </Group>
+const ArmPill = ({ label, state }: { label: string; state: PillState }) => (
+  <Badge
+    size="sm"
+    variant={
+      state === 'active' ? 'filled' : state === 'pending' ? 'outline' : 'light'
+    }
+    color={
+      state === 'done'
+        ? 'teal'
+        : state === 'failed'
+          ? 'red'
+          : state === 'active'
+            ? 'red'
+            : 'gray'
+    }
+    leftSection={
+      state === 'done' ? (
+        <IconCheck size={12} />
+      ) : state === 'failed' ? (
+        <IconX size={12} />
+      ) : state === 'active' ? (
+        <Loader size={10} color="white" />
+      ) : undefined
+    }
+  >
+    {label}
+  </Badge>
 );
 
 // Convert a <input type="date"> value (YYYY-MM-DD, local) to an ISO instant at the
@@ -104,15 +108,45 @@ export const CampaignSpinePanel = ({
   // Sources grounding (SRC-1): ≤8 library sources picked via the "Add sources"
   // popover; their ids ride the generateCampaign call.
   const [sources, setSources] = useState<SelectedSource[]>([]);
-  // Spine run state. `generating` = a run is in flight; `phase` drives the agent
-  // strip; `featureOff` dims the box when the spine isn't live on this workspace.
+  // Spine run state. `generating` = the fan-out is in flight; `featureOff` dims
+  // the box when the spine isn't live on this workspace.
   const [generating, setGenerating] = useState(false);
-  const [phase, setPhase] = useState<SpinePhase>('strategist');
   const [featureOff, setFeatureOff] = useState(false);
+  // Per-arm pill states, written ONLY by real generateArm progress events (or
+  // the v1-degrade settlement). Empty until the Strategist returns.
+  const [armStates, setArmStates] = useState<
+    Partial<Record<SpineArm, PillState>>
+  >({});
+  const [strategistDone, setStrategistDone] = useState(false);
+  // Optimistic guess for the v1-degrade path (ONE synchronous ~60s call, no
+  // per-arm events until the end): after ~10s with no real event, spin the two
+  // v1 arms so the strip stays honest-ish. Cleared by the first real event.
+  const [optimisticArms, setOptimisticArms] = useState(false);
+  // Run finished but some arms failed → the strip stays up with per-arm Retry
+  // buttons + a "Review campaign" escape (the review has the same affordance).
+  const [settled, setSettled] = useState<{
+    campaignId: string;
+    failed: SpineArm[];
+  } | null>(null);
+  const [retryBusy, setRetryBusy] = useState<SpineArm | null>(null);
+
+  const resetStrip = () => {
+    setArmStates({});
+    setStrategistDone(false);
+    setOptimisticArms(false);
+    setSettled(null);
+  };
+
+  const resetForm = () => {
+    setBrief('');
+    setSources([]);
+    setStartDate('');
+    setEndDate('');
+  };
 
   const run = async () => {
     const trimmed = brief.trim();
-    if (trimmed === '' || generating) return;
+    if (trimmed === '' || generating || settled !== null) return;
 
     const startIso = dateToIso(startDate);
     const endIso = dateToIso(endDate);
@@ -126,38 +160,126 @@ export const CampaignSpinePanel = ({
     }
 
     setGenerating(true);
-    setPhase('strategist');
-    // Optimistic progression: the strategist is one LLM call (~10s), then both
-    // arm benches run in parallel for the remainder of the synchronous await.
-    const tick = window.setTimeout(() => setPhase('arms'), 10_000);
+    resetStrip();
+    const tick = window.setTimeout(() => {
+      setStrategistDone(true);
+      setOptimisticArms(true);
+    }, 10_000);
 
     const res = await generateCampaign(
       trimmed,
       sources.length > 0 ? sources.map((s) => s.id) : undefined,
       campaignWindow,
+      (arm, state) => {
+        // A real per-arm event → the Strategist phase is over and any
+        // optimistic guess yields to truth.
+        setStrategistDone(true);
+        setOptimisticArms(false);
+        setArmStates((prev) => ({ ...prev, [arm]: state }));
+      },
     );
     window.clearTimeout(tick);
-    setPhase('done');
+    setGenerating(false);
 
     if (res.ok) {
-      setGenerating(false);
-      setBrief('');
-      setSources([]);
-      setStartDate('');
-      setEndDate('');
-      setPhase('strategist');
-      onCampaignCreated(res.campaignId, res.partial ? res.failed : []);
+      setStrategistDone(true);
+      setOptimisticArms(false);
+      if (res.failed.length === 0) {
+        resetStrip();
+        resetForm();
+        onCampaignCreated(res.campaignId, []);
+        return;
+      }
+      // Some arms failed — keep the strip with ✗ pills + per-arm Retry.
+      setSettled({ campaignId: res.campaignId, failed: res.failed });
       return;
     }
 
-    setGenerating(false);
-    setPhase('strategist');
+    resetStrip();
     if (res.unavailable) {
       setFeatureOff(true);
       return;
     }
     notify(res.error, 'error');
   };
+
+  // Retry ONE failed arm via generateArm (idempotent-safe: alreadyExists is a
+  // success — the arm landed after all, e.g. a client-side timeout on a call
+  // that finished server-side).
+  const retryArm = async (arm: SpineArm) => {
+    if (settled === null || retryBusy !== null) return;
+    setRetryBusy(arm);
+    setArmStates((prev) => ({ ...prev, [arm]: 'active' }));
+    const res = await generateArm(settled.campaignId, arm);
+    setRetryBusy(null);
+    if (!res.ok) {
+      setArmStates((prev) => ({ ...prev, [arm]: 'failed' }));
+      notify(res.error, 'error');
+      return;
+    }
+    setArmStates((prev) => ({ ...prev, [arm]: 'done' }));
+    const remaining = settled.failed.filter((a) => a !== arm);
+    if (remaining.length === 0) {
+      const campaignId = settled.campaignId;
+      resetStrip();
+      resetForm();
+      onCampaignCreated(campaignId, []);
+      return;
+    }
+    setSettled({ campaignId: settled.campaignId, failed: remaining });
+  };
+
+  const openReview = () => {
+    if (settled === null) return;
+    const { campaignId, failed } = settled;
+    resetStrip();
+    resetForm();
+    onCampaignCreated(campaignId, failed);
+  };
+
+  // ── the per-arm strip ────────────────────────────────────────────────────────
+  const realArms = ARM_ORDER.filter((a) => armStates[a] !== undefined);
+  const stripVisible = generating || settled !== null;
+  const busyStrip = generating || retryBusy !== null;
+
+  const strip = (
+    <Group gap="xs" mt="sm" wrap="wrap" align="center">
+      <ArmPill label="Strategist" state={strategistDone ? 'done' : 'active'} />
+      {realArms.length === 0
+        ? // No real events yet: pending placeholders (or the v1 optimistic spin).
+          ARM_ORDER.map((arm) => (
+            <ArmPill
+              key={arm}
+              label={ARM_LABEL[arm]}
+              state={
+                optimisticArms && (arm === 'lp' || arm === 'social')
+                  ? 'active'
+                  : 'pending'
+              }
+            />
+          ))
+        : realArms.map((arm) => (
+            <Group key={arm} gap={4} wrap="nowrap">
+              <ArmPill label={ARM_LABEL[arm]} state={armStates[arm] ?? 'pending'} />
+              {settled !== null &&
+              settled.failed.includes(arm) &&
+              armStates[arm] === 'failed' ? (
+                <Button
+                  size="compact-xs"
+                  variant="light"
+                  color="red"
+                  leftSection={<IconRefresh size={12} />}
+                  loading={retryBusy === arm}
+                  disabled={busyStrip && retryBusy !== arm}
+                  onClick={() => void retryArm(arm)}
+                >
+                  Retry
+                </Button>
+              ) : null}
+            </Group>
+          ))}
+    </Group>
+  );
 
   return (
     <Paper
@@ -175,8 +297,9 @@ export const CampaignSpinePanel = ({
         </Badge>
       </Group>
       <Text size="sm" c="dimmed" mb="sm">
-        One brief → a landing page + a social plan sharing one story, destination,
-        and UTM tag. You review both channels before anything ships.
+        One brief → the strategist picks the channels (landing page, social,
+        email, blog) and each arm drafts in parallel, sharing one story,
+        destination, and UTM tag. You review everything before anything ships.
       </Text>
 
       <Stack gap="sm">
@@ -187,7 +310,7 @@ export const CampaignSpinePanel = ({
           maxRows={6}
           value={brief}
           onChange={(e) => setBrief(e.currentTarget.value)}
-          disabled={generating || featureOff}
+          disabled={generating || featureOff || settled !== null}
         />
 
         <Group gap="sm" align="flex-end" wrap="wrap">
@@ -195,7 +318,7 @@ export const CampaignSpinePanel = ({
             <AddSourcesControl
               value={sources}
               onChange={setSources}
-              disabled={generating || featureOff}
+              disabled={generating || featureOff || settled !== null}
             />
           </Box>
           <TextInput
@@ -205,7 +328,7 @@ export const CampaignSpinePanel = ({
             w={150}
             value={startDate}
             onChange={(e) => setStartDate(e.currentTarget.value)}
-            disabled={generating || featureOff}
+            disabled={generating || featureOff || settled !== null}
           />
           <TextInput
             type="date"
@@ -214,7 +337,7 @@ export const CampaignSpinePanel = ({
             w={150}
             value={endDate}
             onChange={(e) => setEndDate(e.currentTarget.value)}
-            disabled={generating || featureOff}
+            disabled={generating || featureOff || settled !== null}
           />
           <Button
             color="red"
@@ -222,18 +345,32 @@ export const CampaignSpinePanel = ({
             leftSection={<IconSparkles size={16} />}
             onClick={() => void run()}
             loading={generating}
-            disabled={brief.trim() === '' || featureOff}
+            disabled={brief.trim() === '' || featureOff || settled !== null}
           >
             Generate
           </Button>
         </Group>
 
-        {generating ? (
+        {stripVisible ? (
           <Box>
             <Text size="sm" fw={500}>
-              The bench is drafting your campaign across both channels…
+              {generating
+                ? 'The bench is drafting your campaign, one agent per channel…'
+                : 'Some channels failed to draft — retry them, or review what landed.'}
             </Text>
-            <AgentStrip phase={phase} />
+            {strip}
+            {settled !== null && !generating ? (
+              <Button
+                mt="sm"
+                size="compact-sm"
+                variant="light"
+                color="red"
+                disabled={retryBusy !== null}
+                onClick={openReview}
+              >
+                Review campaign
+              </Button>
+            ) : null}
           </Box>
         ) : null}
 
