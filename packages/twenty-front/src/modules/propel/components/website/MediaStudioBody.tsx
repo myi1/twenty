@@ -18,6 +18,7 @@ import {
   CopyButton,
   Group,
   Loader,
+  Modal,
   ScrollArea,
   SegmentedControl,
   SimpleGrid,
@@ -38,7 +39,6 @@ import {
   IconChevronLeft,
   IconCopy,
   IconDownload,
-  IconFileText,
   IconLink,
   IconPhoto,
   IconRefresh,
@@ -67,18 +67,6 @@ import {
   type WebsiteAsset,
   type WebsiteAssetSource,
 } from '@/propel/lib/websiteAssetsCrm';
-import {
-  deleteSource,
-  formatCharCount,
-  getSource,
-  KIND_COLOR,
-  KIND_LABEL,
-  listSources,
-  updateSource,
-  type SourceMaterial,
-  type SourceMaterialFull,
-} from '@/propel/lib/sourceMaterialsCrm';
-import { SourceQuickAdd } from '@/propel/components/website/SourceQuickAdd';
 
 // Media Studio BODY (LP Builder v2 §4.3 / §5) — the shared image workbench.
 // Extracted out of MediaStudioModal so the SAME panels (Library · Generate ·
@@ -187,7 +175,7 @@ const ASPECT_DATA: { value: ImageAspect; label: string }[] = [
   { value: 'square', label: 'Square' },
 ];
 
-type StudioTab = 'library' | 'generate' | 'enhance' | 'renders' | 'upload' | 'sources';
+type StudioTab = 'library' | 'generate' | 'enhance' | 'renders';
 type RenderStage = 'search' | 'images';
 
 const dashedTile: CSSProperties = {
@@ -266,6 +254,10 @@ export const MediaStudioBody = ({
   const insertMode = typeof onPick === 'function';
 
   const [tab, setTab] = useState<StudioTab>('library');
+
+  // Upload moved out of a tab into a Modal opened from the Library toolbar (and
+  // the Enhance "Upload new" button). The upload panel UI is unchanged.
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
 
   // No gateway host → previews can't render; Generate/Enhance degrade to a note.
   const gatewayReady = sitePublicUrl !== '';
@@ -926,7 +918,7 @@ export const MediaStudioBody = ({
                 size="xs"
                 variant="default"
                 leftSection={<IconUpload size={14} />}
-                onClick={() => setTab('upload')}
+                onClick={() => setUploadModalOpen(true)}
               >
                 Upload new
               </Button>
@@ -1339,329 +1331,42 @@ export const MediaStudioBody = ({
         <Tabs.Tab value="renders" leftSection={<IconSearch size={15} />}>
           Project renders
         </Tabs.Tab>
-        <Tabs.Tab value="upload" leftSection={<IconUpload size={15} />}>
-          Upload
-        </Tabs.Tab>
-        <Tabs.Tab value="sources" leftSection={<IconFileText size={15} />}>
-          Sources
-        </Tabs.Tab>
       </Tabs.List>
 
       <Tabs.Panel value="library">
-        {insertMode
-          ? libraryGrid((a) => pick(a.gatewayPath))
-          : libraryGrid(undefined, (a) => copyDownloadActions(a.gatewayPath))}
+        <Stack gap="sm" style={{ minHeight: 0 }}>
+          <Group justify="flex-end">
+            <Button
+              size="xs"
+              color="red"
+              leftSection={<IconUpload size={14} />}
+              onClick={() => setUploadModalOpen(true)}
+            >
+              Upload
+            </Button>
+          </Group>
+          {insertMode
+            ? libraryGrid((a) => pick(a.gatewayPath))
+            : libraryGrid(undefined, (a) => copyDownloadActions(a.gatewayPath))}
+        </Stack>
       </Tabs.Panel>
       <Tabs.Panel value="generate">{generatePanel()}</Tabs.Panel>
       <Tabs.Panel value="enhance">{enhancePanel()}</Tabs.Panel>
       <Tabs.Panel value="renders">{rendersPanel()}</Tabs.Panel>
-      <Tabs.Panel value="upload">{uploadPanel()}</Tabs.Panel>
-      <Tabs.Panel value="sources">
-        <SourcesPanel />
-      </Tabs.Panel>
+
+      <Modal
+        opened={uploadModalOpen}
+        onClose={() => setUploadModalOpen(false)}
+        title="Upload an image"
+        size="xl"
+        zIndex={6100}
+      >
+        {uploadPanel()}
+      </Modal>
     </Tabs>
   );
 };
 
-// ── Sources panel (SRC-1 / plan SM6) ─────────────────────────────────────────
-// The source-materials curation surface — identical in both hosts (sources have
-// no insert semantics; they ground the AI benches, picked per-brief via the
-// "Add sources" control). Left: quick-add + searchable list (kind badge,
-// charCount, tags). Right: preview (truncated extractedText) + rename/tags +
-// delete (two-step confirm). Own component so its state stays local; Tabs has
-// keepMounted={false}, so it (re)loads on each visit — the list is ≤200 light rows.
-const SOURCE_PREVIEW_CHARS = 2000;
-
-const matchesSourceFilter = (s: SourceMaterial, query: string): boolean => {
-  const q = query.trim().toLowerCase();
-  if (q === '') return true;
-  return (
-    s.name.toLowerCase().includes(q) ||
-    s.tags.toLowerCase().includes(q) ||
-    s.projectName.toLowerCase().includes(q)
-  );
-};
-
-const SourcesPanel = () => {
-  const notify = usePropelToast();
-
-  const [loaded, setLoaded] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [sources, setSources] = useState<SourceMaterial[]>([]);
-  const [search, setSearch] = useState('');
-
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<SourceMaterialFull | null>(null);
-  const [detailBusy, setDetailBusy] = useState(false);
-  const [editName, setEditName] = useState('');
-  const [editTags, setEditTags] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-
-  const load = async (): Promise<SourceMaterial[]> => {
-    setBusy(true);
-    const res = await listSources();
-    setBusy(false);
-    setLoaded(true);
-    if (res.ok) {
-      setSources(res.data);
-      return res.data;
-    }
-    notify(res.error, 'error');
-    return [];
-  };
-
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const openDetail = async (id: string) => {
-    setSelectedId(id);
-    setConfirmingDelete(false);
-    setDetail(null);
-    setDetailBusy(true);
-    const res = await getSource(id);
-    setDetailBusy(false);
-    if (res.ok) {
-      setDetail(res.data);
-      setEditName(res.data.name);
-      setEditTags(res.data.tags);
-      return;
-    }
-    notify(res.error, 'error');
-    setSelectedId(null);
-  };
-
-  const onQuickAdded = async (id: string) => {
-    await load();
-    void openDetail(id);
-  };
-
-  const dirty =
-    detail !== null && (editName.trim() !== detail.name || editTags.trim() !== detail.tags);
-
-  const saveEdits = async () => {
-    if (selectedId === null || detail === null || saving || !dirty) return;
-    const name = editName.trim();
-    if (name === '') return;
-    setSaving(true);
-    const res = await updateSource(selectedId, { name, tags: editTags.trim() });
-    setSaving(false);
-    if (res.ok) {
-      setDetail({ ...detail, name, tags: editTags.trim() });
-      setSources((prev) =>
-        prev.map((s) => (s.id === selectedId ? { ...s, name, tags: editTags.trim() } : s)),
-      );
-      notify('Source updated.', 'success');
-      return;
-    }
-    notify(res.error, 'error');
-  };
-
-  const removeSelected = async () => {
-    if (selectedId === null || deleting) return;
-    setDeleting(true);
-    const res = await deleteSource(selectedId);
-    setDeleting(false);
-    if (res.ok) {
-      setSources((prev) => prev.filter((s) => s.id !== selectedId));
-      setSelectedId(null);
-      setDetail(null);
-      setConfirmingDelete(false);
-      notify('Source deleted.', 'success');
-      return;
-    }
-    notify(res.error, 'error');
-  };
-
-  const visible = sources.filter((s) => matchesSourceFilter(s, search));
-
-  const sourceRow = (s: SourceMaterial) => (
-    <UnstyledButton
-      key={s.id}
-      onClick={() => void openDetail(s.id)}
-      style={{
-        padding: '8px 10px',
-        borderRadius: 8,
-        border:
-          selectedId === s.id
-            ? '1px solid var(--mantine-color-red-5)'
-            : '1px solid var(--mantine-color-default-border)',
-        background:
-          selectedId === s.id ? 'var(--mantine-color-red-light)' : undefined,
-      }}
-    >
-      <Group gap={6} wrap="nowrap" justify="space-between">
-        <Text size="sm" fw={500} truncate style={{ flex: 1, minWidth: 0 }}>
-          {s.name || 'Untitled source'}
-        </Text>
-        <Badge size="xs" variant="light" color={KIND_COLOR[s.kind]}>
-          {KIND_LABEL[s.kind]}
-        </Badge>
-      </Group>
-      <Group gap={6} wrap="nowrap">
-        <Text size="xs" c="dimmed">
-          {formatCharCount(s.charCount)}
-        </Text>
-        {s.tags !== '' ? (
-          <Text size="xs" c="dimmed" truncate>
-            · {s.tags}
-          </Text>
-        ) : null}
-      </Group>
-    </UnstyledButton>
-  );
-
-  const detailPane = () => {
-    if (selectedId === null) {
-      return (
-        <Center h={260}>
-          <Stack gap={8} align="center" c="dimmed">
-            <IconFileText size={28} />
-            <Text size="sm" c="dimmed" ta="center" maw={320}>
-              Select a source to preview and edit it. Sources ground the AI benches —
-              pick them per brief via “Add sources”.
-            </Text>
-          </Stack>
-        </Center>
-      );
-    }
-    if (detailBusy || detail === null) {
-      return (
-        <Center h={260}>
-          <Loader size="sm" color="red" />
-        </Center>
-      );
-    }
-    const truncated = detail.extractedText.length > SOURCE_PREVIEW_CHARS;
-    const preview = truncated
-      ? detail.extractedText.slice(0, SOURCE_PREVIEW_CHARS)
-      : detail.extractedText;
-    return (
-      <Stack gap="sm">
-        <Group gap="xs" align="flex-end" wrap="nowrap">
-          <TextInput
-            size="xs"
-            label="Name"
-            style={{ flex: 1 }}
-            value={editName}
-            onChange={(e) => setEditName(e.currentTarget.value)}
-          />
-          <TextInput
-            size="xs"
-            label="Tags"
-            placeholder="comma, separated"
-            style={{ flex: 1 }}
-            value={editTags}
-            onChange={(e) => setEditTags(e.currentTarget.value)}
-          />
-          <Button
-            size="xs"
-            variant="light"
-            color="red"
-            loading={saving}
-            disabled={!dirty || editName.trim() === ''}
-            onClick={() => void saveEdits()}
-          >
-            Save
-          </Button>
-        </Group>
-        {detail.rawRef !== '' ? (
-          <Text size="xs" c="dimmed" truncate>
-            <IconLink size={12} style={{ verticalAlign: 'middle' }} /> {detail.rawRef}
-          </Text>
-        ) : null}
-        <Box
-          style={{
-            borderRadius: 8,
-            border: '1px solid var(--mantine-color-default-border)',
-            background:
-              'light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6))',
-          }}
-        >
-          <ScrollArea.Autosize mah={300} p="sm">
-            <Text size="xs" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-              {preview}
-            </Text>
-            {truncated ? (
-              <Text size="xs" c="dimmed" mt="xs">
-                … preview truncated — {formatCharCount(detail.charCount)} in total.
-              </Text>
-            ) : null}
-          </ScrollArea.Autosize>
-        </Box>
-        <Group justify="flex-end" gap="xs">
-          {confirmingDelete ? (
-            <>
-              <Button
-                size="xs"
-                variant="default"
-                disabled={deleting}
-                onClick={() => setConfirmingDelete(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                size="xs"
-                color="red"
-                leftSection={<IconTrash size={13} />}
-                loading={deleting}
-                onClick={() => void removeSelected()}
-              >
-                Confirm delete
-              </Button>
-            </>
-          ) : (
-            <Button
-              size="xs"
-              variant="light"
-              color="red"
-              leftSection={<IconTrash size={13} />}
-              onClick={() => setConfirmingDelete(true)}
-            >
-              Delete
-            </Button>
-          )}
-        </Group>
-      </Stack>
-    );
-  };
-
-  return (
-    <Group align="flex-start" gap="xl" wrap="nowrap" style={{ minHeight: 0 }}>
-      <Stack gap="sm" style={{ flex: '0 0 380px', maxWidth: 380 }}>
-        <SourceQuickAdd onAdded={(id) => void onQuickAdded(id)} />
-        <TextInput
-          size="xs"
-          placeholder="Search sources"
-          leftSection={<IconSearch size={14} />}
-          value={search}
-          onChange={(e) => setSearch(e.currentTarget.value)}
-        />
-        {busy && !loaded ? (
-          <Center h={140}>
-            <Loader size="sm" color="red" />
-          </Center>
-        ) : visible.length > 0 ? (
-          <ScrollArea.Autosize mah={420}>
-            <Stack gap={6}>{visible.map(sourceRow)}</Stack>
-          </ScrollArea.Autosize>
-        ) : (
-          <Text size="sm" c="dimmed" ta="center" py="md">
-            {loaded && sources.length > 0
-              ? 'No sources match your search.'
-              : 'No sources yet — paste text, fetch a URL, or add a file above.'}
-          </Text>
-        )}
-      </Stack>
-      <Stack gap="sm" style={{ flex: 1, minWidth: 0 }}>
-        {detailPane()}
-      </Stack>
-    </Group>
-  );
-};
 
 // A small Copy-URL overlay button (studio-mode). Uses Mantine's CopyButton so the
 // clipboard write + copied affordance come for free; no extra deps.

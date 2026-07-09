@@ -1,14 +1,16 @@
 import { useRef, useState } from 'react';
 import {
+  ActionIcon,
+  Box,
   Button,
   Group,
-  SegmentedControl,
   Stack,
   Text,
   Textarea,
   TextInput,
+  Tooltip,
 } from '@mantine/core';
-import { IconFileUpload, IconLink, IconPlus } from 'twenty-ui/display';
+import { IconFileUpload, IconPlus, IconX } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import {
   createSource,
@@ -16,22 +18,25 @@ import {
   kindForFilename,
 } from '@/propel/lib/sourceMaterialsCrm';
 
-// Source quick-add (Sources SRC-1 / plan SM6) — the ONE segmented Paste · URL ·
-// File form, shared verbatim by the Media Studio Sources tab and the "Add sources"
-// popover on the LP + Social brief boxes.
+// Source quick-add (Sources SRC-1 / plan SM6) — ONE smart box, shared verbatim by
+// the moved Sources tab, the "Add sources" popover on the LP + Social brief boxes.
+// The founder's call: one input, auto-detect the kind, minimal clicks.
 //
-//   Paste — name (optional; derived from the text when blank) + textarea → create.
-//   URL   — server-side fetch via ingestUrl (SSRF-guarded route; BAD_SOURCE /
-//           FETCH_FAILED surface as specific errors from the lib).
-//   File  — .md / .html / .txt only, ≤1MB, read CLIENT-SIDE (main-thread hero →
-//           File.text() works) and sent as text; kind derived from the extension.
+//   • A single multiline box + an "Attach file" icon-button (and drag-drop onto the
+//     box). Optional Name field.
+//   • On Add we auto-detect the kind:
+//       – a staged file          → FILE (client-read text, ≤1MB; kind from the ext)
+//       – a lone https(s) URL     → URL  (server-side fetch via ingestUrl)
+//       – any other non-empty text→ PASTE
+//       – empty                   → the button is disabled (no-op)
 //
 // On success the parent gets the new id and refreshes its own list — this form
 // never owns the library state.
 
 const MAX_SOURCE_FILE_BYTES = 1024 * 1024; // 1MB — v1 client-read text files only
 
-type QuickAddMode = 'paste' | 'url' | 'file';
+// A lone URL (no surrounding whitespace) → treat the box as a URL to fetch.
+const SINGLE_URL_RE = /^https?:\/\/\S+$/;
 
 interface SourceQuickAddProps {
   // Called with the created source's id; the parent refetches / auto-selects.
@@ -43,29 +48,31 @@ interface SourceQuickAddProps {
 export const SourceQuickAdd = ({ onAdded, compact = false }: SourceQuickAddProps) => {
   const notify = usePropelToast();
 
-  const [mode, setMode] = useState<QuickAddMode>('paste');
   const [busy, setBusy] = useState(false);
-  const [pasteName, setPasteName] = useState('');
-  const [pasteText, setPasteText] = useState('');
-  const [url, setUrl] = useState('');
+  const [name, setName] = useState('');
+  const [text, setText] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
+  const reset = () => {
+    setName('');
+    setText('');
+    setFile(null);
+  };
+
   const finish = (id: string) => {
-    setPasteName('');
-    setPasteText('');
-    setUrl('');
+    reset();
     notify('Source added.', 'success');
     onAdded(id);
   };
 
-  const addPaste = async () => {
-    const text = pasteText.trim();
-    if (text === '' || busy) return;
-    const firstLine = text.split('\n')[0].trim();
-    const name =
-      pasteName.trim() || `${firstLine.slice(0, 60)}${firstLine.length > 60 ? '…' : ''}`;
+  const addPaste = async (body: string) => {
+    const firstLine = body.split('\n')[0].trim();
+    const derived = `${firstLine.slice(0, 60)}${firstLine.length > 60 ? '…' : ''}`;
+    const finalName = name.trim() || derived;
     setBusy(true);
-    const res = await createSource({ kind: 'PASTE', name, text });
+    const res = await createSource({ kind: 'PASTE', name: finalName, text: body });
     setBusy(false);
     if (res.ok) {
       finish(res.data.id);
@@ -74,9 +81,7 @@ export const SourceQuickAdd = ({ onAdded, compact = false }: SourceQuickAddProps
     notify(res.error, 'error');
   };
 
-  const addUrl = async () => {
-    const u = url.trim();
-    if (u === '' || busy) return;
+  const addUrl = async (u: string) => {
     setBusy(true);
     const res = await ingestUrl(u);
     setBusy(false);
@@ -87,9 +92,8 @@ export const SourceQuickAdd = ({ onAdded, compact = false }: SourceQuickAddProps
     notify(res.error, 'error');
   };
 
-  const addFile = async (file: File) => {
-    if (busy) return;
-    if (file.size > MAX_SOURCE_FILE_BYTES) {
+  const addFile = async (picked: File) => {
+    if (picked.size > MAX_SOURCE_FILE_BYTES) {
       notify(
         'That file is over 1MB — sources are text files (.md / .html / .txt) up to 1MB.',
         'error',
@@ -98,16 +102,16 @@ export const SourceQuickAdd = ({ onAdded, compact = false }: SourceQuickAddProps
     }
     setBusy(true);
     try {
-      const text = await file.text();
-      if (text.trim() === '') {
+      const body = await picked.text();
+      if (body.trim() === '') {
         setBusy(false);
         notify('That file is empty.', 'error');
         return;
       }
       const res = await createSource({
-        kind: kindForFilename(file.name),
-        name: file.name,
-        text,
+        kind: kindForFilename(picked.name),
+        name: name.trim() || picked.name,
+        text: body,
       });
       setBusy(false);
       if (res.ok) {
@@ -121,110 +125,134 @@ export const SourceQuickAdd = ({ onAdded, compact = false }: SourceQuickAddProps
     }
   };
 
+  // The single entry point — auto-detect the kind from what the user gave us.
+  const onAdd = async () => {
+    if (busy) return;
+    if (file !== null) {
+      await addFile(file);
+      return;
+    }
+    const trimmed = text.trim();
+    if (trimmed === '') return;
+    if (SINGLE_URL_RE.test(trimmed)) {
+      await addUrl(trimmed);
+      return;
+    }
+    await addPaste(trimmed);
+  };
+
+  const canAdd = !busy && (file !== null || text.trim() !== '');
+
   return (
     <Stack gap="xs">
-      <Group gap="xs" justify="space-between" wrap="nowrap">
-        <Text size="xs" fw={600}>
-          Quick add
-        </Text>
-        <SegmentedControl
-          size="xs"
-          value={mode}
-          onChange={(v) => setMode(v as QuickAddMode)}
-          data={[
-            { value: 'paste', label: 'Paste' },
-            { value: 'url', label: 'URL' },
-            { value: 'file', label: 'File' },
-          ]}
-        />
-      </Group>
-      {mode === 'paste' ? (
-        <Stack gap={6}>
-          <TextInput
-            size="xs"
-            placeholder="Name (optional)"
-            value={pasteName}
-            onChange={(e) => setPasteName(e.currentTarget.value)}
+      <Text size="xs" fw={600}>
+        Quick add
+      </Text>
+      <TextInput
+        size="xs"
+        placeholder="Name (optional)"
+        value={name}
+        onChange={(e) => setName(e.currentTarget.value)}
+        disabled={busy}
+      />
+
+      {file !== null ? (
+        <Group
+          gap={6}
+          wrap="nowrap"
+          justify="space-between"
+          style={{
+            borderRadius: 8,
+            border: '1px solid var(--mantine-color-default-border)',
+            padding: '6px 8px',
+          }}
+        >
+          <Group gap={6} wrap="nowrap" style={{ minWidth: 0 }}>
+            <IconFileUpload size={14} />
+            <Text size="xs" truncate>
+              {file.name}
+            </Text>
+          </Group>
+          <ActionIcon
+            size="sm"
+            variant="subtle"
+            color="gray"
+            aria-label="Remove file"
             disabled={busy}
-          />
+            onClick={() => setFile(null)}
+          >
+            <IconX size={13} />
+          </ActionIcon>
+        </Group>
+      ) : (
+        <Box
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            const dropped = e.dataTransfer.files?.[0];
+            if (dropped) setFile(dropped);
+          }}
+          style={{
+            borderRadius: 8,
+            outline: dragOver ? '2px dashed var(--mantine-color-red-5)' : undefined,
+          }}
+        >
           <Textarea
             size="xs"
-            placeholder="Paste facts, figures, project details…"
+            placeholder="Paste text, a link, or drop a file…"
             autosize
             minRows={compact ? 2 : 3}
             maxRows={compact ? 5 : 8}
-            value={pasteText}
-            onChange={(e) => setPasteText(e.currentTarget.value)}
+            value={text}
+            onChange={(e) => setText(e.currentTarget.value)}
             disabled={busy}
           />
-          <Group justify="flex-end">
-            <Button
-              size="xs"
-              variant="light"
-              color="red"
-              leftSection={<IconPlus size={13} />}
-              loading={busy}
-              disabled={pasteText.trim() === ''}
-              onClick={() => void addPaste()}
-            >
-              Add source
-            </Button>
-          </Group>
-        </Stack>
-      ) : mode === 'url' ? (
-        <Group gap="xs" wrap="nowrap">
-          <TextInput
-            size="xs"
-            style={{ flex: 1 }}
-            placeholder="https://… (public page)"
-            leftSection={<IconLink size={13} />}
-            value={url}
-            onChange={(e) => setUrl(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void addUrl();
-            }}
+        </Box>
+      )}
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".md,.markdown,.html,.htm,.txt"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const f = e.currentTarget.files?.[0];
+          // Reset so re-picking the SAME file fires change again (retry).
+          e.currentTarget.value = '';
+          if (f) setFile(f);
+        }}
+      />
+
+      <Group justify="space-between" wrap="nowrap">
+        <Tooltip label="Attach a file (.md / .html / .txt)" withinPortal zIndex={6100}>
+          <ActionIcon
+            size="lg"
+            variant="light"
+            color="gray"
+            aria-label="Attach file"
             disabled={busy}
-          />
-          <Button
-            size="xs"
-            variant="light"
-            color="red"
-            loading={busy}
-            disabled={url.trim() === ''}
-            onClick={() => void addUrl()}
-          >
-            Fetch
-          </Button>
-        </Group>
-      ) : (
-        <Stack gap={6}>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".md,.markdown,.html,.htm,.txt"
-            style={{ display: 'none' }}
-            onChange={(e) => {
-              const f = e.currentTarget.files?.[0];
-              // Reset so re-picking the SAME file fires change again (retry).
-              e.currentTarget.value = '';
-              if (f) void addFile(f);
-            }}
-          />
-          <Button
-            size="xs"
-            variant="light"
-            color="red"
-            leftSection={<IconFileUpload size={13} />}
-            loading={busy}
             onClick={() => fileRef.current?.click()}
           >
-            Pick a file (.md / .html / .txt)
-          </Button>
-          <Text size="xs" c="dimmed">
-            Text files up to 1MB — read locally, stored as extracted text.
-          </Text>
-        </Stack>
-      )}
+            <IconFileUpload size={16} />
+          </ActionIcon>
+        </Tooltip>
+        <Button
+          size="xs"
+          variant="light"
+          color="red"
+          leftSection={<IconPlus size={13} />}
+          loading={busy}
+          disabled={!canAdd}
+          onClick={() => void onAdd()}
+        >
+          Add source
+        </Button>
+      </Group>
     </Stack>
   );
 };

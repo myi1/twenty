@@ -30,6 +30,7 @@ import { OverviewTab } from '@/propel/components/website/OverviewTab';
 import { BlogTab } from '@/propel/components/website/BlogTab';
 import { LandingPagesTab } from '@/propel/components/website/LandingPagesTab';
 import { WebsiteAssetsTab } from '@/propel/components/website/WebsiteAssetsTab';
+import { SourcesTab } from '@/propel/components/website/SourcesTab';
 import { SiteLeadsTab } from '@/propel/components/website/SiteLeadsTab';
 import { SeoAiTab } from '@/propel/components/website/SeoAiTab';
 
@@ -38,6 +39,7 @@ type WebsiteSubTab =
   | 'blog'
   | 'landing-pages'
   | 'assets'
+  | 'sources'
   | 'site-leads'
   | 'seo-ai';
 
@@ -46,6 +48,7 @@ const SUB_TAB_VALUES: WebsiteSubTab[] = [
   'blog',
   'landing-pages',
   'assets',
+  'sources',
   'site-leads',
   'seo-ai',
 ];
@@ -92,6 +95,9 @@ export const WebsiteTab = () => {
         <Tabs.Panel value="assets">
           {activeSubTab === 'assets' ? <WebsiteAssetsTab /> : null}
         </Tabs.Panel>
+        <Tabs.Panel value="sources">
+          {activeSubTab === 'sources' ? <SourcesTab /> : null}
+        </Tabs.Panel>
         <Tabs.Panel value="site-leads">
           {activeSubTab === 'site-leads' ? <SiteLeadsTab /> : null}
         </Tabs.Panel>
@@ -135,6 +141,9 @@ export const WebsiteTab = () => {
         </Tabs.Tab>
         <Tabs.Tab value="assets" leftSection={<IconPhoto size={15} />}>
           Assets
+        </Tabs.Tab>
+        <Tabs.Tab value="sources" leftSection={<IconFileText size={15} />}>
+          Sources
         </Tabs.Tab>
         <Tabs.Tab value="site-leads" leftSection={<IconUsers size={15} />}>
           Site leads
