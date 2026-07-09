@@ -21,10 +21,13 @@ import {
   IconCalendarEvent,
   IconCheck,
   IconEye,
+  IconFileText,
+  IconMail,
   IconPencil,
   IconRefresh,
   IconSparkles,
   IconTag,
+  IconTrendingUp,
   IconWorld,
   IconX,
 } from 'twenty-ui/display';
@@ -38,22 +41,32 @@ import {
   type SpinePermitPost,
   approveCampaign,
   dismissCampaign,
+  generateArm,
   generateCampaign,
   getCampaign,
 } from '@/propel/lib/campaignSpineCrm';
 
-// Campaign Spine v1 (CS4) — the campaign review drawer. Loads a campaign in
-// REVIEW plus its two linked arms (getCampaign) and gives the founder ONE surface
-// to curate + approve the whole multi-channel push:
-//   • narrative + UTM chip + window;
+// Campaign Spine (CS4 v1 → V2 progressive review) — the campaign review drawer.
+// Loads a campaign in REVIEW plus its linked arms (getCampaign) and gives the
+// founder ONE surface to curate + approve the whole multi-channel push:
+//   • narrative + UTM chip + window + the Roll-up strip (visits · leads · sent ·
+//     opens · attributed AED — only the stats the route reported non-null);
 //   • the LP arm card ("Open in editor" deep-links to the Website tab's landing
 //     editor via ?tab=website&sub=landing-pages&edit=<id>);
 //   • the social arm card ("Review posts" opens the existing PlanReviewPanel —
 //     the 4S-A review, zIndex 4000, stacked over this drawer's 3500);
+//   • the email arm card (V2 — a DRAFT marketingCampaign; "Open in Campaigns"
+//     deep-links the campaign builder via ?edit=<id> while it's a draft);
+//   • the blog arm card (V2 — a pipeline blogPost; "Open in Blog" deep-links the
+//     Blog board via ?tab=website&sub=blog&post=<id>);
 //   • Approve campaign → the per-channel gates; GATES_FAILED renders each
-//     channel's failures inline (LP pre-flight rows / permit-blocked posts) and
-//     offers per-arm partial approve for the channel whose gate passed;
-//   • Regenerate campaign — an honest whole-redo (v1): re-runs BOTH channels from
+//     channel's failures inline (LP pre-flight rows / permit-blocked posts /
+//     email + blog reasons) and offers per-arm partial approve for channels
+//     whose gate passed;
+//   • per-arm Regenerate (V2) — a planned-but-failed arm re-runs its OWN bench
+//     via generateArm (idempotent-safe: an arm that actually landed answers
+//     alreadyExists and simply reloads);
+//   • Regenerate campaign — an honest whole-redo: re-runs the whole spine from
 //     the same brief as a NEW campaign and archives this one;
 //   • Dismiss with confirm → campaign ARCHIVED.
 
@@ -205,12 +218,14 @@ export const CampaignReviewPanel = ({
   // The per-channel failure payloads from the last GATES_FAILED response.
   const [gates, setGates] = useState<SpineGates | null>(null);
   const [regenerating, setRegenerating] = useState(false);
+  // Which arm's per-arm Regenerate (generateArm) is in flight (V2).
+  const [armRegenBusy, setArmRegenBusy] = useState<SpineArm | null>(null);
   const [dismissing, setDismissing] = useState(false);
   const [confirmDismissOpen, setConfirmDismissOpen] = useState(false);
   // Non-null → the nested 4S-A PlanReviewPanel is open on the social arm.
   const [planReviewId, setPlanReviewId] = useState<string | null>(null);
 
-  const busy = approving || regenerating || dismissing;
+  const busy = approving || regenerating || dismissing || armRegenBusy !== null;
 
   const load = useCallback(async () => {
     if (campaignId === null) return;
@@ -242,8 +257,13 @@ export const CampaignReviewPanel = ({
   const campaign = detail?.campaign ?? null;
   const lpArm = detail?.arms.landingPage ?? null;
   const socialArm = detail?.arms.socialPlan ?? null;
+  const emailArm = detail?.arms.email ?? null;
+  const blogArm = detail?.arms.blog ?? null;
+  const rollup = detail?.rollup ?? null;
   const lpFailed = failedArms.includes('lp') && lpArm === null;
   const socialFailed = failedArms.includes('social') && socialArm === null;
+  const emailFailed = failedArms.includes('email') && emailArm === null;
+  const blogFailed = failedArms.includes('blog') && blogArm === null;
 
   const windowLabel =
     campaign !== null
@@ -265,6 +285,54 @@ export const CampaignReviewPanel = ({
     );
   };
 
+  // The email arm is a marketingCampaign the Campaigns tab already lists. While
+  // it's a DRAFT the builder edits it in place (the same ?edit=<id> deep-link
+  // CampaignsTab.openRow uses); once it left draft, land on the Campaigns list.
+  const openEmailArm = () => {
+    if (emailArm === null) return;
+    onClose();
+    if (emailArm.status.toUpperCase() === 'DRAFT') {
+      navigate(
+        `${AppPath.MarketingCampaignBuilder}?edit=${encodeURIComponent(emailArm.id)}`,
+      );
+      return;
+    }
+    navigate(`${AppPath.MarketingHub}?tab=campaigns`);
+  };
+
+  // The blog arm rides the Blog board (Website tab, sub=blog). Same one-shot
+  // deep-link pattern as ?edit= — BlogTab consumes ?post=<id> and opens the
+  // post's detail drawer once the pipeline loads.
+  const openBlogArm = () => {
+    if (blogArm === null) return;
+    onClose();
+    navigate(
+      `${AppPath.MarketingHub}?tab=website&sub=blog&post=${encodeURIComponent(blogArm.id)}`,
+    );
+  };
+
+  // Per-arm Regenerate (V2) — re-run ONE planned-but-failed arm's bench via
+  // generateArm. Idempotent-safe: the arm already existing (a client timeout on
+  // a call that landed server-side) answers alreadyExists → just reload.
+  const regenArm = async (arm: SpineArm) => {
+    if (campaignId === null || busy) return;
+    setArmRegenBusy(arm);
+    const res = await generateArm(campaignId, arm);
+    setArmRegenBusy(null);
+    if (!res.ok) {
+      notify(res.error, 'error');
+      return;
+    }
+    notify(
+      res.alreadyExists
+        ? 'That channel already generated — reloading it.'
+        : 'Channel regenerated.',
+      'success',
+    );
+    onChanged();
+    void load();
+  };
+
   const approve = async (arms?: SpineArm[]) => {
     if (campaignId === null || busy) return;
     setApproving(true);
@@ -277,8 +345,12 @@ export const CampaignReviewPanel = ({
         arms && arms.length === 1
           ? arms[0] === 'lp'
             ? 'Landing page approved — it is going live.'
-            : 'Social plan approved — posts are scheduling.'
-          : 'Campaign approved — both channels are shipping.',
+            : arms[0] === 'social'
+              ? 'Social plan approved — posts are scheduling.'
+              : arms[0] === 'email'
+                ? 'Email campaign approved — ready in Campaigns (nothing sends until you send it).'
+                : 'Blog post approved — it advances on the blog pipeline.'
+          : 'Campaign approved — every channel is shipping.',
         'success',
       );
       setGates(null);
@@ -302,8 +374,9 @@ export const CampaignReviewPanel = ({
     notify(res.error, 'error');
   };
 
-  // v1 whole-redo, labeled honestly: re-runs BOTH channels from the same brief
-  // as a NEW campaign; this one is archived (best-effort) once the redo lands.
+  // Whole-redo, labeled honestly: re-runs the whole spine (strategist + every
+  // planned arm) from the same brief as a NEW campaign; this one is archived
+  // (best-effort) once the redo lands. For ONE failed arm prefer regenArm above.
   const regenerate = async () => {
     if (campaignId === null || campaign === null || busy) return;
     setRegenerating(true);
@@ -347,8 +420,42 @@ export const CampaignReviewPanel = ({
     gates !== null && gates.lp === null && lpArm !== null;
   const socialCanPartialApprove =
     gates !== null && gates.social === null && socialArm !== null;
+  const emailCanPartialApprove =
+    gates !== null && gates.email === null && emailArm !== null;
+  const blogCanPartialApprove =
+    gates !== null && gates.blog === null && blogArm !== null;
 
   // ── arm cards ────────────────────────────────────────────────────────────────
+
+  // The V2 per-arm redo for a planned-but-failed arm (generateArm; idempotent).
+  const regenArmButton = (arm: SpineArm, label: string) => (
+    <Button
+      size="compact-sm"
+      variant="light"
+      color="red"
+      leftSection={<IconRefresh size={14} />}
+      loading={armRegenBusy === arm}
+      disabled={busy && armRegenBusy !== arm}
+      onClick={() => void regenArm(arm)}
+    >
+      {label}
+    </Button>
+  );
+
+  // A partial-approve button for an arm whose gate passed while others failed.
+  const partialApproveButton = (arm: SpineArm, label: string) => (
+    <Button
+      size="compact-sm"
+      variant="light"
+      color="teal"
+      leftSection={<IconCheck size={14} />}
+      loading={approving && approvingArm === arm}
+      disabled={busy && approvingArm !== arm}
+      onClick={() => void approve([arm])}
+    >
+      {label}
+    </Button>
+  );
 
   const lpCard = (
     <Paper
@@ -391,8 +498,12 @@ export const CampaignReviewPanel = ({
           mt="xs"
           icon={<IconAlertTriangle size={16} />}
         >
-          Landing page generation failed — “Regenerate campaign” below re-runs
-          both channels.
+          <Stack gap="xs" align="flex-start">
+            <Text size="sm">
+              Landing page generation failed — retry just this channel.
+            </Text>
+            {regenArmButton('lp', 'Regenerate landing page')}
+          </Stack>
         </Alert>
       ) : lpArm === null ? (
         <Text size="xs" c="dimmed" mt="xs">
@@ -472,8 +583,12 @@ export const CampaignReviewPanel = ({
           mt="xs"
           icon={<IconAlertTriangle size={16} />}
         >
-          Social plan generation failed — “Regenerate campaign” below re-runs
-          both channels.
+          <Stack gap="xs" align="flex-start">
+            <Text size="sm">
+              Social plan generation failed — retry just this channel.
+            </Text>
+            {regenArmButton('social', 'Regenerate social plan')}
+          </Stack>
         </Alert>
       ) : socialArm === null ? (
         <Text size="xs" c="dimmed" mt="xs">
@@ -511,6 +626,220 @@ export const CampaignReviewPanel = ({
       )}
     </Paper>
   );
+
+  // ── the email arm card (V2) — a DRAFT marketingCampaign, never auto-sent ─────
+  const emailCard = (
+    <Paper
+      withBorder
+      radius="md"
+      p="sm"
+      style={
+        emailFailed || gates?.email
+          ? { borderColor: 'var(--mantine-color-red-5)', borderWidth: 2 }
+          : undefined
+      }
+    >
+      <Group justify="space-between" align="flex-start" wrap="nowrap">
+        <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
+          <ThemeIcon size="md" variant="light" color="cyan">
+            <IconMail size={15} />
+          </ThemeIcon>
+          <Box style={{ minWidth: 0 }}>
+            <Text size="sm" fw={600} truncate>
+              {emailArm !== null ? emailArm.name || 'Email campaign' : 'Email campaign'}
+            </Text>
+            {emailArm !== null ? (
+              <Text size="xs" c="dimmed">
+                Drafted — you pick the recipients before anything sends.
+              </Text>
+            ) : null}
+          </Box>
+        </Group>
+        {emailArm !== null ? (
+          <Badge size="sm" variant="light" color={statusColor(emailArm.status)}>
+            {emailArm.status || '—'}
+          </Badge>
+        ) : null}
+      </Group>
+
+      {emailFailed ? (
+        <Alert
+          color="red"
+          variant="light"
+          mt="xs"
+          icon={<IconAlertTriangle size={16} />}
+        >
+          <Stack gap="xs" align="flex-start">
+            <Text size="sm">
+              Email draft generation failed — retry just this channel.
+            </Text>
+            {regenArmButton('email', 'Regenerate email draft')}
+          </Stack>
+        </Alert>
+      ) : emailArm === null ? (
+        <Text size="xs" c="dimmed" mt="xs">
+          No email campaign is linked to this campaign.
+        </Text>
+      ) : (
+        <>
+          {gates?.email ? (
+            <Alert
+              color="red"
+              variant="light"
+              mt="xs"
+              icon={<IconAlertTriangle size={16} />}
+            >
+              {gates.email}
+            </Alert>
+          ) : null}
+          <Group gap="xs" mt="sm">
+            <Button
+              size="compact-sm"
+              variant="light"
+              color="cyan"
+              leftSection={<IconPencil size={14} />}
+              onClick={openEmailArm}
+              disabled={busy}
+            >
+              Open in Campaigns
+            </Button>
+            {emailCanPartialApprove
+              ? partialApproveButton('email', 'Approve email only')
+              : null}
+          </Group>
+        </>
+      )}
+    </Paper>
+  );
+
+  // ── the blog arm card (V2) — a pipeline blogPost, never auto-published ───────
+  const blogCard = (
+    <Paper
+      withBorder
+      radius="md"
+      p="sm"
+      style={
+        blogFailed || gates?.blog
+          ? { borderColor: 'var(--mantine-color-red-5)', borderWidth: 2 }
+          : undefined
+      }
+    >
+      <Group justify="space-between" align="flex-start" wrap="nowrap">
+        <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
+          <ThemeIcon size="md" variant="light" color="orange">
+            <IconFileText size={15} />
+          </ThemeIcon>
+          <Box style={{ minWidth: 0 }}>
+            <Text size="sm" fw={600} truncate>
+              {blogArm !== null ? blogArm.title || 'Blog post' : 'Blog post'}
+            </Text>
+            {blogArm !== null ? (
+              <Text size="xs" c="dimmed">
+                Drafted into the blog pipeline — publishes only after approval.
+              </Text>
+            ) : null}
+          </Box>
+        </Group>
+        {blogArm !== null ? (
+          <Badge size="sm" variant="light" color={statusColor(blogArm.status)}>
+            {blogArm.status || '—'}
+          </Badge>
+        ) : null}
+      </Group>
+
+      {blogFailed ? (
+        <Alert
+          color="red"
+          variant="light"
+          mt="xs"
+          icon={<IconAlertTriangle size={16} />}
+        >
+          <Stack gap="xs" align="flex-start">
+            <Text size="sm">
+              Blog draft generation failed — retry just this channel.
+            </Text>
+            {regenArmButton('blog', 'Regenerate blog draft')}
+          </Stack>
+        </Alert>
+      ) : blogArm === null ? (
+        <Text size="xs" c="dimmed" mt="xs">
+          No blog post is linked to this campaign.
+        </Text>
+      ) : (
+        <>
+          {gates?.blog ? (
+            <Alert
+              color="red"
+              variant="light"
+              mt="xs"
+              icon={<IconAlertTriangle size={16} />}
+            >
+              {gates.blog}
+            </Alert>
+          ) : null}
+          <Group gap="xs" mt="sm">
+            <Button
+              size="compact-sm"
+              variant="light"
+              color="orange"
+              leftSection={<IconEye size={14} />}
+              onClick={openBlogArm}
+              disabled={busy}
+            >
+              Open in Blog
+            </Button>
+            {blogCanPartialApprove
+              ? partialApproveButton('blog', 'Approve blog only')
+              : null}
+          </Group>
+        </>
+      )}
+    </Paper>
+  );
+
+  // ── the Roll-up strip (V2) — arm metrics aggregated server-side on `get`.
+  // Renders ONLY the stats the route reported (non-null); fully hidden when a
+  // v1 route (no rollup) answered or nothing has numbers yet.
+  const rollupStats: { label: string; value: string }[] = [];
+  if (rollup !== null) {
+    const pushStat = (label: string, value: number | null, prefix = '') => {
+      if (value !== null) {
+        rollupStats.push({ label, value: `${prefix}${value.toLocaleString()}` });
+      }
+    };
+    pushStat('Visits', rollup.visits);
+    pushStat('Leads', rollup.leads);
+    pushStat('Sent', rollup.sent);
+    pushStat('Opens', rollup.opens);
+    pushStat('Attributed', rollup.attributedRevenue, 'AED ');
+  }
+
+  const rollupStrip =
+    rollupStats.length > 0 ? (
+      <Paper withBorder radius="md" p="sm">
+        <Group gap={6} mb={6} wrap="nowrap">
+          <IconTrendingUp
+            size={14}
+            style={{ color: 'var(--mantine-color-dimmed)' }}
+          />
+          <Text size="xs" fw={700} c="dimmed" tt="uppercase">
+            Roll-up
+          </Text>
+        </Group>
+        <Group gap="lg" wrap="wrap">
+          {rollupStats.map((s) => (
+            <Box key={s.label}>
+              <Text size="lg" fw={700} ff="monospace">
+                {s.value}
+              </Text>
+              <Text size="xs" c="dimmed">
+                {s.label}
+              </Text>
+            </Box>
+          ))}
+        </Group>
+      </Paper>
+    ) : null;
 
   return (
     <>
@@ -558,7 +887,7 @@ export const CampaignReviewPanel = ({
               </Group>
               <Text size="xs" c="dimmed" lineClamp={1}>
                 {detail !== null
-                  ? 'One story across both channels · review, then approve'
+                  ? 'One story across every channel · review, then approve'
                   : 'Loading…'}
               </Text>
             </Box>
@@ -634,8 +963,12 @@ export const CampaignReviewPanel = ({
                 </Group>
               </Box>
 
+              {rollupStrip}
+
               {lpCard}
               {socialCard}
+              {emailCard}
+              {blogCard}
 
               {regenerating ? (
                 <Alert
@@ -643,7 +976,7 @@ export const CampaignReviewPanel = ({
                   variant="light"
                   icon={<IconRefresh size={16} />}
                 >
-                  Re-running both channels from the same brief — this takes about
+                  Re-running every channel from the same brief — this takes about
                   a minute…
                 </Alert>
               ) : null}
@@ -677,7 +1010,7 @@ export const CampaignReviewPanel = ({
                 loading={regenerating}
                 disabled={busy && !regenerating}
                 onClick={() => void regenerate()}
-                title="Re-runs BOTH channels from the same brief as a new campaign; this one is archived."
+                title="Re-runs every channel from the same brief as a new campaign; this one is archived."
               >
                 Regenerate campaign
               </Button>
@@ -689,7 +1022,10 @@ export const CampaignReviewPanel = ({
               loading={approving && approvingArm === null}
               disabled={
                 (busy && !(approving && approvingArm === null)) ||
-                (lpArm === null && socialArm === null)
+                (lpArm === null &&
+                  socialArm === null &&
+                  emailArm === null &&
+                  blogArm === null)
               }
               onClick={() => void approve()}
             >
