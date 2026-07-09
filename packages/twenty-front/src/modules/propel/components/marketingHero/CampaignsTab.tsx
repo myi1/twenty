@@ -24,6 +24,7 @@ import {
 import { CampaignDetail } from '@/propel/components/marketingHero/CampaignDetail';
 import { CampaignReviewPanel } from '@/propel/components/marketingHero/CampaignReviewPanel';
 import { CampaignSpinePanel } from '@/propel/components/marketingHero/CampaignSpinePanel';
+import { ProposedCampaignsQueue } from '@/propel/components/marketingHero/ProposedCampaignsQueue';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { type SpineArm } from '@/propel/lib/campaignSpineCrm';
 import {
@@ -90,6 +91,9 @@ export const CampaignsTab = ({
     id: string;
     failed: SpineArm[];
   } | null>(null);
+  // V3 — bump to force the Proposed-by-Scout queue to re-fetch (after a review
+  // changes a proposal or a manual campaign is created/reviewed).
+  const [proposedRefresh, setProposedRefresh] = useState(0);
 
   const rows = useMemo(
     () => (payload ? buildCampaignRows(payload) : []),
@@ -174,6 +178,12 @@ export const CampaignsTab = ({
         </Text>
       </Stack>
 
+      {/* V3 — whole campaigns the landing-scout cron proposed, awaiting review */}
+      <ProposedCampaignsQueue
+        refreshSignal={proposedRefresh}
+        onReview={(id) => setSpineReview({ id, failed: [] })}
+      />
+
       {/* Campaign Spine v1 (CS4) — one brief → LP + social arms in review */}
       <CampaignSpinePanel
         onCampaignCreated={(id, failed) => setSpineReview({ id, failed })}
@@ -182,7 +192,10 @@ export const CampaignsTab = ({
         campaignId={spineReview?.id ?? null}
         failedArms={spineReview?.failed ?? []}
         onClose={() => setSpineReview(null)}
-        onChanged={reload}
+        onChanged={() => {
+          reload();
+          setProposedRefresh((n) => n + 1);
+        }}
         onRegenerated={(id, failed) => setSpineReview({ id, failed })}
       />
 

@@ -37,6 +37,12 @@ import {
 //           gates.social→ the permit payload ({posts:[{id,platform}]} or the array)
 //           gates.email / gates.blog → tolerant reason payloads (string or {reason})
 //     action:'dismiss' + { campaignId }              → { ok }   (campaign ARCHIVED)
+//     action:'list' + { filter?:{ status?, sourceKind? } }      (v3 pin — the
+//         Proposed queue; the CRM leg may not carry it yet)
+//         → { ok, campaigns:[{ id, name, brief, status, sourceKind, sourceRef,
+//                              windowStart, windowEnd }] }
+//         → { ok:false, error:'unknown action …' }   (pre-v3 route — the queue
+//           degrades to EMPTY, never an error toast)
 //
 // callPropelRoute sends the CRM session token; identity + role are derived
 // server-side and the route fails CLOSED for a non-Manager. It returns the parsed
@@ -637,4 +643,81 @@ export async function dismissCampaign(
   });
   if (body && body.ok === true) return { ok: true };
   return { ok: false, error: failMessage(body) };
+}
+
+// ── list (V3 — the scout Proposed-campaigns queue) ──────────────────────────────
+// The campaign sourceKind: MANUAL = founder-authored; LISTING/OFFPLAN_LAUNCH/SCOUT
+// = proposed by the landing-scout cron. The queue shows the non-MANUAL ones.
+export type CampaignSourceKind = 'MANUAL' | 'LISTING' | 'OFFPLAN_LAUNCH' | 'SCOUT';
+
+export interface CampaignListItem {
+  id: string;
+  name: string;
+  brief: string;
+  status: CampaignStatus;
+  sourceKind: CampaignSourceKind;
+  sourceRef: string | null;
+  windowStart: string | null;
+  windowEnd: string | null;
+}
+
+const SOURCE_KINDS: readonly CampaignSourceKind[] = [
+  'MANUAL',
+  'LISTING',
+  'OFFPLAN_LAUNCH',
+  'SCOUT',
+];
+
+// Tolerant projection: a row missing an id (or malformed) is skipped, not thrown.
+const parseCampaignListItem = (raw: unknown): CampaignListItem | null => {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== 'string' || r.id === '') return null;
+  const status: CampaignStatus =
+    r.status === 'DRAFTING' ||
+    r.status === 'REVIEW' ||
+    r.status === 'APPROVED' ||
+    r.status === 'LIVE' ||
+    r.status === 'ARCHIVED'
+      ? (r.status as CampaignStatus)
+      : 'REVIEW';
+  const sourceKind: CampaignSourceKind = SOURCE_KINDS.includes(
+    r.sourceKind as CampaignSourceKind,
+  )
+    ? (r.sourceKind as CampaignSourceKind)
+    : 'MANUAL';
+  return {
+    id: r.id,
+    name: typeof r.name === 'string' ? r.name : '',
+    brief: typeof r.brief === 'string' ? r.brief : '',
+    status,
+    sourceKind,
+    sourceRef: asStrOrNull(r.sourceRef),
+    windowStart: asStrOrNull(r.windowStart),
+    windowEnd: asStrOrNull(r.windowEnd),
+  };
+};
+
+export type ListCampaignsResult =
+  | { ok: true; campaigns: CampaignListItem[] }
+  | { ok: false; error: string; unavailable: boolean };
+
+/**
+ * listCampaigns — the scout Proposed queue's read. Filters are optional (one
+ * status and/or one sourceKind). A route that predates the `list` action answers
+ * unknown-action → `unavailable:true`, and the queue simply stays hidden.
+ */
+export async function listCampaigns(filter?: {
+  status?: string;
+  sourceKind?: string;
+}): Promise<ListCampaignsResult> {
+  const body = await callPropelRoute<Envelope & { campaigns?: unknown }>(ROUTE, {
+    action: 'list',
+    ...(filter && (filter.status || filter.sourceKind) ? { filter } : {}),
+  });
+  if (body && body.ok === true) {
+    const rows = Array.isArray(body.campaigns) ? body.campaigns : [];
+    return { ok: true, campaigns: rows.map(parseCampaignListItem).filter((c): c is CampaignListItem => c !== null) };
+  }
+  return { ok: false, error: failMessage(body), unavailable: isUnavailable(body) };
 }
