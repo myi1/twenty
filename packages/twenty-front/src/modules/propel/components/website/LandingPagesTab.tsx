@@ -35,6 +35,7 @@ import {
   IconLayoutGrid,
   IconPencil,
   IconPlus,
+  IconRefresh,
   IconRocket,
   IconSparkles,
   IconUsers,
@@ -49,6 +50,9 @@ import {
   instructEdit,
   preflightPage,
   readPreflightSummary,
+  readRefresherDiffs,
+  refresherApply,
+  refresherDismiss,
   saveLandingPage,
   setLandingStatus,
   translatePage,
@@ -57,6 +61,7 @@ import {
   type LandingPageSummary,
   type LandingSection,
   type PreflightCheck,
+  type RefresherDiff,
 } from '@/propel/lib/landingPagesCrm';
 import {
   LANDING_SECTION_DEFS,
@@ -250,6 +255,20 @@ const PreflightChip = ({ page }: { page: LandingPageSummary }) => {
   );
 };
 
+// ── Stage 3E — the Scout + Refresher queues (SC4) ────────────────────────────
+// Badge label + color per diff kind. Unknown kinds (a later CRM leg) fall back
+// to a humanized gray badge — tolerant, never dropped, never a crash.
+const REFRESHER_KIND_META: Record<string, { label: string; color: string }> = {
+  COUNTDOWN_PAST: { label: 'Countdown past', color: 'orange' },
+  DATE_PAST: { label: 'Date past', color: 'orange' },
+  PERMIT_EXPIRED: { label: 'Permit expired', color: 'red' },
+  LISTING_GONE: { label: 'Listing gone', color: 'red' },
+  COPY_STALE: { label: 'Stale copy', color: 'yellow' },
+};
+
+const refresherKindMeta = (kind: string): { label: string; color: string } =>
+  REFRESHER_KIND_META[kind] ?? { label: checkLabel(kind), color: 'gray' };
+
 // ── list view ────────────────────────────────────────────────────────────────
 const PageCard = ({
   page,
@@ -427,6 +446,15 @@ export const LandingPagesTab = () => {
   const [adHocTranslating, setAdHocTranslating] = useState<string | null>(null);
   const [bulkPublishingId, setBulkPublishingId] = useState<string | null>(null);
   const translateRunRef = useRef(false);
+  // Stage 3E — the Scout + Refresher queues (SC4). `scoutDismissTarget` holds
+  // the proposal awaiting the archive confirm; `refresherBusy` is the in-flight
+  // action key (`<pageId>:<apply|dismiss>:<diffKey|*>`, one at a time);
+  // `refresherUnavailable` dims the queue's buttons once landing-admin answers
+  // unknown-action / FEATURE_OFF / unreachable (the CRM leg isn't live yet).
+  const [scoutDismissTarget, setScoutDismissTarget] = useState<LandingPageSummary | null>(null);
+  const [scoutDismissBusy, setScoutDismissBusy] = useState(false);
+  const [refresherBusy, setRefresherBusy] = useState<string | null>(null);
+  const [refresherUnavailable, setRefresherUnavailable] = useState(false);
 
   const derivedSlug = useMemo(
     () => (slugTouched ? draft.slug : slugify(draft.title)),
@@ -469,6 +497,21 @@ export const LandingPagesTab = () => {
     }
     return { parentPages: parents, siblingsByParent: byParent };
   }, [data]);
+
+  // ── Stage 3E — the two pinned queues (SC4). Both derive tolerantly off the
+  // list projection: pre-3E routes omit source/scoutReason/refresherJson, so
+  // both arrays stay empty and neither section renders (the grid is untouched).
+  const scoutPages = useMemo(
+    () => data.filter((p) => (p.source ?? '') === 'SCOUT' && p.status === 'DRAFT'),
+    [data],
+  );
+  const refresherPages = useMemo(
+    () =>
+      data
+        .map((p) => ({ page: p, diffs: readRefresherDiffs(p.refresherJson) }))
+        .filter((entry) => entry.diffs.length > 0),
+    [data],
+  );
 
   // Keep the selection valid as sections are added/removed/reordered.
   useEffect(() => {
@@ -726,6 +769,62 @@ export const LandingPagesTab = () => {
     if (blocked > 0) parts.push(`${blocked} blocked by checks`);
     if (failedCount > 0) parts.push(`${failedCount} failed`);
     notify(`Translations: ${parts.join(', ')}`, blocked + failedCount > 0 ? 'info' : 'success');
+  };
+
+  // ── Stage 3E — queue actions (SC4) ─────────────────────────────────────────
+  // Dismissing a Scout proposal rides the EXISTING archive path (setStatus
+  // ARCHIVED — the same route every card uses), behind a confirm modal.
+  const confirmScoutDismiss = async () => {
+    const target = scoutDismissTarget;
+    if (!target || scoutDismissBusy) return;
+    if (usingMock) {
+      notify('Preview data — deploy the landingPage object to dismiss proposals.', 'info');
+      setScoutDismissTarget(null);
+      return;
+    }
+    setScoutDismissBusy(true);
+    const res = await setLandingStatus(target.id, 'ARCHIVED');
+    setScoutDismissBusy(false);
+    setScoutDismissTarget(null);
+    if (res.ok) {
+      notify('Scout proposal dismissed.', 'success');
+      reload();
+      return;
+    }
+    notify(res.error, 'error');
+  };
+
+  // Apply/dismiss queued Refresher diffs — `keys` targets specific diffs;
+  // undefined ⇒ the whole page's queue ("Apply all"/"Dismiss all"). A route
+  // that predates SC3 (unknown action / FEATURE_OFF / unreachable) toasts once
+  // and dims the queue's buttons — never a crash.
+  const runRefresher = async (
+    kind: 'apply' | 'dismiss',
+    page: LandingPageSummary,
+    keys?: string[],
+  ) => {
+    if (refresherBusy !== null || refresherUnavailable) return;
+    if (usingMock) {
+      notify('Preview data — deploy the landingPage object to use the Refresher.', 'info');
+      return;
+    }
+    setRefresherBusy(`${page.id}:${kind}:${keys && keys.length > 0 ? keys.join(',') : '*'}`);
+    const res =
+      kind === 'apply'
+        ? await refresherApply(page.id, keys)
+        : await refresherDismiss(page.id, keys);
+    setRefresherBusy(null);
+    if (res.ok) {
+      notify(kind === 'apply' ? 'Fix applied.' : 'Dismissed.', 'success');
+      reload();
+      return;
+    }
+    if (res.unavailable) {
+      setRefresherUnavailable(true);
+      notify('The Refresher isn’t available on this workspace yet.', 'info');
+      return;
+    }
+    notify(res.error, 'error');
   };
 
   // ── Stage 3C — the publish pre-flight gate ─────────────────────────────────
@@ -1623,9 +1722,229 @@ export const LandingPagesTab = () => {
   }
 
   // ── list ──
+  // ── Stage 3E — "Proposed by Scout" (SC4): DRAFT pages the landing-scout cron
+  // briefed onto the bench (source:'SCOUT'). Pinned above the grid; renders only
+  // when non-empty. Open lands in the normal editor; Dismiss archives (confirmed).
+  const scoutQueue =
+    scoutPages.length > 0 ? (
+      <Paper withBorder radius="md" p="md" mb="md">
+        <Group gap="xs" mb="sm">
+          <ThemeIcon size="sm" variant="light" color="grape">
+            <IconSparkles size={14} />
+          </ThemeIcon>
+          <Text fw={600}>Proposed by Scout</Text>
+          <Badge size="xs" variant="light" color="grape">
+            {scoutPages.length}
+          </Badge>
+        </Group>
+        <Stack gap="xs">
+          {scoutPages.map((page) => (
+            <Group key={page.id} justify="space-between" align="center" wrap="nowrap">
+              <Box style={{ minWidth: 0 }}>
+                <Group gap={6} wrap="nowrap">
+                  <Text size="sm" fw={500} truncate>
+                    {page.title || 'Untitled'}
+                  </Text>
+                  <Text size="xs" c="dimmed" truncate>
+                    /lp/{page.slug}
+                  </Text>
+                </Group>
+                {page.scoutReason ? (
+                  <Text size="xs" c="dimmed" lineClamp={1}>
+                    {page.scoutReason}
+                  </Text>
+                ) : null}
+              </Box>
+              <Group gap={6} wrap="nowrap">
+                <Button
+                  size="compact-xs"
+                  variant="light"
+                  color="red"
+                  leftSection={<IconPencil size={12} />}
+                  onClick={() => void openEdit(page.id)}
+                >
+                  Open
+                </Button>
+                <Button
+                  size="compact-xs"
+                  variant="subtle"
+                  color="gray"
+                  onClick={() => setScoutDismissTarget(page)}
+                >
+                  Dismiss
+                </Button>
+              </Group>
+            </Group>
+          ))}
+        </Stack>
+      </Paper>
+    ) : null;
+
+  // ── Stage 3E — "Refresher" (SC4): LIVE pages whose refresherJson parses to a
+  // non-empty diffs queue. One group per page; per-diff Apply/Dismiss plus a
+  // whole-page "Apply all"/"Dismiss all" (keys omitted ⇒ the route acts on all).
+  const refresherQueue =
+    refresherPages.length > 0 ? (
+      <Paper
+        withBorder
+        radius="md"
+        p="md"
+        mb="md"
+        style={refresherUnavailable ? { opacity: 0.55 } : undefined}
+      >
+        <Group gap="xs" mb="sm">
+          <ThemeIcon size="sm" variant="light" color="orange">
+            <IconRefresh size={14} />
+          </ThemeIcon>
+          <Text fw={600}>Refresher</Text>
+          <Badge size="xs" variant="light" color="orange">
+            {refresherPages.reduce((n, entry) => n + entry.diffs.length, 0)}
+          </Badge>
+          <Text size="xs" c="dimmed">
+            Stale bits found on live pages — apply the fix or dismiss.
+          </Text>
+        </Group>
+        <Stack gap="md">
+          {refresherPages.map(({ page, diffs }) => (
+            <Box key={page.id}>
+              <Group justify="space-between" align="center" wrap="nowrap" mb={4}>
+                <Group gap={6} wrap="nowrap" style={{ minWidth: 0 }}>
+                  <Text size="sm" fw={600} truncate>
+                    {page.title || 'Untitled'}
+                  </Text>
+                  <Text size="xs" c="dimmed" truncate>
+                    /lp/{page.slug}
+                  </Text>
+                </Group>
+                <Group gap={4} wrap="nowrap">
+                  <Button
+                    size="compact-xs"
+                    variant="light"
+                    color="teal"
+                    disabled={refresherUnavailable || (refresherBusy !== null && refresherBusy !== `${page.id}:apply:*`)}
+                    loading={refresherBusy === `${page.id}:apply:*`}
+                    onClick={() => void runRefresher('apply', page)}
+                  >
+                    Apply all
+                  </Button>
+                  <Button
+                    size="compact-xs"
+                    variant="subtle"
+                    color="gray"
+                    disabled={refresherUnavailable || (refresherBusy !== null && refresherBusy !== `${page.id}:dismiss:*`)}
+                    loading={refresherBusy === `${page.id}:dismiss:*`}
+                    onClick={() => void runRefresher('dismiss', page)}
+                  >
+                    Dismiss all
+                  </Button>
+                </Group>
+              </Group>
+              <Stack gap={4}>
+                {diffs.map((diff: RefresherDiff) => {
+                  const meta = refresherKindMeta(diff.kind);
+                  const applyKey = `${page.id}:apply:${diff.key}`;
+                  const dismissKey = `${page.id}:dismiss:${diff.key}`;
+                  return (
+                    <Group
+                      key={diff.key}
+                      justify="space-between"
+                      align="center"
+                      wrap="nowrap"
+                      p="xs"
+                      style={{
+                        border: '1px solid var(--mantine-color-default-border)',
+                        borderRadius: 6,
+                      }}
+                    >
+                      <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
+                        <Badge size="xs" variant="light" color={meta.color} style={{ flexShrink: 0 }}>
+                          {meta.label}
+                        </Badge>
+                        <Box style={{ minWidth: 0 }}>
+                          <Text size="xs" truncate>
+                            {diff.detail || diff.key}
+                          </Text>
+                          {diff.proposal ? (
+                            <Text size="xs" c="dimmed" truncate>
+                              Proposed: {diff.proposal}
+                            </Text>
+                          ) : null}
+                        </Box>
+                      </Group>
+                      <Group gap={4} wrap="nowrap">
+                        <Button
+                          size="compact-xs"
+                          variant="light"
+                          color="teal"
+                          disabled={refresherUnavailable || (refresherBusy !== null && refresherBusy !== applyKey)}
+                          loading={refresherBusy === applyKey}
+                          onClick={() => void runRefresher('apply', page, [diff.key])}
+                        >
+                          Apply
+                        </Button>
+                        <Button
+                          size="compact-xs"
+                          variant="subtle"
+                          color="gray"
+                          disabled={refresherUnavailable || (refresherBusy !== null && refresherBusy !== dismissKey)}
+                          loading={refresherBusy === dismissKey}
+                          onClick={() => void runRefresher('dismiss', page, [diff.key])}
+                        >
+                          Dismiss
+                        </Button>
+                      </Group>
+                    </Group>
+                  );
+                })}
+              </Stack>
+            </Box>
+          ))}
+        </Stack>
+        {refresherUnavailable ? (
+          <Text size="xs" c="dimmed" mt="xs">
+            The Refresher isn’t available on this workspace yet.
+          </Text>
+        ) : null}
+      </Paper>
+    ) : null;
+
+  const scoutDismissModal = (
+    <Modal
+      opened={scoutDismissTarget !== null}
+      onClose={() => (scoutDismissBusy ? undefined : setScoutDismissTarget(null))}
+      title="Dismiss this Scout proposal?"
+      centered
+      zIndex={6000}
+    >
+      <Text size="sm" c="dimmed" mb="md">
+        “{scoutDismissTarget?.title || 'Untitled'}” will be archived. You can still find it later
+        under archived pages.
+      </Text>
+      <Group justify="flex-end" gap="xs">
+        <Button
+          variant="default"
+          size="sm"
+          disabled={scoutDismissBusy}
+          onClick={() => setScoutDismissTarget(null)}
+        >
+          Keep it
+        </Button>
+        <Button
+          color="red"
+          size="sm"
+          loading={scoutDismissBusy}
+          onClick={() => void confirmScoutDismiss()}
+        >
+          Dismiss proposal
+        </Button>
+      </Group>
+    </Modal>
+  );
+
   return (
     <Box p="md">
       {preflightModal}
+      {scoutDismissModal}
       <Group justify="space-between" align="flex-start" mb="md" wrap="nowrap">
         <Group gap="xs">
           <ThemeIcon size="lg" variant="light" color="red">
@@ -1710,6 +2029,10 @@ export const LandingPagesTab = () => {
       </Paper>
 
       {translateStrip}
+
+      {/* Stage 3E — the self-updating layer's two queues, pinned above the grid */}
+      {scoutQueue}
+      {refresherQueue}
 
       {busy ? (
         <Center h={200}>
