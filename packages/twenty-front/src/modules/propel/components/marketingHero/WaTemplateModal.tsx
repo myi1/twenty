@@ -7,10 +7,13 @@ import {
   Alert,
   Box,
   Button,
+  Collapse,
   Group,
   List,
   Modal,
+  Paper,
   SegmentedControl,
+  Select,
   Stack,
   Text,
   Textarea,
@@ -21,10 +24,12 @@ import {
   IconArrowBackUp,
   IconExternalLink,
   IconPhone,
+  IconSparkles,
   IconTrash,
 } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
+import { friendlyError } from '@/propel/lib/friendlyError';
 import {
   bodyParamCount,
   bodyPlaceholdersValid,
@@ -93,6 +98,34 @@ const TPL_STATUSES = [
 const META_NAME_RE = /^[a-z0-9_]+$/;
 const REVIEWED_STATES = new Set(['SUBMITTED', 'APPROVED']);
 const SUBMIT_LOCALE: Record<'EN' | 'AR', string> = { EN: 'en_US', AR: 'ar' };
+
+// ── AI draft bench (POST /marketing/wa/draft) ──────────────────────────────────
+// The authoring co-pilot: a plain-language brief → a Meta-COMPLIANT draft the LLM
+// pre-validates (positional {{1..n}} params, caps, per-category rules). It prefills
+// the editor below; the operator reviews/edits and submits through the SAME
+// "Submit to Meta" path — the AI never bypasses Meta approval.
+const AI_TONES: { value: string; label: string }[] = [
+  { value: 'FRIENDLY', label: 'Friendly' },
+  { value: 'PROFESSIONAL', label: 'Professional' },
+  { value: 'URGENT', label: 'Time-sensitive' },
+  { value: 'LUXURY', label: 'Luxury' },
+];
+
+interface WaDraftPayload {
+  category: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION';
+  language: string;
+  bodyText: string;
+  bodyExample: string[];
+  paramMap: string[];
+  footer?: string;
+  header?: { format: 'TEXT'; text: string; example?: string };
+  buttons?: {
+    type: 'QUICK_REPLY' | 'URL' | 'PHONE_NUMBER';
+    text: string;
+    url?: string;
+    phoneNumber?: string;
+  }[];
+}
 
 const titleCase = (s: string): string =>
   s ? s.charAt(0) + s.slice(1).toLowerCase() : s;
@@ -389,6 +422,68 @@ export const WaTemplateModal = ({
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState<{ id: string } | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // AI draft bench — open for a NEW template (the creative bottleneck), collapsed
+  // when editing an existing one (the body already exists).
+  const [aiOpen, setAiOpen] = useState(initial === null);
+  const [aiBrief, setAiBrief] = useState('');
+  const [aiTone, setAiTone] = useState<string>('FRIENDLY');
+  const [aiBusy, setAiBusy] = useState(false);
+
+  // Brief → compliant draft → prefill the editor. Never bypasses Meta approval: it
+  // only fills the fields the operator then reviews/edits and submits below.
+  const draftWithAi = async () => {
+    if (aiBusy || aiBrief.trim() === '') return;
+    setAiBusy(true);
+    const res = await callPropelRoute<{
+      ok?: boolean;
+      draft?: WaDraftPayload;
+      compliance?: string[];
+      error?: string;
+      code?: string;
+      operatorAction?: string;
+    }>('/marketing/wa/draft', {
+      action: 'DRAFT',
+      objective: aiBrief.trim(),
+      category,
+      language: SUBMIT_LOCALE[languageCode],
+      tone: aiTone,
+    });
+    setAiBusy(false);
+    if (res === null || res.error !== undefined || res.draft === undefined) {
+      const raw =
+        res?.code === 'ENV_MISSING'
+          ? res.error || "The AI draft isn't configured on this environment."
+          : res?.operatorAction || res?.error || '';
+      notify(friendlyError(raw, 'draft'), 'error');
+      return;
+    }
+    const d = res.draft;
+    // Prefill the Meta-reviewed fields. category/language stay operator-owned above.
+    setBodyText(d.bodyText);
+    setParamMap(Array.isArray(d.paramMap) ? d.paramMap : []);
+    setBodyExample(Array.isArray(d.bodyExample) ? d.bodyExample : []);
+    setFooter(d.footer ?? '');
+    if (d.header && d.header.format === 'TEXT') {
+      setHeaderFormat('TEXT');
+      setHeaderText(d.header.text ?? '');
+      setHeaderExample(d.header.example ?? '');
+    } else {
+      setHeaderFormat('NONE');
+      setHeaderText('');
+      setHeaderExample('');
+    }
+    setButtons(
+      (d.buttons ?? []).map((b): EditorButton =>
+        b.type === 'URL'
+          ? { type: 'URL', text: b.text, url: b.url ?? '', example: '' }
+          : b.type === 'PHONE_NUMBER'
+            ? { type: 'PHONE_NUMBER', text: b.text, phoneNumber: b.phoneNumber ?? '' }
+            : { type: 'QUICK_REPLY', text: b.text },
+      ),
+    );
+    setAiOpen(false);
+    notify('Draft ready — review and edit below, then submit to Meta.', 'success');
+  };
 
   // The distinct {{n}} the body needs sample values for (1..k). Reuse counts once.
   const bodyParams = useMemo(() => bodyParamCount(bodyText), [bodyText]);
@@ -704,6 +799,71 @@ export const WaTemplateModal = ({
             ) : null}
           </Box>
         </Group>
+
+        {/* AI draft bench — brief → Meta-compliant draft that prefills the editor.
+            Never bypasses Meta approval; the operator reviews/edits and submits. */}
+        <Paper
+          withBorder
+          radius="md"
+          p="sm"
+          style={{ borderStyle: 'dashed' }}
+        >
+          <Group
+            justify="space-between"
+            align="center"
+            style={{ cursor: 'pointer' }}
+            onClick={() => setAiOpen((o) => !o)}
+          >
+            <Group gap={8} wrap="nowrap">
+              <IconSparkles size={16} color="var(--mantine-color-red-6)" />
+              <Text size="sm" fw={600}>
+                Draft with AI
+              </Text>
+            </Group>
+            <Text size="xs" c="dimmed">
+              {aiOpen ? 'Hide' : 'Write from a brief'}
+            </Text>
+          </Group>
+          <Collapse in={aiOpen}>
+            <Stack gap="sm" mt="sm">
+              <Textarea
+                label="Brief"
+                description="Describe the message — the AI drafts a Meta-compliant template you can edit."
+                value={aiBrief}
+                onChange={(e) => setAiBrief(e.currentTarget.value)}
+                placeholder="Invite a cold lead to view a new 2-bed Marina listing; end with a viewing prompt."
+                autosize
+                minRows={2}
+                disabled={aiBusy}
+              />
+              <Group gap="sm" align="flex-end">
+                <Select
+                  label="Tone"
+                  w={180}
+                  value={aiTone}
+                  onChange={(v) => setAiTone(v ?? 'FRIENDLY')}
+                  data={AI_TONES}
+                  disabled={aiBusy}
+                  comboboxProps={{ zIndex: 5100 }}
+                />
+                <Button
+                  color="red"
+                  leftSection={<IconSparkles size={15} />}
+                  loading={aiBusy}
+                  disabled={aiBrief.trim() === ''}
+                  onClick={() => void draftWithAi()}
+                >
+                  Draft with AI
+                </Button>
+              </Group>
+              <Text size="xs" c="dimmed">
+                Uses the {category === 'UTILITY' ? 'Utility' : 'Marketing'} rules and{' '}
+                {languageCode === 'AR' ? 'Arabic' : 'English'} from above. The draft is
+                pre-checked for Meta compliance; you still submit it for approval.
+              </Text>
+            </Stack>
+          </Collapse>
+        </Paper>
 
         <Box>
           <Textarea

@@ -37,6 +37,15 @@ import {
   type WaTemplateOption,
 } from '@/propel/types/marketingHome';
 import { GrapesEmailBuilder } from '@/propel/components/campaign/GrapesEmailBuilder';
+import {
+  clickableCard,
+  InvitingEmpty,
+  KanbanBoard,
+  KanbanColumn,
+  Seal,
+  statusSeal,
+  type SealKind,
+} from '@/propel/components/desk';
 import { WaTemplateModal } from './WaTemplateModal';
 
 // Templates tab of the unified Marketing hero — the email + WhatsApp template
@@ -72,6 +81,64 @@ const snippet = (s: string, n = 220): string =>
 const waDeletable = (t: WaTemplateOption): boolean =>
   t.status === 'DRAFT' &&
   (t.metaTemplateId === '' || t.metaTemplateId === undefined);
+
+// ── WhatsApp template kanban ────────────────────────────────────────────────────
+// Columns are the REAL whatsappTemplate lifecycle (the WaTemplateModal's TPL_STATUSES):
+// a template is authored as a DRAFT → SUBMITTED to Meta → APPROVED (sendable) or
+// REJECTED, and can be PAUSED. The shared KanbanBoard/KanbanColumn (desk kit) render
+// it byte-identically to the blog/campaigns/social/landing boards. APPROVED isn't in
+// the shared status→seal map (WA-specific), so it's mapped to green locally here
+// without touching the shared kit.
+const WA_LANES: { id: string; title: string; empty: string }[] = [
+  { id: 'DRAFT', title: 'Draft', empty: 'No drafts — start one, or draft with AI.' },
+  { id: 'SUBMITTED', title: 'Submitted', empty: 'Nothing awaiting Meta review.' },
+  { id: 'APPROVED', title: 'Approved', empty: 'No approved templates yet.' },
+  { id: 'REJECTED', title: 'Rejected', empty: 'No rejections — nice.' },
+  { id: 'PAUSED', title: 'Paused', empty: 'No paused templates.' },
+];
+
+const waSeal = (status: string): SealKind =>
+  status === 'APPROVED' ? 'green' : statusSeal(status);
+
+const WaBoardCard = ({
+  t,
+  onOpen,
+}: {
+  t: WaTemplateOption;
+  onOpen: () => void;
+}) => (
+  <Card withBorder radius="md" padding="sm" {...clickableCard(onOpen)}>
+    <Stack gap={6}>
+      <Group gap={8} wrap="nowrap" align="center">
+        <Seal kind={waSeal(t.status)} />
+        <Text size="sm" fw={600} ff="monospace" truncate style={{ flex: 1 }}>
+          {t.name}
+        </Text>
+      </Group>
+      <Group gap={6}>
+        <Badge size="xs" variant="light" color="gray">
+          {t.languageCode}
+        </Badge>
+        <Badge size="xs" variant="light" color="gray">
+          {titleCase(t.category)}
+        </Badge>
+      </Group>
+      <Text
+        size="xs"
+        c="dimmed"
+        lineClamp={3}
+        style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+      >
+        {t.bodyText || 'Empty body'}
+      </Text>
+      {t.status === 'REJECTED' && t.rejectionReason ? (
+        <Text size="xs" c="red" lineClamp={2}>
+          Rejected: {t.rejectionReason}
+        </Text>
+      ) : null}
+    </Stack>
+  </Card>
+);
 
 // Inline two-step delete control: "Delete → Delete? No / Yes".
 const DeleteControl = ({
@@ -509,6 +576,9 @@ export const TemplatesTab = ({
   const notify = usePropelToast();
   const [filter, setFilter] = useState<TplFilter>('ALL');
   const [langFilter, setLangFilter] = useState<string>('ALL');
+  // WhatsApp catalog view: card grid vs. lifecycle kanban (Draft→Submitted→Approved
+  // →Rejected→Paused). Board is WA-only (the status lifecycle is WhatsApp's).
+  const [waView, setWaView] = useState<'GRID' | 'BOARD'>('GRID');
   const [syncing, setSyncing] = useState(false);
   const [waEdit, setWaEdit] = useState<WaTemplateOption | 'new' | null>(null);
   const [emailEdit, setEmailEdit] = useState<
@@ -745,10 +815,40 @@ export const TemplatesTab = ({
             ]}
           />
         ) : null}
+        {filter === 'WHATSAPP' ? (
+          <SegmentedControl
+            size="sm"
+            value={waView}
+            onChange={(v) => setWaView(v as 'GRID' | 'BOARD')}
+            data={[
+              { label: 'Grid', value: 'GRID' },
+              { label: 'Board', value: 'BOARD' },
+            ]}
+          />
+        ) : null}
       </Group>
 
       {filter === 'CUSTOM' ? (
         <MergeTagsView payload={payload ?? {}} reload={reload} />
+      ) : filter === 'WHATSAPP' && waView === 'BOARD' ? (
+        <KanbanBoard cols={{ base: 1, sm: 2, lg: 5 }}>
+          {WA_LANES.map((lane) => {
+            const laneRows = visibleWa.filter((t) => t.status === lane.id);
+            return (
+              <KanbanColumn
+                key={lane.id}
+                title={lane.title}
+                count={laneRows.length}
+                icon={<Seal kind={waSeal(lane.id)} />}
+                empty={<InvitingEmpty compact title={lane.empty} />}
+              >
+                {laneRows.map((t) => (
+                  <WaBoardCard key={t.id} t={t} onOpen={() => setWaEdit(t)} />
+                ))}
+              </KanbanColumn>
+            );
+          })}
+        </KanbanBoard>
       ) : visibleCount === 0 ? (
         <Center mih={200}>
           <Stack align="center" gap={6} maw={400}>
