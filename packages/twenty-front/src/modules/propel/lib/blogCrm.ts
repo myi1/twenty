@@ -33,6 +33,40 @@ export type BlogStatus =
   | 'FAILED'
   | 'REJECTED';
 
+// Recurrence cadence (founder's scheduling ask). ONE_OFF = a single post (default,
+// today's behaviour). The rest auto-seed the NEXT occurrence when this one publishes
+// (same topicSeed + cadence, scheduled one interval on) via blog-publish — always
+// through the pipeline + maker-checker gate, never auto-published unreviewed. Values
+// are UPPER_CASE (app:install rejects lowercase SELECT values).
+export type BlogCadence = 'ONE_OFF' | 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY';
+
+export const BLOG_CADENCES: { value: BlogCadence; label: string }[] = [
+  { value: 'ONE_OFF', label: 'One-off' },
+  { value: 'DAILY', label: 'Daily' },
+  { value: 'WEEKLY', label: 'Weekly' },
+  { value: 'MONTHLY', label: 'Monthly' },
+  { value: 'QUARTERLY', label: 'Quarterly' },
+];
+
+const CADENCE_LABEL: Record<BlogCadence, string> = {
+  ONE_OFF: 'One-off',
+  DAILY: 'Daily',
+  WEEKLY: 'Weekly',
+  MONTHLY: 'Monthly',
+  QUARTERLY: 'Quarterly',
+};
+
+export const cadenceLabel = (c: BlogCadence): string => CADENCE_LABEL[c] ?? 'One-off';
+
+export const isRecurring = (c: BlogCadence): boolean => c !== 'ONE_OFF';
+
+const asCadence = (v: unknown): BlogCadence => {
+  const s = typeof v === 'string' ? v.trim().toUpperCase() : '';
+  return s === 'DAILY' || s === 'WEEKLY' || s === 'MONTHLY' || s === 'QUARTERLY'
+    ? (s as BlogCadence)
+    : 'ONE_OFF';
+};
+
 // One row of the pipeline, as projected by blog-queue-route's posts[].
 export interface BlogPost {
   id: string;
@@ -49,6 +83,11 @@ export interface BlogPost {
   criticScore: number | null;
   criticNotes: unknown;
   scheduledAt: string | null;
+  // Recurrence (founder's scheduling ask). cadence drives whether publishing this
+  // post auto-seeds the next occurrence; recurrenceSpawnedAt on the PARENT marks
+  // that its next occurrence was already seeded (guards double fan-out).
+  cadence: BlogCadence;
+  recurrenceSpawnedAt: string | null;
   lastError: string;
   updatedAt: string | null;
   // Maker-checker (Phase 2) — an agent's "Approve" submits instead; the route
@@ -103,6 +142,9 @@ const toPost = (raw: unknown): BlogPost => {
     criticScore: typeof r.criticScore === 'number' ? r.criticScore : null,
     criticNotes: r.criticNotes ?? null,
     scheduledAt: typeof r.scheduledAt === 'string' ? r.scheduledAt : null,
+    cadence: asCadence(r.cadence),
+    recurrenceSpawnedAt:
+      typeof r.recurrenceSpawnedAt === 'string' ? r.recurrenceSpawnedAt : null,
     lastError: typeof r.lastError === 'string' ? r.lastError : '',
     updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : null,
     submittedForApprovalAt:
@@ -296,17 +338,24 @@ export async function decideBlogPost(
 }
 
 // Seed a topic on demand → creates an `idea` row the pipeline runs to needs_approval.
+// cadence + scheduledAt (the founder's brief-bar controls) ride along: cadence sets
+// the recurrence, scheduledAt is the target posting date honored at publish. Both are
+// additive — an old backend ignores unknown body keys, so the seed still works.
 export async function generateBlogDraft(input: {
   topicSeed: string;
   angle?: string;
   title?: string;
   locale?: string;
+  cadence?: BlogCadence;
+  scheduledAt?: string;
 }): Promise<CrmResult<{ id: string }>> {
   const body = await callPropelRoute<Envelope>(GENERATE_ROUTE, {
     topicSeed: input.topicSeed,
     ...(input.angle ? { angle: input.angle } : {}),
     ...(input.title ? { title: input.title } : {}),
     ...(input.locale ? { locale: input.locale } : {}),
+    ...(input.cadence ? { cadence: input.cadence } : {}),
+    ...(input.scheduledAt ? { scheduledAt: input.scheduledAt } : {}),
   });
   if (body && body.ok === true && typeof body.id === 'string') {
     return { ok: true, data: { id: body.id } };

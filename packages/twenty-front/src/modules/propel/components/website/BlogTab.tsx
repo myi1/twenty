@@ -7,11 +7,11 @@ import {
   Group,
   Loader,
   Paper,
+  Select,
   SimpleGrid,
   Stack,
   Text,
   TextInput,
-  Title,
   Tooltip,
 } from '@mantine/core';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -19,11 +19,14 @@ import { useSearchParams } from 'react-router-dom';
 import {
   IconAlertTriangle,
   IconCalendar,
+  IconCalendarEvent,
   IconCheck,
+  IconClock,
   IconFileText,
   IconLanguage,
   IconPencil,
   IconRefresh,
+  IconRepeat,
   IconSend,
   IconSparkles,
   IconTarget,
@@ -37,18 +40,44 @@ import {
   type BlogAgentKey,
   type BlogColumns,
 } from '@/propel/hooks/useBlogPipeline';
-import { decideBlogPost, generateBlogDraft, type BlogPost } from '@/propel/lib/blogCrm';
+import {
+  decideBlogPost,
+  generateBlogDraft,
+  cadenceLabel,
+  isRecurring,
+  BLOG_CADENCES,
+  type BlogCadence,
+  type BlogPost,
+} from '@/propel/lib/blogCrm';
 import { amplifyBrief, generatePlan } from '@/propel/lib/socialCrm';
 import { ALL_NETWORKS } from '@/propel/lib/socialCalendarConfig';
 import { useCanPublish } from '@/propel/lib/canPublish';
-import { SubmissionBadge } from '@/propel/components/marketingHero/deskShared';
+import {
+  AmbientAgentCard,
+  InvitingEmpty,
+  Seal,
+  statusSeal,
+  SubmissionBadge,
+  SurfaceIntro,
+} from '@/propel/components/marketingHero/deskShared';
 import { SubmitForApprovalButton } from '@/propel/components/marketingHero/SubmitForApprovalButton';
 import { BlogPostDrawer } from '@/propel/components/website/BlogPostDrawer';
 
-// Every card opens the detail drawer on click; withhold the click from the
-// inner Approve/Reject buttons so those still act inline (real DOM here — this is
-// the twenty-front hero, not the in-sandbox front-component, so stopPropagation
-// works, unlike the sandboxed builders).
+// Blog sub-tab of the Website tab — the NEWSROOM (marketing-tabs upgrade §2, the
+// flagship). The pipeline is staged like an assignment desk: Assignments (topics
+// picked) → Writing (grounding + drafting) → Copy desk (the HumanGate) → Scheduled
+// → Published, fed from real `blogPost` rows via blog-queue-route. Ambient agent
+// cards show each bench agent ON the post it's working (not idle/active lamps).
+// Warm empties invite the next brief. The founder's scheduling ask rides here too:
+// the brief bar carries a cadence + scheduled-date, and cadence/next-run surface on
+// every card. The HumanGate (Approve → scheduled → Ghost / Reject) and the
+// maker-checker submit path are unchanged. All routes are Manager/Admin-gated and
+// ship behind the gated CRM deploy; until then the board drops to a clean preview
+// state (empty lanes + honest banner) — it never crashes the hero.
+
+// Every card opens the detail drawer on click; withhold the click from the inner
+// Approve/Reject buttons so those still act inline (real DOM here — the twenty-front
+// hero, not the sandbox — so stopPropagation is reliable).
 const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
 const clickableCard = (onOpen: () => void) => ({
   style: { cursor: 'pointer' as const },
@@ -63,87 +92,12 @@ const clickableCard = (onOpen: () => void) => ({
   },
 });
 
-// Blog sub-tab of the Website tab (WEBSITE-REBUILD-DESIGN.md §6 "Blog"). LIVE wave:
-// a 4-column pipeline board (In progress → Needs approval → Scheduled → Published)
-// fed from real `blogPost` rows via blog-queue-route. The HumanGate lives here —
-// Approve (→ scheduled → Ghost) / Reject (→ rejected) call blog-approve-route with
-// an optimistic update + toast + refetch. A "Draft a topic" seed calls
-// blog-generate-route. All three routes are Manager/Admin-gated and ship behind the
-// gated CRM deploy; until then the tab drops to a clean preview state (empty board +
-// honest banner) — it never crashes the hero (see useBlogPipeline graceful degrade).
-
-// ── agent status chips ───────────────────────────────────────────────────────
-// A compact "which pipeline agents are working right now" strip. Real: `active`
-// is derived from which stages currently hold work (useBlogPipeline.activeAgents),
-// not a fixed demo set.
-const BLOG_AGENTS: { key: BlogAgentKey; label: string; Icon: IconComponent }[] = [
-  { key: 'ideas', label: 'Ideas', Icon: IconSparkles },
-  { key: 'writer', label: 'Writer', Icon: IconPencil },
-  { key: 'seoReviewer', label: 'SEO reviewer', Icon: IconTarget },
-  { key: 'scheduler', label: 'Scheduler', Icon: IconCalendar },
-];
-
-const AgentStatusChips = ({ active }: { active: Set<BlogAgentKey> }) => (
-  <Group gap="xs" mb="lg">
-    {BLOG_AGENTS.map((agent) => {
-      const isActive = active.has(agent.key);
-      return (
-        <Badge
-          key={agent.key}
-          size="lg"
-          variant="light"
-          color={isActive ? 'red' : 'gray'}
-          leftSection={<agent.Icon size={13} />}
-          radius="sm"
-        >
-          {agent.label} · {isActive ? 'active' : 'idle'}
-        </Badge>
-      );
-    })}
-  </Group>
-);
-
-const KanbanColumn = ({
-  title,
-  count,
-  Icon,
-  children,
-}: {
-  title: string;
-  count: number;
-  Icon: IconComponent;
-  children: ReactNode;
-}) => (
-  <Stack gap="sm" style={{ minWidth: 0 }}>
-    <Group gap={6} wrap="nowrap">
-      <Icon size={15} style={{ color: 'var(--mantine-color-dimmed)' }} />
-      <Text size="sm" fw={700}>
-        {title}
-      </Text>
-      <Badge size="xs" variant="light" color="gray" radius="sm">
-        {count}
-      </Badge>
-    </Group>
-    <Stack gap="sm">
-      {count === 0 ? (
-        <Paper withBorder p="md" radius="md" style={{ borderStyle: 'dashed' }}>
-          <Text c="dimmed" size="xs" ta="center">
-            Nothing here
-          </Text>
-        </Paper>
-      ) : (
-        children
-      )}
-    </Stack>
-  </Stack>
-);
-
-const STAGE_META: Record<string, { color: string; label: string }> = {
-  IDEA: { color: 'gray', label: 'Idea' },
-  GROUNDING: { color: 'blue', label: 'Grounding' },
-  DRAFTING: { color: 'indigo', label: 'Drafting' },
-  SEO_REVIEW: { color: 'teal', label: 'SEO review' },
-  FAILED: { color: 'red', label: 'Failed' },
+const STAGE_META: Record<string, { label: string }> = {
+  IDEA: { label: 'Assigned' },
+  GROUNDING: { label: 'Researching' },
+  DRAFTING: { label: 'Drafting' },
+  SEO_REVIEW: { label: 'SEO / AEO' },
+  FAILED: { label: 'Snagged' },
 };
 
 const localeBadge = (locale: string): ReactNode =>
@@ -153,13 +107,17 @@ const localeBadge = (locale: string): ReactNode =>
     </Badge>
   ) : null;
 
-// ── amplify hook helpers (4S-B AM2) ──────────────────────────────────────────
-// The public URL the amplify plan's CTAs point at. Approve fires BEFORE Ghost
-// publishes (approve → scheduled → Ghost next tick), so there's no ghostUrl yet;
-// we derive the address the same way Ghost will — the SEO optimizer's slug
-// (seoMeta.slug) or, failing that, the slugified title — under the live blog
-// base the tab already advertises (remaxhub.ae/blog). Falls back to the blog
-// index when no slug can be derived. Pure; never throws.
+// The recurrence tag — only shown when the post recurs (a one-off stays quiet).
+const cadenceTag = (cadence: BlogCadence): ReactNode =>
+  isRecurring(cadence) ? (
+    <Tooltip label={`Recurs ${cadenceLabel(cadence).toLowerCase()} — the next occurrence is seeded when this one publishes`}>
+      <Badge size="xs" variant="light" color="gray" leftSection={<IconRepeat size={11} />}>
+        {cadenceLabel(cadence)}
+      </Badge>
+    </Tooltip>
+  ) : null;
+
+// ── amplify hook helpers (4S-B AM2) — unchanged ──────────────────────────────
 const BLOG_PUBLIC_BASE = 'https://remaxhub.ae/blog';
 
 const blogPublicUrl = (post: BlogPost): string => {
@@ -192,12 +150,86 @@ const formatWhen = (iso: string | null): string => {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
-// In-progress + failed cards: title, stage badge, locale.
-const InProgressCard = ({ item, onOpen }: { item: BlogPost; onOpen: () => void }) => {
-  const meta = STAGE_META[item.status] ?? { color: 'gray', label: item.status };
+const formatWhenTime = (iso: string | null): string => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+};
+
+// datetime-local (browser-local) → ISO for the backend. Empty / unparsable → undefined.
+const localToIso = (v: string): string | undefined => {
+  if (!v) return undefined;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+};
+
+// ── newsroom lane ─────────────────────────────────────────────────────────────
+const NewsroomLane = ({
+  title,
+  count,
+  Icon,
+  empty,
+  children,
+}: {
+  title: string;
+  count: number;
+  Icon: IconComponent;
+  empty: ReactNode;
+  children: ReactNode;
+}) => (
+  <Stack gap="sm" style={{ minWidth: 0 }}>
+    <Group gap={6} wrap="nowrap">
+      <Icon size={15} style={{ color: 'var(--mantine-color-dimmed)' }} />
+      <Text size="sm" fw={700}>
+        {title}
+      </Text>
+      <Badge size="xs" variant="light" color="gray" radius="sm">
+        {count}
+      </Badge>
+    </Group>
+    <Stack gap="sm">{count === 0 ? empty : children}</Stack>
+  </Stack>
+);
+
+// ── cards ──────────────────────────────────────────────────────────────────────
+// A shared card head: a status Seal + stage label + locale + recurrence tag.
+const CardHead = ({ post, stageLabel }: { post: BlogPost; stageLabel: string }) => (
+  <Group gap={8} wrap="nowrap" align="center">
+    <Seal kind={statusSeal(post.status)} />
+    <Text size="xs" c="dimmed" fw={600} tt="uppercase" style={{ letterSpacing: '0.04em' }}>
+      {stageLabel}
+    </Text>
+    <Group gap={6} wrap="nowrap" ml="auto">
+      {cadenceTag(post.cadence)}
+      {localeBadge(post.locale)}
+    </Group>
+  </Group>
+);
+
+// Scheduled / next-run line (shown when a post carries a scheduledAt).
+const ScheduledLine = ({ iso, prefix }: { iso: string | null; prefix: string }) =>
+  iso ? (
+    <Group gap={6} wrap="nowrap">
+      <IconCalendarEvent size={13} style={{ color: 'var(--mantine-color-dimmed)' }} />
+      <Text size="xs" c="dimmed">
+        {prefix} {formatWhenTime(iso)}
+      </Text>
+    </Group>
+  ) : null;
+
+// Assignments + Writing (idea → seo_review), plus FAILED surfaced in Writing.
+const PipelineCard = ({ item, onOpen }: { item: BlogPost; onOpen: () => void }) => {
+  const meta = STAGE_META[item.status] ?? { label: item.status };
   return (
     <Paper withBorder radius="md" p="md" {...clickableCard(onOpen)}>
       <Stack gap="xs">
+        <CardHead post={item} stageLabel={meta.label} />
         <Text size="sm" fw={600}>
           {item.title}
         </Text>
@@ -206,18 +238,7 @@ const InProgressCard = ({ item, onOpen }: { item: BlogPost; onOpen: () => void }
             {item.topicSeed}
           </Text>
         ) : null}
-        <Group gap={6}>
-          <Badge
-            size="xs"
-            variant="light"
-            color={meta.color}
-            leftSection={item.status === 'FAILED' ? <IconAlertTriangle size={11} /> : undefined}
-            style={{ alignSelf: 'flex-start' }}
-          >
-            {meta.label}
-          </Badge>
-          {localeBadge(item.locale)}
-        </Group>
+        <ScheduledLine iso={item.scheduledAt} prefix="Targeting" />
         {item.status === 'FAILED' && item.lastError ? (
           <Tooltip label={item.lastError} multiline w={260}>
             <Text size="xs" c="red" lineClamp={1}>
@@ -230,8 +251,8 @@ const InProgressCard = ({ item, onOpen }: { item: BlogPost; onOpen: () => void }
   );
 };
 
-// The HumanGate card: full context + Approve / Reject.
-const NeedsApprovalCard = ({
+// The Copy-desk card: the HumanGate — full context + Approve / Reject.
+const CopyDeskCard = ({
   item,
   busy,
   canPublish,
@@ -243,13 +264,10 @@ const NeedsApprovalCard = ({
 }: {
   item: BlogPost;
   busy: boolean;
-  /** Maker-checker (Phase 2): true → publisher (keeps "Approve"). */
   canPublish: boolean;
-  /** The publish verdict is still in flight → the go-live control is disabled. */
   publishLoading: boolean;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
-  /** Fired after an agent submits this post for approval → reload the board. */
   onSubmitted: () => void;
   onOpen: () => void;
 }) => (
@@ -261,6 +279,7 @@ const NeedsApprovalCard = ({
     style={{ borderColor: 'var(--mantine-color-red-3)', cursor: 'pointer' }}
   >
     <Stack gap="xs">
+      <CardHead post={item} stageLabel="Awaiting sign-off" />
       <Group justify="space-between" align="flex-start" wrap="nowrap">
         <Text size="sm" fw={600} style={{ flex: 1 }}>
           {item.title}
@@ -290,7 +309,7 @@ const NeedsApprovalCard = ({
           {item.excerpt}
         </Text>
       ) : null}
-      <Group gap={6}>{localeBadge(item.locale)}</Group>
+      <ScheduledLine iso={item.scheduledAt} prefix="Targeting" />
       <Group justify="flex-end" gap="xs" mt={4}>
         <Button
           size="compact-xs"
@@ -322,7 +341,6 @@ const NeedsApprovalCard = ({
             Approve
           </Button>
         ) : (
-          // Agent → submit for approval; stop the click bubbling to the card open.
           <Box onClick={stop}>
             <SubmitForApprovalButton
               kind="BLOG"
@@ -344,16 +362,16 @@ const NeedsApprovalCard = ({
 const ScheduledCard = ({ item, onOpen }: { item: BlogPost; onOpen: () => void }) => (
   <Paper withBorder radius="md" p="md" {...clickableCard(onOpen)}>
     <Stack gap="xs">
+      <CardHead post={item} stageLabel="On the slate" />
       <Text size="sm" fw={600}>
         {item.title}
       </Text>
       <Group gap={6} wrap="nowrap">
-        <IconCalendar size={13} style={{ color: 'var(--mantine-color-dimmed)' }} />
+        <IconClock size={13} style={{ color: 'var(--mantine-color-dimmed)' }} />
         <Text size="xs" c="dimmed">
-          {formatWhen(item.scheduledAt) || 'Publishing next tick'}
+          {item.scheduledAt ? formatWhenTime(item.scheduledAt) : 'Publishing next tick'}
         </Text>
       </Group>
-      <Group gap={6}>{localeBadge(item.locale)}</Group>
     </Stack>
   </Paper>
 );
@@ -361,6 +379,7 @@ const ScheduledCard = ({ item, onOpen }: { item: BlogPost; onOpen: () => void })
 const PublishedCard = ({ item, onOpen }: { item: BlogPost; onOpen: () => void }) => (
   <Paper withBorder radius="md" p="md" {...clickableCard(onOpen)}>
     <Stack gap="xs">
+      <CardHead post={item} stageLabel="Filed" />
       <Text size="sm" fw={600}>
         {item.title}
       </Text>
@@ -369,31 +388,39 @@ const PublishedCard = ({ item, onOpen }: { item: BlogPost; onOpen: () => void })
           {item.excerpt}
         </Text>
       ) : null}
-      <Group gap={6}>{localeBadge(item.locale)}</Group>
+      {isRecurring(item.cadence) ? (
+        <Text size="xs" c="dimmed">
+          Next {cadenceLabel(item.cadence).toLowerCase()} edition{' '}
+          {item.recurrenceSpawnedAt ? 'is on the desk' : 'seeds when this publishes'}.
+        </Text>
+      ) : null}
     </Stack>
   </Paper>
 );
 
+// ── ambient bench: derive each agent's current piece of work ─────────────────
+type AgentBench = { key: BlogAgentKey; label: string; Icon: IconComponent; workingOn: string | null };
+
+const firstTitle = (posts: BlogPost[], statuses: string[]): string | null => {
+  const hit = posts.find((p) => statuses.includes(p.status));
+  return hit ? hit.title : null;
+};
+
 export const BlogTab = () => {
   const notify = usePropelToast();
-  // Maker-checker (Phase 2): a publisher keeps "Approve"; an agent's same click
-  // becomes "Submit for approval". Fails closed to the agent view.
   const { canPublish, loading: publishLoading } = useCanPublish();
-  const { phase, error, preview, columns, activeAgents, total, reload } = useBlogPipeline();
+  const { phase, error, preview, columns, total, reload } = useBlogPipeline();
 
-  // Optimistic overlay: ids the coordinator just approved/rejected, hidden from
-  // the Needs-approval column immediately; the reload replaces this with truth.
   const [decidedIds, setDecidedIds] = useState<Set<string>>(new Set());
   const [busyId, setBusyId] = useState<string | null>(null);
   const [topicSeed, setTopicSeed] = useState('');
+  const [cadence, setCadence] = useState<BlogCadence>('ONE_OFF');
+  const [scheduledLocal, setScheduledLocal] = useState('');
   const [seeding, setSeeding] = useState(false);
   const [openRow, setOpenRow] = useState<BlogPost | null>(null);
 
-  // Campaign Spine V2 deep-link: the campaign review's blog arm "Open in Blog"
-  // navigates to /marketing?tab=website&sub=blog&post=<id>. There is no
-  // standalone post route (the drawer rides local state), so — same one-shot
-  // pattern as LandingPagesTab's ?edit= — once the pipeline load settles, open
-  // that post's drawer and strip the param so back/refresh don't re-trigger it.
+  // Campaign Spine V2 deep-link: open a post's drawer once the load settles, then
+  // strip the ?post= param so back/refresh don't re-trigger it.
   const [searchParams, setSearchParams] = useSearchParams();
   const postParam = searchParams.get('post');
   const consumedPostRef = useRef(false);
@@ -423,13 +450,7 @@ export const BlogTab = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postParam, phase, columns, searchParams, setSearchParams]);
 
-  // ── amplify hook (4S-B AM2) ────────────────────────────────────────────────
-  // After a successful Approve (the blog "publish" event — approve → scheduled
-  // → Ghost), fire-and-forget a social AMPLIFY plan promoting the post. Never
-  // blocks or fails the approve. `amplifyFiredRef` guards one fire per post per
-  // session (a double-click / re-approve can't spawn duplicate plans);
-  // `amplifyUnavailableRef` mirrors the featureOff detection — once the bench
-  // answers FEATURE_OFF we stop calling AND stop toasting (one soft note max).
+  // ── amplify hook (4S-B AM2) — unchanged ────────────────────────────────────
   const amplifyFiredRef = useRef<Set<string>>(new Set());
   const amplifyUnavailableRef = useRef(false);
 
@@ -468,12 +489,39 @@ export const BlogTab = () => {
     [columns, decidedIds],
   );
 
+  // Split the coarse in-progress bucket into the two newsroom lanes.
+  const assignments = useMemo(
+    () => visibleColumns.inProgress.filter((p) => p.status === 'IDEA' || p.status === 'GROUNDING'),
+    [visibleColumns.inProgress],
+  );
+  const writing = useMemo(
+    () => [
+      ...visibleColumns.failed,
+      ...visibleColumns.inProgress.filter(
+        (p) => p.status === 'DRAFTING' || p.status === 'SEO_REVIEW',
+      ),
+    ],
+    [visibleColumns.failed, visibleColumns.inProgress],
+  );
+
+  // The ambient bench: each agent + the actual post it's on right now (or idle).
+  const bench: AgentBench[] = useMemo(() => {
+    const all = [
+      ...visibleColumns.inProgress,
+      ...visibleColumns.needsApproval,
+      ...visibleColumns.scheduled,
+    ];
+    return [
+      { key: 'ideas', label: 'Ideas desk', Icon: IconSparkles, workingOn: firstTitle(all, ['IDEA', 'GROUNDING']) },
+      { key: 'writer', label: 'Staff writer', Icon: IconPencil, workingOn: firstTitle(all, ['DRAFTING']) },
+      { key: 'seoReviewer', label: 'SEO / AEO editor', Icon: IconTarget, workingOn: firstTitle(all, ['SEO_REVIEW']) },
+      { key: 'scheduler', label: 'Scheduler', Icon: IconCalendar, workingOn: firstTitle(all, ['SCHEDULED']) },
+    ];
+  }, [visibleColumns.inProgress, visibleColumns.needsApproval, visibleColumns.scheduled]);
+
   const decide = async (id: string, action: 'approve' | 'reject') => {
-    // Capture the row BEFORE the await — the reload below replaces columns and
-    // the amplify hook needs the title/excerpt/seoMeta it was approved with.
     const post = columns.needsApproval.find((p) => p.id === id);
     setBusyId(id);
-    // optimistic: hide the card now
     setDecidedIds((prev) => new Set(prev).add(id));
     const res = await decideBlogPost(id, action);
     setBusyId(null);
@@ -482,7 +530,6 @@ export const BlogTab = () => {
       if (action === 'approve') maybeAmplifyBlog(post);
       reload();
     } else {
-      // rollback the optimistic hide, surface the reason
       setDecidedIds((prev) => {
         const next = new Set(prev);
         next.delete(id);
@@ -499,11 +546,18 @@ export const BlogTab = () => {
       return;
     }
     setSeeding(true);
-    const res = await generateBlogDraft({ topicSeed: seed });
+    const res = await generateBlogDraft({
+      topicSeed: seed,
+      cadence,
+      scheduledAt: localToIso(scheduledLocal),
+    });
     setSeeding(false);
     if (res.ok) {
-      notify('Draft queued — the writer bench will run it to approval.', 'success');
+      const recur = isRecurring(cadence) ? ` It’ll recur ${cadenceLabel(cadence).toLowerCase()}.` : '';
+      notify(`Assigned — the writer bench will run it to sign-off.${recur}`, 'success');
       setTopicSeed('');
+      setCadence('ONE_OFF');
+      setScheduledLocal('');
       reload();
     } else {
       notify(res.error, 'error');
@@ -512,46 +566,39 @@ export const BlogTab = () => {
 
   return (
     <Box p="md">
-      <Group justify="space-between" align="flex-start" mb="md" wrap="nowrap">
-        <Box>
-          <Group gap={8} align="center">
-            <IconFileText size={18} />
-            <Title order={4}>Blog</Title>
-          </Group>
-          <Text c="dimmed" size="sm" mt={2}>
-            Idea → draft → schedule → publish, run by the AI writer bench.
-          </Text>
-        </Box>
-        <Group gap="md" wrap="nowrap">
-          <Group gap={4} wrap="nowrap">
-            <IconTrendingUp size={14} style={{ color: 'var(--mantine-color-dimmed)' }} />
-            <Text size="xs" c="dimmed">
-              {visibleColumns.published.length} published
-            </Text>
-          </Group>
-          <Button
-            size="compact-sm"
-            variant="default"
-            leftSection={<IconRefresh size={14} />}
-            onClick={reload}
-            loading={phase === 'loading'}
-          >
-            Refresh
-          </Button>
-        </Group>
-      </Group>
+      <SurfaceIntro
+        eyebrow="The newsroom"
+        title="Idea to byline — the desk that files, proofs, and publishes for you."
+        icon={<IconFileText size={20} />}
+        actions={
+          <>
+            <Group gap={4} wrap="nowrap">
+              <IconTrendingUp size={14} style={{ color: 'var(--mantine-color-dimmed)' }} />
+              <Text size="xs" c="dimmed">
+                {visibleColumns.published.length} published
+              </Text>
+            </Group>
+            <Button
+              size="compact-sm"
+              variant="default"
+              leftSection={<IconRefresh size={14} />}
+              onClick={reload}
+              loading={phase === 'loading'}
+            >
+              Refresh
+            </Button>
+          </>
+        }
+      />
 
-      {/* Honest state marker: preview mode = the gated blog routes aren't deployed
-          to this workspace yet, so the board is empty and actions are disabled.
-          The blog ITSELF is live (Ghost-backed /blog on the site). */}
       {preview ? (
         <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="md">
           <Text span fw={600} c="var(--mantine-color-yellow-7)">
             Preview.
           </Text>{' '}
-          The approval queue goes live when the blog pipeline is deployed to this workspace. Until
-          then the board is empty and Approve/Reject/Draft are disabled. The blog itself is live —
-          real published articles render at{' '}
+          The newsroom goes live when the blog pipeline is deployed to this workspace. Until then the
+          board is empty and Assign / Approve / Reject are disabled. The blog itself is live — real
+          published articles render at{' '}
           <Text span fw={600}>
             remaxhub.ae/blog
           </Text>
@@ -559,24 +606,43 @@ export const BlogTab = () => {
         </Alert>
       ) : null}
 
-      {/* Draft-a-topic seed (blog-generate-route). Disabled in preview. */}
+      {/* The commission bar: assign a topic, set its cadence + target date. */}
       <Paper withBorder radius="md" p="md" mb="md">
         <Group gap="xs" mb="xs">
           <IconSparkles size={16} />
-          <Text fw={600}>Draft a topic</Text>
+          <Text fw={600}>Commission a story</Text>
           <Badge size="xs" variant="light" color="gray">
-            AI writer
+            AI writer bench
           </Badge>
         </Group>
-        <Group gap="xs" wrap="nowrap">
+        <Group gap="xs" wrap="nowrap" align="flex-end">
           <TextInput
-            style={{ flex: 1 }}
+            style={{ flex: 1, minWidth: 0 }}
+            label="Topic"
             placeholder="e.g. Palm Jumeirah 2-bed rental yields, 2026 outlook"
             value={topicSeed}
             onChange={(e) => setTopicSeed(e.currentTarget.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !preview && !seeding) void seedTopic();
             }}
+            disabled={preview || seeding}
+          />
+          <Select
+            label="Cadence"
+            w={130}
+            data={BLOG_CADENCES.map((c) => ({ value: c.value, label: c.label }))}
+            value={cadence}
+            onChange={(v) => setCadence((v as BlogCadence) ?? 'ONE_OFF')}
+            disabled={preview || seeding}
+            allowDeselect={false}
+            leftSection={<IconRepeat size={14} />}
+          />
+          <TextInput
+            label="Publish on"
+            type="datetime-local"
+            w={210}
+            value={scheduledLocal}
+            onChange={(e) => setScheduledLocal(e.currentTarget.value)}
             disabled={preview || seeding}
           />
           <Button
@@ -586,36 +652,85 @@ export const BlogTab = () => {
             loading={seeding}
             disabled={preview}
           >
-            Draft
+            Assign
           </Button>
         </Group>
+        {isRecurring(cadence) ? (
+          <Text size="xs" c="dimmed" mt="xs">
+            Recurring: when each edition publishes, the next is auto-drafted on the same topic and
+            still goes through sign-off — nothing recurs to the live blog unreviewed.
+          </Text>
+        ) : null}
       </Paper>
 
-      <AgentStatusChips active={activeAgents} />
+      {/* Ambient bench — each agent shown on the piece it's actually working. */}
+      <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="sm" mb="lg">
+        {bench.map((a) => (
+          <AmbientAgentCard
+            key={a.key}
+            label={a.label}
+            icon={<a.Icon size={15} />}
+            workingOn={a.workingOn}
+            seal={a.key === 'scheduler' ? 'amber' : 'grey'}
+            idleLabel="Between assignments"
+          />
+        ))}
+      </SimpleGrid>
 
       {phase === 'loading' && total === 0 && !preview ? (
         <Center py="xl">
           <Loader color="red" />
         </Center>
       ) : (
-        <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md">
-          <KanbanColumn
-            title="In progress"
-            count={visibleColumns.inProgress.length + visibleColumns.failed.length}
-            Icon={IconPencil}
+        <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} spacing="md">
+          <NewsroomLane
+            title="Assignments"
+            count={assignments.length}
+            Icon={IconSparkles}
+            empty={
+              <InvitingEmpty
+                compact
+                title="The desk is quiet"
+                message="Commission a story above and it lands here."
+              />
+            }
           >
-            {[...visibleColumns.failed, ...visibleColumns.inProgress].map((item) => (
-              <InProgressCard key={item.id} item={item} onOpen={() => setOpenRow(item)} />
+            {assignments.map((item) => (
+              <PipelineCard key={item.id} item={item} onOpen={() => setOpenRow(item)} />
             ))}
-          </KanbanColumn>
+          </NewsroomLane>
 
-          <KanbanColumn
-            title="Needs approval"
+          <NewsroomLane
+            title="Writing"
+            count={writing.length}
+            Icon={IconPencil}
+            empty={
+              <InvitingEmpty
+                compact
+                title="No copy in the works"
+                message="Assigned stories move here as the writer picks them up."
+              />
+            }
+          >
+            {writing.map((item) => (
+              <PipelineCard key={item.id} item={item} onOpen={() => setOpenRow(item)} />
+            ))}
+          </NewsroomLane>
+
+          <NewsroomLane
+            title="Copy desk"
             count={visibleColumns.needsApproval.length}
             Icon={IconCheck}
+            empty={
+              <InvitingEmpty
+                compact
+                title="Nothing awaiting sign-off"
+                message="Finished drafts queue here for your approval."
+              />
+            }
           >
             {visibleColumns.needsApproval.map((item) => (
-              <NeedsApprovalCard
+              <CopyDeskCard
                 key={item.id}
                 item={item}
                 busy={busyId === item.id}
@@ -627,35 +742,45 @@ export const BlogTab = () => {
                 onOpen={() => setOpenRow(item)}
               />
             ))}
-          </KanbanColumn>
+          </NewsroomLane>
 
-          <KanbanColumn
+          <NewsroomLane
             title="Scheduled"
             count={visibleColumns.scheduled.length}
             Icon={IconCalendar}
+            empty={
+              <InvitingEmpty
+                compact
+                title="Nothing on the slate"
+                message="Approved stories wait here for their publish date."
+              />
+            }
           >
             {visibleColumns.scheduled.map((item) => (
               <ScheduledCard key={item.id} item={item} onOpen={() => setOpenRow(item)} />
             ))}
-          </KanbanColumn>
+          </NewsroomLane>
 
-          <KanbanColumn
+          <NewsroomLane
             title="Published"
             count={visibleColumns.published.length}
             Icon={IconFileText}
+            empty={
+              <InvitingEmpty
+                compact
+                title="No editions filed yet"
+                message="Published stories land here and go live on the blog."
+              />
+            }
           >
             {visibleColumns.published.map((item) => (
               <PublishedCard key={item.id} item={item} onOpen={() => setOpenRow(item)} />
             ))}
-          </KanbanColumn>
+          </NewsroomLane>
         </SimpleGrid>
       )}
 
-      <BlogPostDrawer
-        row={openRow}
-        onClose={() => setOpenRow(null)}
-        onChanged={reload}
-      />
+      <BlogPostDrawer row={openRow} onClose={() => setOpenRow(null)} onChanged={reload} />
     </Box>
   );
 };

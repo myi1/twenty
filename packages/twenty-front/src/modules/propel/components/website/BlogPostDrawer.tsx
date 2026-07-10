@@ -24,6 +24,7 @@ import {
   IconExternalLink,
   IconLanguage,
   IconRefresh,
+  IconRepeat,
   IconTarget,
   IconX,
 } from 'twenty-ui/display';
@@ -36,6 +37,8 @@ import {
   fetchBlogPost,
   retryBlogPost,
   sanitizeBlogHtml,
+  cadenceLabel,
+  isRecurring,
   type BlogPost,
   type BlogPostDetail,
   type BlogStatus,
@@ -317,6 +320,24 @@ export const BlogPostDrawer = ({
                       <IconCalendar size={13} />
                       <Text size="sm">{formatWhen(post.scheduledAt)}</Text>
                     </Group>
+                  }
+                />
+              ) : null}
+              {isRecurring(post.cadence) ? (
+                <MetaRow
+                  label="Cadence"
+                  value={
+                    <Stack gap={2}>
+                      <Group gap={6} wrap="nowrap">
+                        <IconRepeat size={13} />
+                        <Text size="sm">Recurs {cadenceLabel(post.cadence).toLowerCase()}</Text>
+                      </Group>
+                      <Text size="xs" c="dimmed">
+                        {post.recurrenceSpawnedAt
+                          ? 'The next edition has been seeded on the same topic.'
+                          : 'The next edition seeds automatically when this one publishes — it still goes through sign-off.'}
+                      </Text>
+                    </Stack>
                   }
                 />
               ) : null}
