@@ -47,8 +47,26 @@ export type OffplanMapPoint = {
   unitCount: number;
   isLaunch: boolean;
   status: string;
+  handover: string | null;
+  developerName: string | null;
+  developerSlug: string | null;
 };
 export type OffplanMapPointsResult = { points: OffplanMapPoint[]; total: number };
+
+// Client-side browse filters applied over the full point feed. `projectIdAllowlist`
+// is set only when a unit-level (beds/layout) filter narrows to a matching id set.
+export type OffplanBrowseFilters = {
+  q: string;
+  districtIds: string[];
+  minPriceAed?: number;
+  maxPriceAed?: number;
+  handoverBeforeIso?: string;
+  developerSlugs: string[];
+  newLaunchOnly: boolean;
+  projectIdAllowlist?: Set<number>; // set when a unit-level (beds) filter is active
+};
+export type MarkerMode = 'district' | 'project';
+export const DISTRICT_ZOOM_MAX = 11; // < this ⇒ district bubbles; ≥ this ⇒ project pills
 
 // A district-level cluster rendered as a labelled bubble at low zoom.
 export type OffplanDistrictCluster = {
