@@ -7,14 +7,25 @@ import {
   Center,
   Group,
   Loader,
+  SegmentedControl,
   Stack,
   Text,
   TextInput,
   Title,
 } from '@mantine/core';
 import { IconInbox, IconRefresh, IconSearch } from 'twenty-ui/display';
-import { type InboxChannel, type InboxPayload } from '@/propel/types/inbox';
-import { fetchInbox } from '@/propel/lib/inboxApi';
+import {
+  type ConversationStatusTab,
+  type InboxChannel,
+  type InboxPayload,
+  type InboxThreadRow as InboxThreadRowData,
+} from '@/propel/types/inbox';
+import {
+  type ViewerContext,
+  fetchInbox,
+  fetchViewerContext,
+} from '@/propel/lib/inboxApi';
+import { tabForStatus } from '@/propel/lib/inboxStatusCore';
 import { effectiveNeedsTriage } from '@/propel/lib/inboxTriage';
 import { channelLabel } from '@/propel/components/marketingHero/inbox/InboxBits';
 import { InboxThreadRow } from '@/propel/components/marketingHero/inbox/InboxThreadRow';
@@ -52,7 +63,25 @@ export const InboxTab = () => {
   // (viewerWorkspaceMemberId). An AGENT's list is already owner-scoped server-side,
   // so the segment is hidden for agents (every row is already theirs).
   const [triage, setTriage] = useState<'all' | 'needs' | 'mine'>('all');
+  // TM#92 — Open / Snoozed / Done tab over the thread list (default Open, the live
+  // queue). Snoozed = SNOOZED (future wake); Done = RESOLVED; an overdue snooze
+  // renders under Open (tabForStatus handles the belt-and-braces).
+  const [statusTab, setStatusTab] = useState<ConversationStatusTab>('OPEN');
+  // Optimistic status overrides keyed `${channel}:${id}` — a Done/Snooze/Reopen
+  // moves the row to its new tab instantly; reconciled (dropped) on the next load
+  // once the server row matches.
+  const [statusOverrides, setStatusOverrides] = useState<
+    Record<string, { status: string; snoozeUntil: string | null }>
+  >({});
   const [search, setSearch] = useState('');
+  // Acting-viewer identity for canned-reply merge tags + the quick-reply manager's
+  // owner gate. Fetched once (in-hero GraphQL, not the bundled auth atoms); blanks
+  // until it resolves (merge tags then stay literal, per contract).
+  const [viewer, setViewer] = useState<ViewerContext>({
+    memberId: '',
+    agentName: '',
+    officeName: '',
+  });
   const [selected, setSelected] = useState<{
     id: string;
     channel: InboxChannel;
@@ -76,6 +105,25 @@ export const InboxTab = () => {
         }
         setPayload(res);
         setReloadToken((v) => v + 1);
+        // Reconcile optimistic status overrides the server now reflects.
+        setStatusOverrides((prev) => {
+          if (Object.keys(prev).length === 0) return prev;
+          const next = { ...prev };
+          let changed = false;
+          for (const t of res.threads) {
+            const k = `${t.channel}:${t.id}`;
+            const ov = next[k];
+            if (
+              ov &&
+              ov.status === t.status &&
+              (ov.snoozeUntil ?? null) === (t.snoozeUntil ?? null)
+            ) {
+              delete next[k];
+              changed = true;
+            }
+          }
+          return changed ? next : prev;
+        });
         setPhase('ready');
       })
       .catch(() => {
@@ -86,6 +134,21 @@ export const InboxTab = () => {
       });
   }, []);
   useEffect(() => load(), [load]);
+
+  // Resolve the acting viewer's name + office once for canned-reply merge tags.
+  useEffect(() => {
+    let alive = true;
+    fetchViewerContext()
+      .then((v) => {
+        if (alive) setViewer(v);
+      })
+      .catch(() => {
+        /* blanks are fine — tags stay literal */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // Live updates: poll the thread LIST silently (paused while the tab is hidden or a
   // fetch is already in flight), and re-pull on re-show. Bumping reloadToken also
@@ -113,6 +176,34 @@ export const InboxTab = () => {
         document.removeEventListener('visibilitychange', onVis);
     };
   }, [load]);
+
+  // Push an optimistic status/snoozeUntil for a thread (called by the thread pane
+  // when a Done/Snooze/Reopen action fires) so its row jumps to the new tab at once.
+  const applyStatusOverride = useCallback(
+    (
+      id: string,
+      channel: InboxChannel,
+      status: string,
+      snoozeUntil: string | null,
+    ) => {
+      setStatusOverrides((prev) => ({
+        ...prev,
+        [`${channel}:${id}`]: { status, snoozeUntil },
+      }));
+    },
+    [],
+  );
+
+  // The tab a thread currently belongs to, honoring any optimistic override.
+  const effectiveTab = useCallback(
+    (t: InboxThreadRowData, now: number): ConversationStatusTab => {
+      const ov = statusOverrides[`${t.channel}:${t.id}`];
+      const status = ov?.status ?? t.status;
+      const snoozeUntil = ov ? ov.snoozeUntil : t.snoozeUntil;
+      return tabForStatus(status, snoozeUntil, now);
+    },
+    [statusOverrides],
+  );
 
   const channelChips = useMemo(() => {
     if (!payload) return [] as { id: 'all' | InboxChannel; label: string }[];
@@ -152,14 +243,30 @@ export const InboxTab = () => {
     [payload, viewerMemberId],
   );
 
+  // Per-tab counts (Open / Snoozed / Done) over the whole pool, honoring overrides —
+  // shown as small badges on the tab strip so an agent sees the queue depth.
+  const statusCounts = useMemo(() => {
+    const now = Date.now();
+    const counts: Record<ConversationStatusTab, number> = {
+      OPEN: 0,
+      SNOOZED: 0,
+      DONE: 0,
+    };
+    for (const t of payload?.threads ?? []) counts[effectiveTab(t, now)] += 1;
+    return counts;
+  }, [payload, effectiveTab]);
+
   const shown = useMemo(() => {
+    const now = Date.now();
     const all = payload?.threads ?? [];
+    // Status tab first — every list below is scoped to the active Open/Snoozed/Done.
+    const byStatus = all.filter((t) => effectiveTab(t, now) === statusTab);
     const byTriage =
       triage === 'needs'
-        ? all.filter((t) => effectiveNeedsTriage(t))
+        ? byStatus.filter((t) => effectiveNeedsTriage(t))
         : triage === 'mine'
-          ? all.filter((t) => t.assignedAgentId === viewerMemberId)
-          : all;
+          ? byStatus.filter((t) => t.assignedAgentId === viewerMemberId)
+          : byStatus;
     const byChannel =
       filter === 'all'
         ? byTriage
@@ -174,7 +281,7 @@ export const InboxTab = () => {
         t.contactName.toLowerCase().includes(q) ||
         t.preview.toLowerCase().includes(q),
     );
-  }, [payload, filter, triage, search, viewerMemberId]);
+  }, [payload, filter, triage, search, viewerMemberId, statusTab, effectiveTab]);
 
   if (phase === 'loading') {
     return (
@@ -263,6 +370,29 @@ export const InboxTab = () => {
               <IconRefresh size={16} />
             </ActionIcon>
           </Group>
+          {/* TM#92 — Open / Snoozed / Done status tabs over the whole list. */}
+          <SegmentedControl
+            fullWidth
+            size="xs"
+            mb="xs"
+            color="red"
+            value={statusTab}
+            onChange={(v) => setStatusTab(v as ConversationStatusTab)}
+            data={[
+              {
+                value: 'OPEN',
+                label: `Open${statusCounts.OPEN ? ` (${statusCounts.OPEN})` : ''}`,
+              },
+              {
+                value: 'SNOOZED',
+                label: `Snoozed${statusCounts.SNOOZED ? ` (${statusCounts.SNOOZED})` : ''}`,
+              },
+              {
+                value: 'DONE',
+                label: `Done${statusCounts.DONE ? ` (${statusCounts.DONE})` : ''}`,
+              },
+            ]}
+          />
           <TextInput
             size="xs"
             mb="xs"
@@ -363,7 +493,11 @@ export const InboxTab = () => {
                   ? 'No conversations assigned to you.'
                   : triage === 'needs'
                     ? 'Nothing needs triage right now.'
-                    : 'No conversations in this channel.'}
+                    : statusTab === 'SNOOZED'
+                      ? 'Nothing snoozed right now.'
+                      : statusTab === 'DONE'
+                        ? 'No resolved conversations yet.'
+                        : 'No open conversations in this channel.'}
             </Text>
           ) : (
             shown.map((t) => (
@@ -391,7 +525,11 @@ export const InboxTab = () => {
             ) ?? null
           }
           viewerRole={payload.viewerRole ?? 'AGENT'}
+          actingMemberId={viewer.memberId || viewerMemberId}
+          agentName={viewer.agentName}
+          officeName={viewer.officeName}
           onActed={() => load(true)}
+          onStatusOptimistic={applyStatusOverride}
         />
       ) : (
         <Center style={{ flex: 1, minWidth: 0 }}>

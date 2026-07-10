@@ -23,6 +23,14 @@ import {
   type OutboundMediaKind,
   type QuickRepliesPayload,
   type QuickReply,
+  type QuickReplyLibrary,
+  type QuickReplyScope,
+  type QuickReplyLanguage,
+  type QuickReplySaveResponse,
+  type QuickReplyMutationResponse,
+  type QuickReplySeedResponse,
+  type InboxStatusAction,
+  type InboxStatusResponse,
   type ReplySendEnvelope,
 } from '@/propel/types/inbox';
 
@@ -80,13 +88,77 @@ export const saveInboxMedia = (
     { messageId, channel },
   );
 
-// POST /inbox/quick-replies — the shared canned-reply library for the composer
-// picker. Read-only; no body. Returns [] (never null) so the picker always has a
-// concrete list to group/filter; a transport failure renders the empty state.
-export const fetchQuickReplies = async (): Promise<QuickReply[]> => {
+// POST /inbox/quick-replies — the canned-reply library for the composer picker
+// (TM#91). Returns SHARED rows + the caller's OWN personal rows, plus canEditShared
+// (Manager/Admin). Read-only; no body. Always resolves a concrete library (never
+// null) so the picker has a list to group/filter; a transport failure → empty.
+export const fetchQuickReplyLibrary = async (): Promise<QuickReplyLibrary> => {
   const res = await callPropelRoute<QuickRepliesPayload>('/inbox/quick-replies', {});
-  return Array.isArray(res?.quickReplies) ? res.quickReplies : [];
+  return {
+    items: Array.isArray(res?.quickReplies) ? res.quickReplies : [],
+    canEditShared: res?.canEditShared === true,
+  };
 };
+
+// POST /inbox/quick-replies/save — create (no id) or update (id) a quick reply. The
+// server re-validates scope gating, shortcut regex/uniqueness, body length, and the
+// merge-tag whitelist; PERSONAL rows are stamped with the acting member server-side.
+export const saveQuickReply = (input: {
+  id?: string | null;
+  title: string;
+  body: string;
+  category?: string | null;
+  languageCode: QuickReplyLanguage;
+  scope: QuickReplyScope;
+  shortcut?: string | null;
+  sortOrder?: number | null;
+  isActive?: boolean;
+}): Promise<QuickReplySaveResponse | null> =>
+  callPropelRoute<QuickReplySaveResponse>('/inbox/quick-replies/save', {
+    body: {
+      ...(input.id ? { id: input.id } : {}),
+      title: input.title,
+      body: input.body,
+      category: input.category ?? null,
+      languageCode: input.languageCode,
+      scope: input.scope,
+      shortcut: input.shortcut ?? null,
+      ...(typeof input.sortOrder === 'number' ? { sortOrder: input.sortOrder } : {}),
+      ...(typeof input.isActive === 'boolean' ? { isActive: input.isActive } : {}),
+    },
+  });
+
+// POST /inbox/quick-replies/delete — delete a quick reply by id (owner/manager
+// gated server-side).
+export const deleteQuickReply = (
+  id: string,
+): Promise<QuickReplyMutationResponse | null> =>
+  callPropelRoute<QuickReplyMutationResponse>('/inbox/quick-replies/delete', {
+    body: { id },
+  });
+
+// POST /inbox/quick-replies/seed — idempotent starter-pack seed (Manager/Admin).
+// Called once post-deploy to populate the EN+AR staples.
+export const seedQuickReplies = (): Promise<QuickReplySeedResponse | null> =>
+  callPropelRoute<QuickReplySeedResponse>('/inbox/quick-replies/seed', {});
+
+// POST /marketing/inbox-status — set a thread's status (TM#92): done→RESOLVED,
+// reopen→OPEN, snooze→SNOOZED+snoozeUntil. Owner-scoped server-side. Flat body
+// (event.body), same convention as the other inbox routes.
+export const setInboxStatus = (args: {
+  id: string;
+  channel: InboxChannel;
+  action: InboxStatusAction;
+  snoozeUntil?: string | null;
+}): Promise<InboxStatusResponse | null> =>
+  callPropelRoute<InboxStatusResponse>('/marketing/inbox-status', {
+    id: args.id,
+    channel: args.channel,
+    action: args.action,
+    ...(args.action === 'snooze' && args.snoozeUntil
+      ? { snoozeUntil: args.snoozeUntil }
+      : {}),
+  });
 
 // ── Lead-triage quick actions (Lead Engine S1) ───────────────────────────────
 // GATED routes — the component NEVER mutates a record directly; the route enforces
@@ -156,14 +228,19 @@ export const sendFollowUpPing = (
 // GraphQL endpoint with the acting member's OWN session token — same thin-fetch
 // escape hatch oneOnOneCrm/dialerCrmBridge use (these reads respect propel-rls).
 // Returns [] on any failure so the picker shows an honest "no agents" state.
+// `endpoint` selects the GraphQL surface: '/graphql' is the core DATA schema
+// (workspace records — workspaceMembers, etc.); '/metadata' is the METADATA schema,
+// which is where `currentUser` / `currentWorkspace` live (NOT on /graphql — verified
+// on staging: querying them on /graphql errors "Cannot query field currentUser").
 const coreGraphql = async <T>(
   query: string,
   variables: Record<string, unknown>,
+  endpoint: '/graphql' | '/metadata' = '/graphql',
 ): Promise<T | null> => {
   const token = getTokenPair()?.accessOrWorkspaceAgnosticToken?.token;
   if (token === undefined || token === '') return null;
   try {
-    const response = await fetch(`${REACT_APP_SERVER_BASE_URL}/graphql`, {
+    const response = await fetch(`${REACT_APP_SERVER_BASE_URL}${endpoint}`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -188,6 +265,51 @@ type AgentDirectoryConnection = {
         agentAvailability?: string | null;
       };
     }[];
+  };
+};
+
+// The acting viewer's identity for canned-reply merge tags ({{agentName}} /
+// {{officeName}}) + the quick-reply manager's owner gate. Fetched over the core
+// GraphQL endpoint with the session token — the SAME in-hero-proven path as
+// listInboxAgents (the jotai auth-state atoms are bundled per-hero and read empty,
+// so we never depend on them here). Degrades to blanks on any failure (tags then
+// stay literal, per the merge-tag contract).
+export interface ViewerContext {
+  memberId: string;
+  agentName: string;
+  officeName: string;
+}
+
+type ViewerContextData = {
+  currentUser?: {
+    id?: string;
+    workspaceMember?: {
+      id?: string;
+      name?: { firstName?: string | null; lastName?: string | null } | null;
+    } | null;
+  } | null;
+  currentWorkspace?: { displayName?: string | null } | null;
+};
+
+export const fetchViewerContext = async (): Promise<ViewerContext> => {
+  const data = await coreGraphql<ViewerContextData>(
+    `query PropelInboxViewerContext {
+       currentUser {
+         id
+         workspaceMember { id name { firstName lastName } }
+       }
+       currentWorkspace { id displayName }
+     }`,
+    {},
+    '/metadata',
+  );
+  const wm = data?.currentUser?.workspaceMember ?? null;
+  const agentName =
+    [wm?.name?.firstName, wm?.name?.lastName].filter(Boolean).join(' ').trim() || '';
+  return {
+    memberId: wm?.id ?? '',
+    agentName,
+    officeName: (data?.currentWorkspace?.displayName ?? '').trim(),
   };
 };
 

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActionIcon,
   Box,
@@ -6,26 +6,19 @@ import {
   FileButton,
   Group,
   Image,
-  Popover,
   Progress,
-  ScrollArea,
   Stack,
   Text,
   Textarea,
-  TextInput,
-  UnstyledButton,
 } from '@mantine/core';
 import {
   IconAlertTriangle,
-  IconBolt,
   IconClock,
   IconFile,
   IconPaperclip,
-  IconSearch,
   IconSend,
   IconSparkles,
   IconVideo,
-  IconX,
 } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import {
@@ -34,15 +27,23 @@ import {
   type InboxSurface,
   type OutboundMediaKind,
   type QuickReply,
+  type QuickReplyLibrary,
 } from '@/propel/types/inbox';
 import {
   fetchInboxAi,
-  fetchQuickReplies,
+  fetchQuickReplyLibrary,
   interpretSendResult,
   sendInboxReply,
   shouldSendOnKeyDown,
   uploadInboxMedia,
 } from '@/propel/lib/inboxApi';
+import {
+  type CannedMergeValues,
+  filterQuickReplies,
+  parseSlashCommand,
+  resolveMergeTags,
+} from '@/propel/lib/quickReplyCore';
+import { InboxQuickReplyPicker } from '@/propel/components/marketingHero/inbox/InboxQuickReplyPicker';
 
 // The outbound composer: a growing textarea (Enter-to-send, IME-guarded), an AI
 // Suggest/Improve assist, a media attach (real-frontend FileReader upload — no
@@ -51,6 +52,8 @@ export const InboxComposer = ({
   id,
   channel,
   surface,
+  mergeValues,
+  actingMemberId,
   onSent,
   onPending,
   onPendingFailed,
@@ -59,6 +62,11 @@ export const InboxComposer = ({
   id: string;
   channel: InboxChannel;
   surface: InboxSurface;
+  // Contact + agent context for resolving canned-reply merge tags at insert time
+  // ({{firstName}} {{fullName}} {{agentName}} {{officeName}}).
+  mergeValues: CannedMergeValues;
+  // The acting member's id — for the quick-reply manager's "can I edit this?" gate.
+  actingMemberId: string;
   onSent: () => void;
   // onPending pushes a local "sending" bubble and returns its temp id; the optional
   // media arg shows the attachment on the optimistic bubble immediately.
@@ -99,12 +107,18 @@ export const InboxComposer = ({
   const uploadingRef = useRef(false);
   const resetFileRef = useRef<(() => void) | null>(null);
 
-  // ── Quick replies (canned-reply picker) ────────────────────────────────────
+  // ── Quick replies (canned-reply picker, TM#91) ─────────────────────────────
   const [qrOpen, setQrOpen] = useState(false);
-  const [qrItems, setQrItems] = useState<QuickReply[]>([]);
+  const [qrLibrary, setQrLibrary] = useState<QuickReplyLibrary>({
+    items: [],
+    canEditShared: false,
+  });
   const [qrLoaded, setQrLoaded] = useState(false);
   const [qrLoading, setQrLoading] = useState(false);
-  const [qrFilter, setQrFilter] = useState('');
+  // 'free' = opened via the ⚡ button (own search box); 'slash' = the draft is a
+  // bare `/token` and the textarea drives the query.
+  const [qrMode, setQrMode] = useState<'free' | 'slash'>('free');
+  const [qrSlashQuery, setQrSlashQuery] = useState('');
   const qrLoadingRef = useRef(false);
 
   const hasMedia = mediaUrl.trim().length > 0;
@@ -226,15 +240,6 @@ export const InboxComposer = ({
     onSent,
   ]);
 
-  // Enter sends, Shift+Enter inserts a newline; IME-guarded so confirming a CJK/
-  // Hangul candidate with Enter never fires a half-composed message.
-  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (shouldSendOnKeyDown(e)) {
-      e.preventDefault();
-      void send();
-    }
-  };
-
   // Suggest (blank → draft) / Improve (draft → tighten). Both call the same authed
   // route and replace the textarea with the returned text — unless the agent
   // touched the composer meanwhile (epoch changed), in which case the result is
@@ -285,66 +290,124 @@ export const InboxComposer = ({
   );
 
   // ── Quick replies ──────────────────────────────────────────────────────────
-  // Lazy-load the shared library the first time the picker opens (any authed member
-  // may read). Never blocks the composer; a failure yields an empty list + empty
-  // state, never a thrown error.
-  const loadQuickReplies = useCallback(async () => {
+  // Lazy-load the library the first time the picker opens (or on a `/` trigger).
+  // `force` re-pulls after a manage save/delete. Never blocks the composer; a
+  // failure yields an empty library + empty state, never a thrown error.
+  const loadQuickReplies = useCallback(async (force = false) => {
     if (qrLoadingRef.current) return;
+    if (qrLoaded && !force) return;
     qrLoadingRef.current = true;
     setQrLoading(true);
     try {
-      const items = await fetchQuickReplies();
-      setQrItems(items);
+      const lib = await fetchQuickReplyLibrary();
+      setQrLibrary(lib);
       setQrLoaded(true);
     } finally {
       qrLoadingRef.current = false;
       setQrLoading(false);
     }
-  }, []);
+  }, [qrLoaded]);
 
-  const toggleQuickReplies = useCallback(() => {
-    setQrOpen((open) => {
-      const next = !open;
-      if (next && !qrLoaded && !qrLoadingRef.current) void loadQuickReplies();
-      if (!next) setQrFilter('');
-      return next;
-    });
+  const ensureLibrary = useCallback(() => {
+    if (!qrLoaded && !qrLoadingRef.current) void loadQuickReplies();
   }, [qrLoaded, loadQuickReplies]);
 
-  // Append the canned body to whatever's drafted (NEVER destroy typed text), with
-  // smart spacing, then bump the epoch so an in-flight AI result can't clobber it.
-  const pickQuickReply = useCallback((qr: QuickReply) => {
-    const t = (qr.body || '').trim();
-    if (t) {
-      setText((d) =>
-        !d ? t : d.endsWith(' ') || d.endsWith('\n') ? `${d}${t}` : `${d} ${t}`,
-      );
-      composerEpochRef.current += 1;
-      setSendError(null);
-    }
-    setQrOpen(false);
-    setQrFilter('');
-  }, []);
+  // The ⚡ button (and the picker's own close) — always FREE mode.
+  const onPickerOpenedChange = useCallback(
+    (open: boolean) => {
+      if (open) {
+        setQrMode('free');
+        ensureLibrary();
+      } else {
+        setQrMode('free');
+        setQrSlashQuery('');
+      }
+      setQrOpen(open);
+    },
+    [ensureLibrary],
+  );
 
-  // Filter (title + body, case-insensitive) then group by category (blank →
-  // "General") for the picker — ported from the legacy chat-panel.
-  const qrGroups = useMemo<[string, QuickReply[]][]>(() => {
-    const q = qrFilter.trim().toLowerCase();
-    const visible = q
-      ? qrItems.filter(
-          (r) =>
-            r.title.toLowerCase().includes(q) || r.body.toLowerCase().includes(q),
-        )
-      : qrItems;
-    const m = new Map<string, QuickReply[]>();
-    for (const r of visible) {
-      const cat = r.category || 'General';
-      const arr = m.get(cat) ?? [];
-      arr.push(r);
-      m.set(cat, arr);
+  // Insert a chosen reply. Merge tags resolve from the conversation's contact/agent
+  // context; an unfilled/unknown tag stays literal (the server's contract). SLASH
+  // mode REPLACES the `/token` command; FREE mode APPENDS to the draft (never
+  // destroying typed text). Bump the epoch so an in-flight AI result can't clobber.
+  const insertQuickReply = useCallback(
+    (qr: QuickReply) => {
+      const resolved = resolveMergeTags(qr.body || '', mergeValues).trim();
+      if (resolved) {
+        if (qrMode === 'slash') {
+          setText(resolved);
+        } else {
+          setText((d) =>
+            !d
+              ? resolved
+              : d.endsWith(' ') || d.endsWith('\n')
+                ? `${d}${resolved}`
+                : `${d} ${resolved}`,
+          );
+        }
+        composerEpochRef.current += 1;
+        setSendError(null);
+      }
+      setQrOpen(false);
+      setQrMode('free');
+      setQrSlashQuery('');
+    },
+    [mergeValues, qrMode],
+  );
+
+  // Update the draft, then drive the `/` shortcut: a bare `/token` draft opens the
+  // picker in SLASH mode (matching on the shortcut); leaving that shape closes it.
+  const onTextChange = useCallback(
+    (val: string) => {
+      setText(val);
+      composerEpochRef.current += 1;
+      if (sendError) setSendError(null);
+      const token = parseSlashCommand(val);
+      if (token !== null) {
+        setQrMode('slash');
+        setQrSlashQuery(token);
+        setQrOpen(true);
+        ensureLibrary();
+      } else if (qrMode === 'slash') {
+        setQrMode('free');
+        setQrSlashQuery('');
+        setQrOpen(false);
+      }
+    },
+    [sendError, qrMode, ensureLibrary],
+  );
+
+  // Enter sends, Shift+Enter inserts a newline; IME-guarded so confirming a CJK/
+  // Hangul candidate with Enter never fires a half-composed message. While the
+  // picker is open in SLASH mode, Enter INSERTS the top match (never sends the raw
+  // `/command`), and Escape dismisses the picker.
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (qrOpen && qrMode === 'slash') {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setQrOpen(false);
+        setQrMode('free');
+        setQrSlashQuery('');
+        return;
+      }
+      if (
+        e.key === 'Enter' &&
+        !e.shiftKey &&
+        !e.nativeEvent?.isComposing &&
+        e.keyCode !== 229
+      ) {
+        e.preventDefault();
+        const top = filterQuickReplies(qrLibrary.items, qrSlashQuery, 'slash')[0];
+        if (top) insertQuickReply(top);
+        return;
+      }
     }
-    return Array.from(m.entries());
-  }, [qrItems, qrFilter]);
+    if (shouldSendOnKeyDown(e)) {
+      e.preventDefault();
+      void send();
+    }
+  };
 
   const placeholder =
     channel === 'WHATSAPP'
@@ -530,107 +593,19 @@ export const InboxComposer = ({
         ) : null}
 
         <Group gap={10} align="flex-end" wrap="nowrap">
-          {/* Quick replies — a ⚡ Popover with a searchable, category-grouped list
-              of canned replies; clicking one appends its body to the draft. */}
-          <Popover
+          {/* Quick replies — the ⚡ picker (search + manage) and the `/`-shortcut
+              trigger; a chosen reply resolves merge tags and inserts into the draft. */}
+          <InboxQuickReplyPicker
             opened={qrOpen}
-            onChange={setQrOpen}
-            position="top-start"
-            offset={8}
-            shadow="md"
-            width={320}
-            withinPortal
-          >
-            <Popover.Target>
-              <ActionIcon
-                variant={qrOpen ? 'light' : 'default'}
-                color={qrOpen ? 'red' : undefined}
-                size={40}
-                radius="md"
-                onClick={toggleQuickReplies}
-                aria-label="Quick replies"
-                aria-expanded={qrOpen}
-                title="Quick replies"
-              >
-                <IconBolt size={19} />
-              </ActionIcon>
-            </Popover.Target>
-            <Popover.Dropdown p={0}>
-              <Box p={8} style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
-                <TextInput
-                  value={qrFilter}
-                  onChange={(e) => setQrFilter(e.currentTarget.value)}
-                  placeholder="Search quick replies…"
-                  aria-label="Search quick replies"
-                  size="xs"
-                  leftSection={<IconSearch size={14} />}
-                  autoFocus
-                />
-              </Box>
-              <ScrollArea.Autosize mah={300} type="auto">
-                <Box p={6}>
-                  {qrLoading && qrItems.length === 0 ? (
-                    <Text size="sm" c="dimmed" ta="center" py="md">
-                      Loading…
-                    </Text>
-                  ) : qrGroups.length === 0 ? (
-                    <Text size="sm" c="dimmed" ta="center" py="md" px="xs">
-                      {qrLoaded
-                        ? qrItems.length === 0
-                          ? 'No quick replies yet — a manager can add them in the Quick Replies list.'
-                          : 'No matches.'
-                        : 'Loading…'}
-                    </Text>
-                  ) : (
-                    qrGroups.map(([cat, items]) => (
-                      <Box key={cat} mb={4}>
-                        <Text
-                          size="xs"
-                          fw={700}
-                          c="dimmed"
-                          tt="uppercase"
-                          px={8}
-                          py={4}
-                          style={{ letterSpacing: 0.4 }}
-                        >
-                          {cat}
-                        </Text>
-                        {items.map((qr) => (
-                          <UnstyledButton
-                            key={qr.id}
-                            onClick={() => pickQuickReply(qr)}
-                            title={qr.body}
-                            style={{
-                              display: 'block',
-                              width: '100%',
-                              textAlign: 'left',
-                              padding: '6px 8px',
-                              borderRadius: 8,
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.background = 'var(--mantine-color-default-hover)';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.background = 'transparent';
-                            }}
-                          >
-                            <Text size="sm" fw={600} lineClamp={1}>
-                              {qr.title || '(untitled)'}
-                            </Text>
-                            {qr.body ? (
-                              <Text size="xs" c="dimmed" lineClamp={2} mt={1}>
-                                {qr.body}
-                              </Text>
-                            ) : null}
-                          </UnstyledButton>
-                        ))}
-                      </Box>
-                    ))
-                  )}
-                </Box>
-              </ScrollArea.Autosize>
-            </Popover.Dropdown>
-          </Popover>
+            onOpenedChange={onPickerOpenedChange}
+            mode={qrMode}
+            slashQuery={qrSlashQuery}
+            library={qrLibrary}
+            loading={qrLoading}
+            onReload={() => void loadQuickReplies(true)}
+            actingMemberId={actingMemberId}
+            onPick={insertQuickReply}
+          />
 
           {/* Attach — a FileButton opening the OS picker; accepts images, video, and
               the brokerage document set. */}
@@ -657,11 +632,7 @@ export const InboxComposer = ({
 
           <Textarea
             value={text}
-            onChange={(e) => {
-              setText(e.currentTarget.value);
-              composerEpochRef.current += 1;
-              if (sendError) setSendError(null);
-            }}
+            onChange={(e) => onTextChange(e.currentTarget.value)}
             onKeyDown={onKeyDown}
             autosize
             minRows={1}

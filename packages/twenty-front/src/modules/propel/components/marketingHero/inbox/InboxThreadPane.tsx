@@ -9,26 +9,34 @@ import { Anchor, Box, Button, Group, Loader, Text } from '@mantine/core';
 import { useNavigate } from 'react-router-dom';
 import { IconArrowDown, IconReload, IconUser } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
+import { friendlyError } from '@/propel/lib/friendlyError';
 import {
   type InboxChannel,
   type InboxMediaKind,
+  type InboxStatusAction,
   type InboxThreadPayload,
   type InboxThreadRow,
   type InboxViewerRole,
 } from '@/propel/types/inbox';
+import { type CannedMergeValues } from '@/propel/lib/quickReplyCore';
 import {
   type PendingMessage,
   isNearBottom,
   latestInboundId,
   reconcilePending,
 } from '@/propel/lib/inboxThread';
-import { fetchInboxThread, saveInboxMedia } from '@/propel/lib/inboxApi';
+import {
+  fetchInboxThread,
+  saveInboxMedia,
+  setInboxStatus,
+} from '@/propel/lib/inboxApi';
 import {
   ChannelBadge,
   SurfaceBadge,
   channelLabel,
   humanizeEnum,
 } from '@/propel/components/marketingHero/inbox/InboxBits';
+import { InboxStatusControl } from '@/propel/components/marketingHero/inbox/InboxStatusControl';
 import {
   type PendingRow,
   MessageBubble,
@@ -47,7 +55,11 @@ export const InboxThreadPane = ({
   reloadToken,
   row,
   viewerRole,
+  actingMemberId,
+  agentName,
+  officeName,
   onActed,
+  onStatusOptimistic,
 }: {
   id: string;
   channel: InboxChannel;
@@ -56,8 +68,21 @@ export const InboxThreadPane = ({
   // + actions read it; null when the row isn't in the current list slice.
   row: InboxThreadRow | null;
   viewerRole: InboxViewerRole;
+  // Acting-viewer identity (from /marketing/inbox + the viewer-context GraphQL) for
+  // canned-reply merge tags + the quick-reply manager's owner gate.
+  actingMemberId: string;
+  agentName: string;
+  officeName: string;
   // Refresh the list after a triage action (assign/create-opp/ping) lands.
   onActed: () => void;
+  // Push an optimistic status/snoozeUntil for this thread up to the list so the row
+  // jumps tabs immediately (reconciled on the next successful list load).
+  onStatusOptimistic: (
+    id: string,
+    channel: InboxChannel,
+    status: string,
+    snoozeUntil: string | null,
+  ) => void;
 }) => {
   const navigate = useNavigate();
   const notify = usePropelToast();
@@ -70,6 +95,7 @@ export const InboxThreadPane = ({
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [savingId, setSavingId] = useState<string | null>(null);
   const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
+  const [statusBusy, setStatusBusy] = useState(false);
 
   const curKey = useRef('');
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -241,6 +267,67 @@ export const InboxThreadPane = ({
     [savingId, channel, notify],
   );
 
+  // ── Status (Done / Snooze / Reopen, TM#92) ──────────────────────────────────
+  // Optimistic: patch the local thread + tell the list to move the row, then fire
+  // the route; on failure revert both and surface a friendly error.
+  const handleStatusAction = useCallback(
+    async (action: InboxStatusAction, snoozeUntil?: string) => {
+      if (statusBusy) return;
+      const before = thread
+        ? { status: thread.status, snoozeUntil: thread.snoozeUntil }
+        : { status: 'OPEN', snoozeUntil: null as string | null };
+      const next =
+        action === 'done'
+          ? { status: 'RESOLVED', snoozeUntil: null as string | null }
+          : action === 'reopen'
+            ? { status: 'OPEN', snoozeUntil: null as string | null }
+            : { status: 'SNOOZED', snoozeUntil: snoozeUntil ?? null };
+
+      setStatusBusy(true);
+      setThread((t) =>
+        t ? { ...t, status: next.status, snoozeUntil: next.snoozeUntil } : t,
+      );
+      onStatusOptimistic(id, channel, next.status, next.snoozeUntil);
+
+      const res = await setInboxStatus({
+        id,
+        channel,
+        action,
+        snoozeUntil: snoozeUntil ?? null,
+      }).catch(() => null);
+      setStatusBusy(false);
+
+      if (!res || res.ok !== true) {
+        setThread((t) =>
+          t ? { ...t, status: before.status, snoozeUntil: before.snoozeUntil } : t,
+        );
+        onStatusOptimistic(id, channel, before.status, before.snoozeUntil);
+        notify(friendlyError(res?.operatorAction || res?.error, 'save'), 'error');
+        return;
+      }
+      notify(
+        action === 'done'
+          ? 'Marked as done.'
+          : action === 'snooze'
+            ? 'Snoozed.'
+            : 'Reopened.',
+        'success',
+      );
+      onActed();
+    },
+    [statusBusy, thread, id, channel, notify, onActed, onStatusOptimistic],
+  );
+
+  // Contact + agent context for the composer's canned-reply merge tags. firstName is
+  // the contact's first token; agentName/officeName come from the acting viewer.
+  const contactFull = (thread?.contact?.name || thread?.contactName || '').trim();
+  const mergeValues: CannedMergeValues = {
+    firstName: contactFull.split(/\s+/)[0] || '',
+    fullName: contactFull,
+    agentName,
+    officeName,
+  };
+
   // Track near-bottom as the reader scrolls.
   const onScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -401,24 +488,33 @@ export const InboxThreadPane = ({
               {channelLabel(thread.channel)} · {humanizeEnum(thread.status)}
             </Text>
           </Box>
-          {thread.personId ? (
-            <Anchor
-              component="button"
-              type="button"
-              onClick={() => navigate(`/object/person/${thread.personId}`)}
-              ml="auto"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 5,
-                fontSize: 12.5,
-                fontWeight: 600,
-                flex: 'none',
-              }}
-            >
-              <IconUser size={14} /> {thread.contactName || 'View contact'}
-            </Anchor>
-          ) : null}
+          <Group gap={10} wrap="nowrap" ml="auto" style={{ flex: 'none' }}>
+            <InboxStatusControl
+              status={thread.status}
+              snoozeUntil={thread.snoozeUntil}
+              busy={statusBusy}
+              onAction={(action, snoozeUntil) =>
+                void handleStatusAction(action, snoozeUntil)
+              }
+            />
+            {thread.personId ? (
+              <Anchor
+                component="button"
+                type="button"
+                onClick={() => navigate(`/object/person/${thread.personId}`)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  flex: 'none',
+                }}
+              >
+                <IconUser size={14} /> {thread.contactName || 'View contact'}
+              </Anchor>
+            ) : null}
+          </Group>
         </Group>
 
         {/* messages region — relative so the "↓ new messages" pill anchors here */}
@@ -491,6 +587,8 @@ export const InboxThreadPane = ({
             id={thread.id}
             channel={thread.channel}
             surface={thread.surface}
+            mergeValues={mergeValues}
+            actingMemberId={actingMemberId}
             onPending={pushPending}
             onPendingFailed={markPendingFailed}
             onPendingSent={markPendingSent}

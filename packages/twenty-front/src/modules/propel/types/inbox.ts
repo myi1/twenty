@@ -39,7 +39,10 @@ export interface InboxThreadRow {
   whenLabel: string; // "14m ago" (Asia/Dubai)
   lastAtMs: number; // sort key (client never re-derives time)
   unreadCount: number;
-  status: string; // NEW | OPEN | WAITING | RESOLVED
+  status: string; // NEW | OPEN | WAITING | SNOOZED | RESOLVED
+  // TM#92 — wake instant while status === SNOOZED (null otherwise). The Open/Snoozed/
+  // Done tab map (inboxStatusCore.tabForStatus) treats an OVERDUE snoozeUntil as Open.
+  snoozeUntil: string | null;
   personId: string | null; // deep-link to the matched Person ('' → unmatched)
   contactName: string; // matched person name ('' if unmatched)
 
@@ -208,7 +211,8 @@ export interface InboxThreadPayload {
   channel: InboxChannel;
   surface: InboxSurface; // COMMENT vs DM — routes the outbound reply (FB/IG)
   title: string;
-  status: string;
+  status: string; // NEW | OPEN | WAITING | SNOOZED | RESOLVED
+  snoozeUntil: string | null; // TM#92 — wake instant while SNOOZED (null otherwise)
   personId: string | null;
   contactName: string;
   contact: InboxContact | null;
@@ -252,21 +256,78 @@ export interface ReplySendEnvelope {
 // content-type so the route picks the right WhatsApp media kind / Meta type.
 export type OutboundMediaKind = 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT';
 
-// ── Quick replies (POST /inbox/quick-replies) ────────────────────────────────
-// The shared canned-reply library for the composer picker. Any authenticated
-// member may read (agents USE them; managers CURATE via the standard record UI).
-// The client groups by `category` (blank → "General") and filters by title+body.
-// Shape lockstepped with quick-replies-list-route.ts.
+// ── Quick replies (POST /inbox/quick-replies) — TM#91 ────────────────────────
+// The canned-reply library for the composer picker. Any authenticated member may
+// read; the list route returns SHARED rows PLUS the caller's OWN personal rows, and
+// a `canEditShared` capability flag (Manager/Admin). The client groups by `category`
+// (blank → "General"), filters by title+body, and matches the `/`-shortcut on
+// `shortcut`. Shape lockstepped with quick-replies-list-route.ts + quick-reply-core.
+export type QuickReplyScope = 'SHARED' | 'PERSONAL';
+export type QuickReplyLanguage = 'EN' | 'AR';
+
 export interface QuickReply {
   id: string;
   title: string;
   body: string;
   category: string;
-  languageCode: 'EN' | 'AR';
+  languageCode: QuickReplyLanguage;
+  scope: QuickReplyScope; // SHARED (manager-curated) vs PERSONAL (own snippet)
+  shortcut: string | null; // slash-shortcut (lowercase alnum + hyphen) or null
+  sortOrder: number | null; // curated ordering; null sorts last then by title
+  ownerMemberId: string | null; // PERSONAL owner (null for SHARED)
 }
 
 export interface QuickRepliesPayload {
   ok?: boolean;
   quickReplies?: QuickReply[];
+  // Manager/Admin — may create/edit/delete SHARED replies. Every member may always
+  // manage their OWN personal replies regardless of this flag.
+  canEditShared?: boolean;
   error?: string;
+}
+
+// The resolved quick-reply library the composer picker consumes.
+export interface QuickReplyLibrary {
+  items: QuickReply[];
+  canEditShared: boolean;
+}
+
+// POST /inbox/quick-replies/{save,delete,seed} envelopes.
+export interface QuickReplySaveResponse {
+  ok?: boolean;
+  id?: string | null;
+  created?: boolean;
+  error?: string;
+  operatorAction?: string;
+}
+
+export interface QuickReplyMutationResponse {
+  ok?: boolean;
+  id?: string;
+  error?: string;
+  operatorAction?: string;
+}
+
+export interface QuickReplySeedResponse {
+  ok?: boolean;
+  created?: string[];
+  skipped?: string[];
+  error?: string;
+  operatorAction?: string;
+}
+
+// ── Inbox status (POST /marketing/inbox-status) — TM#92 ──────────────────────
+// The three hero tabs the status enum folds into.
+export type ConversationStatusTab = 'OPEN' | 'SNOOZED' | 'DONE';
+// The setter-route actions a status button fires.
+export type InboxStatusAction = 'done' | 'reopen' | 'snooze';
+
+export interface InboxStatusResponse {
+  ok?: boolean;
+  id?: string;
+  channel?: InboxChannel;
+  status?: string; // OPEN | RESOLVED | SNOOZED
+  snoozeUntil?: string | null;
+  error?: string;
+  operatorAction?: string;
 }
