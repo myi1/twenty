@@ -3,7 +3,8 @@ import type { OffplanMapPoint, MapBounds } from '../types';
 
 const pt = (over: Partial<OffplanMapPoint> = {}): OffplanMapPoint => ({
   externalId: 1, name: 'P', lat: 25.2, lon: 55.27, districtId: 'd1', districtName: 'Marina',
-  priceFromAed: 500000, unitCount: 10, isLaunch: false, status: 'available', ...over,
+  priceFromAed: 500000, unitCount: 10, isLaunch: false, status: 'available',
+  handover: '2027-10-02', developerName: 'OKSA', developerSlug: 'oksa', ...over,
 });
 const bounds: MapBounds = { west: 55.0, south: 25.0, east: 55.5, north: 25.4 };
 
