@@ -26,7 +26,12 @@ export function useOffplanBrowse() {
     if (minBedrooms != null) params.minBedrooms = minBedrooms;
     if (maxBedrooms != null) params.maxBedrooms = maxBedrooms;
     const res = await callPropelRoute<RouteEnvelope<OffplanSearchResult>>('/offplan/browse', { action: 'search', params });
-    const ids = new Set<number>((res?.ok ? res.data?.units ?? [] : []).map((u) => Number(u.projectId)).filter(Number.isFinite));
+    // On a failed/null response, leave the prior filter state untouched — DON'T wipe the
+    // view. Only a genuine `ok` response (even with zero units) sets the allowlist.
+    if (!res || !res.ok) {
+      return;
+    }
+    const ids = new Set<number>((res.data?.units ?? []).map((u) => Number(u.projectId)).filter(Number.isFinite));
     setFilters((f) => ({ ...f, projectIdAllowlist: ids }));
   }, []);
 

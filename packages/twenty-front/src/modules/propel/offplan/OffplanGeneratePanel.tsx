@@ -32,7 +32,7 @@ export function OffplanGeneratePanel({
         <Box>
           <iframe title="pitch" src={url} style={{ width: '100%', height: 460, border: '1px solid var(--mantine-color-default-border)', borderRadius: 8 }} />
           <Group mt="sm" justify="flex-end">
-            <Anchor href={url} download><Button variant="default">⭳ Download</Button></Anchor>
+            <Anchor href={url} download target="_blank" rel="noopener"><Button variant="default">⭳ Download</Button></Anchor>
             <Button variant="default" onClick={() => navigator.clipboard.writeText(url)}>🔗 Copy link</Button>
             <Button color="red" onClick={onClose}>Done</Button>
           </Group>

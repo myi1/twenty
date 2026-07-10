@@ -15,6 +15,21 @@ const GOLD = '#d4af37';
 const aedShort = (n: number | null): string =>
   n == null ? '—' : n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : `${Math.round(n / 1000)}k`;
 
+// Single source of truth for a project pill's look, shared by the build effect (which
+// creates the markers) and the restyle effect (which only re-applies cssText on
+// hover/select/view changes — no marker teardown). `_p` is unused today but kept in the
+// signature so styling can key off the point later without touching both call sites.
+function pillStyle(
+  _p: OffplanMapPoint,
+  s: { selected: boolean; hovered: boolean; viewed: boolean; favorited: boolean },
+): string {
+  const bg = s.selected ? GOLD : s.viewed ? '#7c8aa3' : '#fff';
+  const fg = s.selected ? '#1a1408' : s.viewed ? '#dfe6f2' : '#0c1830';
+  // Red outline wins for select/hover; otherwise a favorited pin gets a gold ring.
+  const outline = s.selected || s.hovered ? `outline:2px solid ${REMAX_RED};` : s.favorited ? `outline:2px solid ${GOLD};` : '';
+  return `background:${bg};color:${fg};border-radius:14px;padding:3px 8px;font:700 11px system-ui;white-space:nowrap;cursor:pointer;box-shadow:0 4px 11px rgba(0,0,0,.45);${outline}`;
+}
+
 export function OffplanMap({
   visiblePoints, clusters, selectedId, hoveredId, viewedIds,
   favoritedIds, favoritedDistrictIds,
@@ -35,6 +50,9 @@ export function OffplanMap({
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
+  // projectId → its pill element, so hover/select can RESTYLE a marker instead of
+  // rebuilding the whole layer. Repopulated whenever the build effect runs.
+  const pillEls = useRef<Map<number, HTMLDivElement>>(new Map());
   // capture latest callbacks without re-running init
   const cb = useRef({ onViewportChange, onPinClick, onPinHover, onClusterClick });
   cb.current = { onViewportChange, onPinClick, onPinHover, onClusterClick };
@@ -57,11 +75,13 @@ export function OffplanMap({
     return () => { markersRef.current.forEach((m) => m.remove()); markersRef.current = []; map.remove(); mapRef.current = null; };
   }, []);
 
-  // Re-plot markers whenever the derived inputs change.
+  // Re-plot markers only when WHICH markers exist changes (points/clusters/favorites).
+  // Hover/select/view changes do NOT rebuild here — they restyle in the effect below.
   useEffect(() => {
     const map = mapRef.current; if (!map) return;
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
+    pillEls.current.clear();
     const mode = markerModeForZoom(map.getZoom());
 
     if (mode === 'district') {
@@ -85,22 +105,38 @@ export function OffplanMap({
 
     for (const p of visiblePoints) {
       const el = document.createElement('div');
-      const selected = p.externalId === selectedId;
-      const hovered = p.externalId === hoveredId;
-      const viewed = viewedIds.has(p.externalId);
-      const favorited = favoritedIds.has(p.externalId);
-      const bg = selected ? GOLD : viewed ? '#7c8aa3' : '#fff';
-      const fg = selected ? '#1a1408' : viewed ? '#dfe6f2' : '#0c1830';
-      // Red outline wins for select/hover; otherwise a favorited pin gets a gold ring.
-      const outline = selected || hovered ? `outline:2px solid ${REMAX_RED};` : favorited ? `outline:2px solid ${GOLD};` : '';
       el.textContent = `${p.isLaunch ? 'L ' : ''}AED ${aedShort(p.priceFromAed)}`;
-      el.style.cssText = `background:${bg};color:${fg};border-radius:14px;padding:3px 8px;font:700 11px system-ui;white-space:nowrap;cursor:pointer;box-shadow:0 4px 11px rgba(0,0,0,.45);${outline}`;
+      el.style.cssText = pillStyle(p, {
+        selected: p.externalId === selectedId,
+        hovered: p.externalId === hoveredId,
+        viewed: viewedIds.has(p.externalId),
+        favorited: favoritedIds.has(p.externalId),
+      });
       el.addEventListener('click', (e) => { e.stopPropagation(); cb.current.onPinClick(p.externalId); });
       el.addEventListener('mouseenter', () => cb.current.onPinHover(p.externalId));
       el.addEventListener('mouseleave', () => cb.current.onPinHover(null));
+      pillEls.current.set(p.externalId, el);
       markersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([p.lon, p.lat]).addTo(map));
     }
-  }, [visiblePoints, clusters, selectedId, hoveredId, viewedIds, favoritedIds, favoritedDistrictIds]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selectedId/hoveredId/viewedIds are applied by the restyle effect, not here
+  }, [visiblePoints, clusters, favoritedIds, favoritedDistrictIds]);
+
+  // Restyle-only path: when selection/hover/view changes, re-apply cssText to the
+  // affected pills WITHOUT tearing down or recreating any markers.
+  useEffect(() => {
+    if (!mapRef.current) return;
+    for (const p of visiblePoints) {
+      const el = pillEls.current.get(p.externalId);
+      if (!el) continue;
+      el.style.cssText = pillStyle(p, {
+        selected: p.externalId === selectedId,
+        hovered: p.externalId === hoveredId,
+        viewed: viewedIds.has(p.externalId),
+        favorited: favoritedIds.has(p.externalId),
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- visiblePoints/favoritedIds drive the build effect; here we only react to select/hover/view
+  }, [selectedId, hoveredId, viewedIds]);
 
   return <div ref={ref} style={{ width: '100%', height: '100%' }} />;
 }

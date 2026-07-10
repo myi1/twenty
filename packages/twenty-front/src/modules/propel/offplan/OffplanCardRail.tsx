@@ -32,7 +32,7 @@ export function OffplanCardRail({
         <Box p="xs" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {visible.slice(0, WINDOW).map((p) => (
             <Card key={p.externalId} withBorder padding="sm" radius="md"
-              ref={(el) => { if (el) rowRefs.current.set(p.externalId, el); }}
+              ref={(el) => { if (el) rowRefs.current.set(p.externalId, el); else rowRefs.current.delete(p.externalId); }}
               onMouseEnter={() => onHover(p.externalId)} onMouseLeave={() => onHover(null)}
               onClick={() => onOpen(p.externalId)}
               style={{ cursor: 'pointer', outline: hoveredId === p.externalId ? '1px solid var(--mantine-color-red-6)' : undefined }}>
