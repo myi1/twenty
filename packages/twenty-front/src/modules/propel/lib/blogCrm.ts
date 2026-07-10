@@ -1,5 +1,7 @@
+import { getTokenPair } from '@/apollo/utils/getTokenPair';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import { friendlyError } from '@/propel/lib/friendlyError';
+import { REACT_APP_SERVER_BASE_URL } from '~/config';
 
 // Real data layer for the Website hub's Blog tab. All blog-pipeline reads/writes
 // run through three Manager/Admin-gated CRM routes (blog-pipeline worktree,
@@ -22,6 +24,7 @@ import { friendlyError } from '@/propel/lib/friendlyError';
 const QUEUE_ROUTE = '/blog/queue';
 const APPROVE_ROUTE = '/blog/approve';
 const GENERATE_ROUTE = '/blog/generate';
+const REVISE_ROUTE = '/blog/revise';
 
 export type BlogStatus =
   | 'IDEA'
@@ -187,6 +190,16 @@ export interface BlogPipelineLogEntry {
   note: string;
 }
 
+// One turn of the review-side authoring thread (reviewer ↔ agent). The backend
+// (/blog/revise) appends a { role:'reviewer', text } for the instruction and a
+// { role:'agent', text } summary of what it changed; the drawer renders them as a
+// conversation. Tolerant: a backend predating the chat field returns [] → no thread.
+export interface BlogReviseChatEntry {
+  role: 'reviewer' | 'agent';
+  text: string;
+  at: string | null;
+}
+
 // The richer row the drawer renders — the list BlogPost plus the heavy fields the
 // board never loads (body, critic notes, grounding sources, pipeline history).
 export interface BlogPostDetail extends BlogPost {
@@ -196,6 +209,8 @@ export interface BlogPostDetail extends BlogPost {
   criticNotesList: string[];
   /** Flattened grounding sources (title/url) from groundingJson. */
   groundingList: string[];
+  /** Review-side authoring thread (reviewer ↔ agent). Empty on an un-revised post. */
+  reviseChat: BlogReviseChatEntry[];
 }
 
 // Strip <script>/<style>, inline event handlers, and javascript: URIs before the
@@ -288,6 +303,29 @@ const toPipelineLog = (raw: unknown): BlogPipelineLogEntry[] => {
   });
 };
 
+// Coerce the reviseChat blob (array, or JSON string on older projections) into a
+// clean, role-typed thread. Anything malformed → [] (no thread, never a crash).
+const toReviseChat = (raw: unknown): BlogReviseChatEntry[] => {
+  let val = raw;
+  if (typeof val === 'string') {
+    try {
+      val = JSON.parse(val);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(val)) return [];
+  return val
+    .map((item) => {
+      const o = (item ?? {}) as Record<string, unknown>;
+      const role = o.role === 'reviewer' || o.role === 'agent' ? o.role : null;
+      const text = typeof o.text === 'string' ? o.text : '';
+      if (role === null || text === '') return null;
+      return { role, text, at: typeof o.at === 'string' ? o.at : null };
+    })
+    .filter((e): e is BlogReviseChatEntry => e !== null);
+};
+
 const toPostDetail = (raw: unknown): BlogPostDetail => {
   const base = toPost(raw);
   const r = (raw ?? {}) as Record<string, unknown>;
@@ -297,6 +335,7 @@ const toPostDetail = (raw: unknown): BlogPostDetail => {
     pipelineLog: toPipelineLog(r.pipelineLog),
     criticNotesList: toStringList(r.criticNotesJson ?? base.criticNotes),
     groundingList: toStringList(r.groundingJson ?? base.grounding),
+    reviseChat: toReviseChat(r.reviseChat ?? r.reviseChatJson),
   };
 };
 
@@ -365,6 +404,89 @@ export async function generateBlogDraft(input: {
   });
   if (body && body.ok === true && typeof body.id === 'string') {
     return { ok: true, data: { id: body.id } };
+  }
+  return { ok: false, error: failMessage(body) };
+}
+
+// ── inline edit: DRAFT save (title / body / excerpt) ──────────────────────────
+// Persist a reviewer's manual edits straight to the blogPost over the core GraphQL
+// endpoint with the reviewer's OWN session token — the same thin-fetch bridge
+// a2aCrm.ts uses for its one app-object write (updateAgreementDocument). This is a
+// DRAFT save: it ONLY touches title/bodyHtml/excerpt, never `status`, so it can
+// NEVER publish — the maker-checker gate is untouched (publishing still requires the
+// approve route). Returns { ok:false } on any failure (no perms / network) so the
+// drawer surfaces "couldn't save" rather than pretending it saved.
+export interface BlogDraftEdits {
+  title: string;
+  bodyHtml: string;
+  excerpt: string;
+}
+
+export async function saveBlogDraft(
+  id: string,
+  edits: BlogDraftEdits,
+): Promise<CrmResult<{ id: string }>> {
+  const token = getTokenPair()?.accessOrWorkspaceAgnosticToken?.token;
+  if (token === undefined || token === '') {
+    return { ok: false, error: friendlyError('', 'save') };
+  }
+  try {
+    const response = await fetch(`${REACT_APP_SERVER_BASE_URL}/graphql`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        query: `mutation PropelSaveBlogDraft($id: UUID!, $data: BlogPostUpdateInput!) {
+          updateBlogPost(id: $id, data: $data) { id }
+        }`,
+        variables: {
+          id,
+          // status is deliberately absent — a draft save never changes lifecycle.
+          data: {
+            title: edits.title,
+            bodyHtml: edits.bodyHtml,
+            excerpt: edits.excerpt,
+          },
+        },
+      }),
+    });
+    if (!response.ok) {
+      return { ok: false, error: friendlyError(`save failed (${response.status})`, 'save') };
+    }
+    const json = (await response.json()) as {
+      data?: { updateBlogPost?: { id?: string } };
+      errors?: unknown;
+    };
+    const savedId = json?.data?.updateBlogPost?.id;
+    if (typeof savedId === 'string' && savedId) {
+      return { ok: true, data: { id: savedId } };
+    }
+    return { ok: false, error: friendlyError('save returned no record', 'save') };
+  } catch {
+    return { ok: false, error: friendlyError('', 'save') };
+  }
+}
+
+// ── talk to the agent: revise the draft in place ──────────────────────────────
+// The reviewer types a plain-language instruction; the blog-revise route applies it
+// to the current draft (grounded — no fabricated figures), persists the revised
+// title/body/excerpt, and returns a one-line summary of what changed. The post stays
+// NEEDS_APPROVAL (a revision is not a publish). A gated / not-yet-deployed / bad-input
+// case answers with a typed envelope { error } (routed through friendlyError), never a
+// fake success — the caller re-fetches the detail to pick up the revised draft + the
+// appended chat turn.
+export async function reviseBlogPost(
+  postId: string,
+  instruction: string,
+): Promise<CrmResult<{ summary: string }>> {
+  const body = await callPropelRoute<Envelope>(REVISE_ROUTE, { postId, instruction });
+  if (body && body.ok === true) {
+    return {
+      ok: true,
+      data: { summary: typeof body.summary === 'string' ? body.summary : '' },
+    };
   }
   return { ok: false, error: failMessage(body) };
 }

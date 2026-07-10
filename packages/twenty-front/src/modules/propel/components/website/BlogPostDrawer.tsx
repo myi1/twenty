@@ -12,19 +12,26 @@ import {
   ScrollArea,
   Stack,
   Text,
+  Textarea,
+  TextInput,
   Timeline,
   Title,
   Tooltip,
 } from '@mantine/core';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   IconAlertTriangle,
   IconCalendar,
   IconCheck,
+  IconDeviceFloppy,
+  IconEdit,
   IconExternalLink,
   IconLanguage,
+  IconMessage,
   IconRefresh,
   IconRepeat,
+  IconSend,
+  IconSparkles,
   IconTarget,
   IconX,
 } from 'twenty-ui/display';
@@ -37,11 +44,14 @@ import {
   decideBlogPost,
   fetchBlogPost,
   retryBlogPost,
+  reviseBlogPost,
+  saveBlogDraft,
   sanitizeBlogHtml,
   cadenceLabel,
   isRecurring,
   type BlogPost,
   type BlogPostDetail,
+  type BlogReviseChatEntry,
   type BlogStatus,
 } from '@/propel/lib/blogCrm';
 
@@ -108,9 +118,38 @@ export const BlogPostDrawer = ({
   const [detailAvailable, setDetailAvailable] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  // ── review-side authoring state ──────────────────────────────────────────────
+  // Inline edit: seed the draft fields when the reviewer enters edit mode; Save
+  // persists them as a DRAFT (never publishes). Talk-to-agent: an instruction the
+  // reviewer sends to /blog/revise; `pendingInstruction` renders optimistically
+  // while the agent works.
+  const [editing, setEditing] = useState(false);
+  const [draftTitle, setDraftTitle] = useState('');
+  const [draftExcerpt, setDraftExcerpt] = useState('');
+  const [draftBody, setDraftBody] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [instruction, setInstruction] = useState('');
+  const [revising, setRevising] = useState(false);
+  const [pendingInstruction, setPendingInstruction] = useState<string | null>(null);
+
   const id = row?.id ?? null;
 
+  // Re-fetch the full detail after a mutation (save / revise) so the drawer shows
+  // the freshly-persisted draft + the appended chat turn. Silent (no skeleton flash).
+  const reloadDetail = useCallback(async () => {
+    if (id === null) return;
+    const res = await fetchBlogPost(id);
+    if (res.ok) {
+      setDetail(res.data);
+      setDetailAvailable(true);
+    }
+  }, [id]);
+
   useEffect(() => {
+    // Reset authoring state whenever the drawer target changes.
+    setEditing(false);
+    setInstruction('');
+    setPendingInstruction(null);
     if (id === null) {
       setDetail(null);
       setDetailAvailable(false);
@@ -147,6 +186,57 @@ export const BlogPostDrawer = ({
   const criticNotes = detail?.criticNotesList ?? [];
   const grounding = detail?.groundingList ?? [];
   const pipelineLog = detail?.pipelineLog ?? [];
+  const reviseChat: BlogReviseChatEntry[] = detail?.reviseChat ?? [];
+
+  // The review-side authoring layer (inline edit + talk-to-agent) is for a PENDING
+  // draft only — it mirrors the backend /blog/revise gate (needs_approval) and never
+  // touches a published/scheduled post. Requires the full detail (real body) loaded.
+  const canAuthor = post.status === 'NEEDS_APPROVAL' && detailAvailable;
+
+  const startEdit = () => {
+    setDraftTitle(post.title ?? '');
+    setDraftExcerpt(post.excerpt ?? '');
+    setDraftBody(bodyHtml);
+    setEditing(true);
+  };
+
+  const cancelEdit = () => setEditing(false);
+
+  const save = async () => {
+    setSaving(true);
+    const res = await saveBlogDraft(row.id, {
+      title: draftTitle,
+      bodyHtml: draftBody,
+      excerpt: draftExcerpt,
+    });
+    setSaving(false);
+    if (res.ok) {
+      notify('Draft saved', 'success');
+      setEditing(false);
+      await reloadDetail();
+      onChanged();
+    } else {
+      notify(res.error, 'error');
+    }
+  };
+
+  const sendInstruction = async () => {
+    const text = instruction.trim();
+    if (text === '' || revising) return;
+    setRevising(true);
+    setPendingInstruction(text);
+    const res = await reviseBlogPost(row.id, text);
+    setRevising(false);
+    setPendingInstruction(null);
+    if (res.ok) {
+      setInstruction('');
+      notify(res.data.summary || 'The draft was revised.', 'success');
+      await reloadDetail();
+      onChanged();
+    } else {
+      notify(res.error, 'error');
+    }
+  };
 
   const decide = async (action: 'approve' | 'reject') => {
     setBusy(true);
@@ -224,15 +314,28 @@ export const BlogPostDrawer = ({
             {post.title}
           </Title>
         </Box>
-        <Button
-          size="compact-sm"
-          variant="subtle"
-          color="gray"
-          onClick={onClose}
-          leftSection={<IconX size={14} />}
-        >
-          Close
-        </Button>
+        <Group gap="xs" wrap="nowrap">
+          {canAuthor && !editing ? (
+            <Button
+              size="compact-sm"
+              variant="light"
+              color="red"
+              onClick={startEdit}
+              leftSection={<IconEdit size={14} />}
+            >
+              Edit draft
+            </Button>
+          ) : null}
+          <Button
+            size="compact-sm"
+            variant="subtle"
+            color="gray"
+            onClick={onClose}
+            leftSection={<IconX size={14} />}
+          >
+            Close
+          </Button>
+        </Group>
       </Group>
 
       <ScrollArea style={{ flex: 1 }} type="auto">
@@ -351,7 +454,65 @@ export const BlogPostDrawer = ({
             </Stack>
           </Paper>
 
-          {post.excerpt ? (
+          {/* inline edit form (DRAFT save — never publishes) */}
+          {editing ? (
+            <Paper withBorder radius="md" p="md">
+              <Stack gap="sm">
+                <Group gap={6} wrap="nowrap">
+                  <IconEdit size={14} color="var(--mantine-color-red-6)" />
+                  <Text size="xs" c="dimmed" fw={600}>
+                    EDITING DRAFT — saving keeps it pending, it does not publish
+                  </Text>
+                </Group>
+                <TextInput
+                  label="Title"
+                  value={draftTitle}
+                  onChange={(e) => setDraftTitle(e.currentTarget.value)}
+                  disabled={saving}
+                />
+                <Textarea
+                  label="Excerpt"
+                  value={draftExcerpt}
+                  onChange={(e) => setDraftExcerpt(e.currentTarget.value)}
+                  autosize
+                  minRows={2}
+                  maxRows={4}
+                  disabled={saving}
+                />
+                <Textarea
+                  label="Body (HTML)"
+                  value={draftBody}
+                  onChange={(e) => setDraftBody(e.currentTarget.value)}
+                  autosize
+                  minRows={10}
+                  maxRows={24}
+                  disabled={saving}
+                  styles={{ input: { fontFamily: 'var(--font-mono, monospace)', fontSize: 12 } }}
+                />
+                <Group justify="flex-end" gap="xs">
+                  <Button
+                    size="compact-sm"
+                    variant="default"
+                    onClick={cancelEdit}
+                    disabled={saving}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="compact-sm"
+                    color="red"
+                    leftSection={<IconDeviceFloppy size={14} />}
+                    loading={saving}
+                    onClick={() => void save()}
+                  >
+                    Save draft
+                  </Button>
+                </Group>
+              </Stack>
+            </Paper>
+          ) : null}
+
+          {!editing && post.excerpt ? (
             <Box>
               <Text size="xs" c="dimmed" fw={600} mb={4}>
                 EXCERPT
@@ -436,8 +597,8 @@ export const BlogPostDrawer = ({
             </Box>
           ) : null}
 
-          {/* body */}
-          {bodyHtml ? (
+          {/* body (hidden while the inline editor is open) */}
+          {!editing && bodyHtml ? (
             <Box>
               <Text size="xs" c="dimmed" fw={600} mb="xs">
                 BODY
@@ -452,10 +613,111 @@ export const BlogPostDrawer = ({
                 />
               </Paper>
             </Box>
-          ) : detailAvailable ? (
+          ) : !editing && detailAvailable ? (
             <Text size="sm" c="dimmed">
               No body content yet — this post hasn&apos;t been drafted.
             </Text>
+          ) : null}
+
+          {/* talk-to-agent: the review-side revise chat. Shows the conversation and,
+              for a pending draft, an input to send the agent a plain-language change. */}
+          {!editing && (canAuthor || reviseChat.length > 0) ? (
+            <Box>
+              <Group gap={6} mb="xs" wrap="nowrap">
+                <IconSparkles size={13} color="var(--mantine-color-red-6)" />
+                <Text size="xs" c="dimmed" fw={600}>
+                  TALK TO THE AGENT
+                </Text>
+              </Group>
+
+              {reviseChat.length > 0 || pendingInstruction ? (
+                <Stack gap="xs" mb={canAuthor ? 'sm' : 0}>
+                  {reviseChat.map((entry, i) => (
+                    <Group
+                      key={i}
+                      justify={entry.role === 'reviewer' ? 'flex-end' : 'flex-start'}
+                      wrap="nowrap"
+                    >
+                      <Paper
+                        withBorder
+                        radius="md"
+                        px="sm"
+                        py={6}
+                        maw="82%"
+                        bg={
+                          entry.role === 'reviewer'
+                            ? 'var(--mantine-color-red-light)'
+                            : 'var(--mantine-color-default)'
+                        }
+                      >
+                        <Group gap={5} mb={2} wrap="nowrap">
+                          {entry.role === 'agent' ? (
+                            <IconSparkles size={11} color="var(--mantine-color-red-6)" />
+                          ) : (
+                            <IconMessage size={11} />
+                          )}
+                          <Text size="9px" c="dimmed" fw={700} tt="uppercase">
+                            {entry.role === 'reviewer' ? 'You' : 'Agent'}
+                          </Text>
+                        </Group>
+                        <Text size="sm">{entry.text}</Text>
+                      </Paper>
+                    </Group>
+                  ))}
+                  {pendingInstruction ? (
+                    <Group justify="flex-end" wrap="nowrap">
+                      <Paper
+                        withBorder
+                        radius="md"
+                        px="sm"
+                        py={6}
+                        maw="82%"
+                        bg="var(--mantine-color-red-light)"
+                        style={{ opacity: 0.6 }}
+                      >
+                        <Text size="sm">{pendingInstruction}</Text>
+                      </Paper>
+                    </Group>
+                  ) : null}
+                </Stack>
+              ) : null}
+
+              {canAuthor ? (
+                <Group gap="xs" align="flex-end" wrap="nowrap">
+                  <Textarea
+                    style={{ flex: 1 }}
+                    placeholder="e.g. make it punchier · add a section on service charges · less salesy, more analytical"
+                    value={instruction}
+                    onChange={(e) => setInstruction(e.currentTarget.value)}
+                    autosize
+                    minRows={1}
+                    maxRows={4}
+                    disabled={revising}
+                    onKeyDown={(e) => {
+                      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                        e.preventDefault();
+                        void sendInstruction();
+                      }
+                    }}
+                  />
+                  <Button
+                    color="red"
+                    leftSection={<IconSend size={14} />}
+                    loading={revising}
+                    disabled={instruction.trim() === ''}
+                    onClick={() => void sendInstruction()}
+                  >
+                    Send
+                  </Button>
+                </Group>
+              ) : null}
+              {canAuthor ? (
+                <Text size="xs" c="dimmed" mt={4}>
+                  The agent revises the draft in place — figures stay grounded, and it
+                  stays pending for your approval.
+                </Text>
+              ) : null}
+            </Box>
           ) : null}
         </Stack>
       </ScrollArea>
