@@ -17,6 +17,7 @@ const aedShort = (n: number | null): string =>
 
 export function OffplanMap({
   visiblePoints, clusters, selectedId, hoveredId, viewedIds,
+  favoritedIds, favoritedDistrictIds,
   onViewportChange, onPinClick, onPinHover, onClusterClick,
 }: {
   visiblePoints: OffplanMapPoint[];
@@ -24,6 +25,8 @@ export function OffplanMap({
   selectedId: number | null;
   hoveredId: number | null;
   viewedIds: Set<number>;
+  favoritedIds: Set<number>;
+  favoritedDistrictIds?: Set<string>;
   onViewportChange: (bounds: MapBounds, zoom: number) => void;
   onPinClick: (projectId: number) => void;
   onPinHover: (projectId: number | null) => void;
@@ -66,7 +69,8 @@ export function OffplanMap({
         const el = document.createElement('div');
         el.className = 'op-clus';
         el.textContent = `${c.districtName} · ${c.count}`;
-        el.style.cssText = `background:rgba(9,18,34,.88);border:1.5px solid ${GOLD};color:#fff;border-radius:20px;padding:5px 10px;font:600 12px system-ui;white-space:nowrap;cursor:pointer;box-shadow:0 5px 14px rgba(0,0,0,.4)`;
+        const favDistrict = favoritedDistrictIds?.has(c.districtId) ?? false;
+        el.style.cssText = `background:rgba(9,18,34,.88);border:${favDistrict ? '2px' : '1.5px'} solid ${GOLD};color:#fff;border-radius:20px;padding:5px 10px;font:600 12px system-ui;white-space:nowrap;cursor:pointer;box-shadow:${favDistrict ? `0 0 0 3px rgba(212,175,55,.55),` : ''}0 5px 14px rgba(0,0,0,.4)`;
         // Zoom-to-cluster: clicking a district bubble flies the map in (which flips to
         // project price-pills once past DISTRICT_ZOOM_MAX). Works without any page wiring.
         el.addEventListener('click', () => {
@@ -84,16 +88,19 @@ export function OffplanMap({
       const selected = p.externalId === selectedId;
       const hovered = p.externalId === hoveredId;
       const viewed = viewedIds.has(p.externalId);
+      const favorited = favoritedIds.has(p.externalId);
       const bg = selected ? GOLD : viewed ? '#7c8aa3' : '#fff';
       const fg = selected ? '#1a1408' : viewed ? '#dfe6f2' : '#0c1830';
+      // Red outline wins for select/hover; otherwise a favorited pin gets a gold ring.
+      const outline = selected || hovered ? `outline:2px solid ${REMAX_RED};` : favorited ? `outline:2px solid ${GOLD};` : '';
       el.textContent = `${p.isLaunch ? 'L ' : ''}AED ${aedShort(p.priceFromAed)}`;
-      el.style.cssText = `background:${bg};color:${fg};border-radius:14px;padding:3px 8px;font:700 11px system-ui;white-space:nowrap;cursor:pointer;box-shadow:0 4px 11px rgba(0,0,0,.45);${selected || hovered ? 'outline:2px solid ' + REMAX_RED + ';' : ''}`;
+      el.style.cssText = `background:${bg};color:${fg};border-radius:14px;padding:3px 8px;font:700 11px system-ui;white-space:nowrap;cursor:pointer;box-shadow:0 4px 11px rgba(0,0,0,.45);${outline}`;
       el.addEventListener('click', (e) => { e.stopPropagation(); cb.current.onPinClick(p.externalId); });
       el.addEventListener('mouseenter', () => cb.current.onPinHover(p.externalId));
       el.addEventListener('mouseleave', () => cb.current.onPinHover(null));
       markersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat([p.lon, p.lat]).addTo(map));
     }
-  }, [visiblePoints, clusters, selectedId, hoveredId, viewedIds]);
+  }, [visiblePoints, clusters, selectedId, hoveredId, viewedIds, favoritedIds, favoritedDistrictIds]);
 
   return <div ref={ref} style={{ width: '100%', height: '100%' }} />;
 }
