@@ -1,6 +1,37 @@
-import { Box, Button, Group, Stack } from '@mantine/core';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { IconPlus, IconSparkles } from 'twenty-ui/display';
+import {
+  Badge,
+  Box,
+  Button,
+  Group,
+  Paper,
+  SegmentedControl,
+  Stack,
+  Text,
+} from '@mantine/core';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  IconCalendar,
+  IconClock,
+  IconLayoutKanban,
+  IconPlus,
+  IconRefresh,
+  IconSparkles,
+} from 'twenty-ui/display';
+import {
+  clickableCard,
+  InvitingEmpty,
+  KanbanBoard,
+  KanbanColumn,
+  Seal,
+  statusSeal,
+  stop,
+  SurfaceIntro,
+} from '@/propel/components/desk';
+import {
+  ALL_STATUSES,
+  CHANNEL_META,
+  STATUS_META,
+} from '@/propel/lib/socialCalendarConfig';
 import { PlanReviewPanel } from '@/propel/components/marketingHero/PlanReviewPanel';
 import { SocialCampaignPanel } from '@/propel/components/marketingHero/SocialCampaignPanel';
 import { CalendarFilters } from '@/propel/components/calendar/CalendarFilters';
@@ -44,6 +75,145 @@ const slotToScheduleLocal = (slotStart: Date): string => {
   return isoToLocalInput(d.toISOString());
 };
 
+const formatWhenTime = (iso: string | null): string => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+};
+
+// The channel chips on a card head — one small badge per selected network, in that
+// platform's brand color, mirroring the calendar pills' channel language.
+const networkPills = (networks: SocialPost['networks']): ReactNode => {
+  const nets = (networks ?? []).filter((n) => CHANNEL_META[n] !== undefined);
+  if (nets.length === 0) return null;
+  return (
+    <Group gap={4} wrap="nowrap" ml="auto">
+      {nets.map((n) => {
+        const meta = CHANNEL_META[n];
+        return (
+          <Badge
+            key={n}
+            size="xs"
+            variant="light"
+            leftSection={<meta.Icon size={11} color={meta.color} />}
+            styles={{ root: { color: meta.color }, label: { textTransform: 'none' } }}
+          >
+            {meta.label}
+          </Badge>
+        );
+      })}
+    </Group>
+  );
+};
+
+// One social-post card — the newsroom card grammar (Seal + stage label + channel
+// chips, then the body preview, then the scheduled line). Whole card opens the
+// existing PostDetailDrawer (all per-post actions live there); a FAILED post also
+// gets an inline Retry so a snag is never a dead end, matching the Blog board.
+const SocialPostCard = ({
+  post,
+  onOpen,
+  onRetry,
+  retrying,
+}: {
+  post: SocialPost;
+  onOpen: () => void;
+  onRetry: () => void;
+  retrying: boolean;
+}) => {
+  const meta = STATUS_META[post.status];
+  const preview = (post.body ?? '').trim() || (post.name ?? '').trim();
+  return (
+    <Paper withBorder radius="md" p="md" {...clickableCard(onOpen)}>
+      <Stack gap="xs">
+        <Group gap={8} wrap="nowrap" align="center">
+          <Seal kind={statusSeal(post.status)} />
+          <Text
+            size="xs"
+            c="dimmed"
+            fw={600}
+            tt="uppercase"
+            style={{ letterSpacing: '0.04em' }}
+          >
+            {meta?.label ?? post.status}
+          </Text>
+          {networkPills(post.networks)}
+        </Group>
+
+        {preview ? (
+          <Text size="sm" fw={600} lineClamp={3}>
+            {preview}
+          </Text>
+        ) : (
+          <Text size="sm" c="dimmed" fs="italic">
+            Untitled post
+          </Text>
+        )}
+
+        {post.scheduledAt ? (
+          <Group gap={6} wrap="nowrap">
+            <IconClock size={13} style={{ color: 'var(--mantine-color-dimmed)' }} />
+            <Text size="xs" c="dimmed">
+              {formatWhenTime(post.scheduledAt)}
+            </Text>
+          </Group>
+        ) : null}
+
+        {post.status === 'FAILED' ? (
+          <Group justify="flex-end" mt={2}>
+            <Button
+              size="compact-xs"
+              variant="light"
+              color="red"
+              leftSection={<IconRefresh size={12} />}
+              loading={retrying}
+              onClick={(e) => {
+                stop(e);
+                onRetry();
+              }}
+            >
+              Retry
+            </Button>
+          </Group>
+        ) : null}
+      </Stack>
+    </Paper>
+  );
+};
+
+// Board lane copy per status — mirrors the Blog newsroom's inviting empties.
+const STATUS_EMPTY: Record<
+  SocialPost['status'],
+  { title: string; message: string }
+> = {
+  DRAFT: {
+    title: 'No drafts',
+    message: 'Compose a post or generate a campaign and drafts land here.',
+  },
+  SCHEDULED: {
+    title: 'Nothing scheduled',
+    message: 'Approved posts wait here for their publish time.',
+  },
+  PUBLISHING: {
+    title: 'Nothing publishing',
+    message: 'Posts appear here while the publish run pushes them live.',
+  },
+  POSTED: {
+    title: 'Nothing posted yet',
+    message: 'Published posts settle here with their engagement.',
+  },
+  FAILED: {
+    title: 'No failures',
+    message: 'A post that couldn’t publish shows here so you can retry it.',
+  },
+};
+
 // Social tab body of the unified Marketing hero. This is the former
 // SocialCalendarPage content (the native Month/Week/List calendar + composer +
 // detail drawer + drag-reschedule) extracted into a tab component. It owns its
@@ -62,6 +232,7 @@ export const SocialCalendarTab = () => {
   const {
     accounts,
     events,
+    posts,
     listings,
     connectUrl,
     connectedNetworks,
@@ -72,6 +243,10 @@ export const SocialCalendarTab = () => {
     reload,
   } = useSocialCalendarData();
 
+  // Board vs Calendar — the board is the default bench view (status columns, like
+  // the Blog newsroom); the calendar stays one click away so nothing regresses.
+  const [layout, setLayout] = useState<'board' | 'calendar'>('board');
+  const [retryingId, setRetryingId] = useState<string | null>(null);
   const [view, setView] = useState<SocialCalendarView>('month');
   const [date, setDate] = useState<Date>(() => new Date());
   const [filters, setFilters] = useState<SocialCalendarFilters>({
@@ -149,6 +324,34 @@ export const SocialCalendarTab = () => {
 
   const hasChannels = accounts.length > 0;
   const hasAnyPosts = events.length > 0;
+
+  // Bucket every post (incl. unscheduled DRAFTs the calendar can't place) into its
+  // status lane for the board.
+  const postsByStatus = useMemo(() => {
+    const lanes: Record<SocialPost['status'], SocialPost[]> = {
+      DRAFT: [],
+      SCHEDULED: [],
+      PUBLISHING: [],
+      POSTED: [],
+      FAILED: [],
+    };
+    for (const p of posts) {
+      if (lanes[p.status] !== undefined) lanes[p.status].push(p);
+    }
+    return lanes;
+  }, [posts]);
+
+  // Retry from a board card — reuses the same lifecycle action the drawer uses,
+  // tracking the in-flight id so only that card's button spins.
+  const handleBoardRetry = useCallback(
+    (post: SocialPost) => {
+      setRetryingId(post.id);
+      void handleRetry(post).finally(() => setRetryingId(null));
+    },
+    // handleRetry is a stable useCallback defined below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   const handleSelectEvent = (event: SocialCalendarEvent) => {
     setSelectedPost(event.post);
@@ -264,6 +467,42 @@ export const SocialCalendarTab = () => {
     setComposer({ kind: 'duplicate', source: post });
   }, []);
 
+  // The board — status columns over the SAME posts the calendar plots, so a DRAFT
+  // with no date (invisible to the calendar) still shows. Card click opens the
+  // existing PostDetailDrawer (all per-post actions); FAILED gets inline Retry.
+  const renderBoard = () => (
+    <KanbanBoard cols={{ base: 1, sm: 2, lg: 5 }}>
+      {ALL_STATUSES.map((status) => {
+        const lanePosts = postsByStatus[status];
+        const meta = STATUS_META[status];
+        const empty = STATUS_EMPTY[status];
+        return (
+          <KanbanColumn
+            key={status}
+            title={meta.label}
+            count={lanePosts.length}
+            icon={
+              <meta.Icon size={15} style={{ color: 'var(--mantine-color-dimmed)' }} />
+            }
+            empty={
+              <InvitingEmpty compact title={empty.title} message={empty.message} />
+            }
+          >
+            {lanePosts.map((post) => (
+              <SocialPostCard
+                key={post.id}
+                post={post}
+                onOpen={() => setSelectedPost(post)}
+                onRetry={() => handleBoardRetry(post)}
+                retrying={retryingId === post.id}
+              />
+            ))}
+          </KanbanColumn>
+        );
+      })}
+    </KanbanBoard>
+  );
+
   const renderBody = () => {
     if (isLoading && payload === null) {
       return <CalendarLoading />;
@@ -273,6 +512,9 @@ export const SocialCalendarTab = () => {
     }
     if (loaded && !hasChannels) {
       return <CalendarEmptyNoChannels connectUrl={payload?.connectUrl} />;
+    }
+    if (layout === 'board') {
+      return renderBoard();
     }
     return (
       <Stack gap="md" style={{ flex: 1, minHeight: 0 }}>
@@ -306,26 +548,58 @@ export const SocialCalendarTab = () => {
           flex: 1,
         }}
       >
-        <Group gap="sm" wrap="nowrap" justify="flex-end" mb="md">
-          <Button
-            size="xs"
-            variant="light"
-            color="grape"
-            leftSection={<IconSparkles size={14} />}
-            onClick={() => setCampaignOpen(true)}
-          >
-            Create campaign
-          </Button>
-          <Button
-            size="xs"
-            color="red"
-            leftSection={<IconPlus size={14} />}
-            onClick={openCompose}
-            disabled={!hasChannels}
-          >
-            Compose
-          </Button>
-        </Group>
+        <SurfaceIntro
+          eyebrow="The social desk"
+          title="Every post, benched by stage — draft to posted, at a glance."
+          icon={<IconSparkles size={20} />}
+          actions={
+            <>
+              <SegmentedControl
+                size="xs"
+                value={layout}
+                onChange={(v) => setLayout(v as 'board' | 'calendar')}
+                data={[
+                  {
+                    value: 'board',
+                    label: (
+                      <Group gap={6} wrap="nowrap">
+                        <IconLayoutKanban size={14} />
+                        <Text size="xs">Board</Text>
+                      </Group>
+                    ),
+                  },
+                  {
+                    value: 'calendar',
+                    label: (
+                      <Group gap={6} wrap="nowrap">
+                        <IconCalendar size={14} />
+                        <Text size="xs">Calendar</Text>
+                      </Group>
+                    ),
+                  },
+                ]}
+              />
+              <Button
+                size="xs"
+                variant="light"
+                color="grape"
+                leftSection={<IconSparkles size={14} />}
+                onClick={() => setCampaignOpen(true)}
+              >
+                Create campaign
+              </Button>
+              <Button
+                size="xs"
+                color="red"
+                leftSection={<IconPlus size={14} />}
+                onClick={openCompose}
+                disabled={!hasChannels}
+              >
+                Compose
+              </Button>
+            </>
+          }
+        />
         {renderBody()}
       </Box>
 

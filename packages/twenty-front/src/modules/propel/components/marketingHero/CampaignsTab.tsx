@@ -5,8 +5,8 @@ import {
   Center,
   Group,
   Loader,
+  Paper,
   Stack,
-  Table,
   Text,
   Title,
 } from '@mantine/core';
@@ -14,14 +14,31 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppPath } from 'twenty-shared/types';
 import {
+  IconCalendar,
+  IconCheck,
+  IconClock,
   IconMail,
   IconMessage,
   IconPencil,
   IconPlayerPause,
   IconPlayerPlay,
   IconPlus,
+  IconSend,
+  type IconComponent,
 } from 'twenty-ui/display';
-import { AttributionLink, PerfStrip, type PerfItem } from '@/propel/components/desk';
+import {
+  AttributionLink,
+  clickableCard,
+  InvitingEmpty,
+  KanbanBoard,
+  KanbanColumn,
+  PerfStrip,
+  Seal,
+  statusSeal,
+  stop,
+  SurfaceIntro,
+  type PerfItem,
+} from '@/propel/components/desk';
 import { CampaignDetail } from '@/propel/components/marketingHero/CampaignDetail';
 import { CampaignReviewPanel } from '@/propel/components/marketingHero/CampaignReviewPanel';
 import { CampaignSpinePanel } from '@/propel/components/marketingHero/CampaignSpinePanel';
@@ -33,8 +50,6 @@ import {
   type ChannelKey,
   type UnifiedRow,
   buildCampaignRows,
-  seqStatusTone,
-  statusTone,
   titleCase,
 } from '@/propel/lib/campaignRows';
 import { runMarketingRoute } from '@/propel/lib/marketingHubActions';
@@ -47,13 +62,192 @@ const ChannelGlyph = ({ channel }: { channel: ChannelKey }) =>
     <IconMail size={16} color="var(--mantine-color-blue-6)" />
   );
 
-const FILTERS: { id: CampaignFilter; label: string }[] = [
-  { id: 'all', label: 'Recent' },
-  { id: 'draft', label: 'Drafts' },
-  { id: 'scheduled', label: 'Scheduled' },
-  { id: 'sending', label: 'Sending' },
-  { id: 'sent', label: 'Sent' },
+// The board lanes — the campaign lifecycle as columns, keyed on the SAME
+// UnifiedRow.status the old filter chips used (draft → scheduled → sending → sent).
+// These four are the reachable states in the hub payload; the server's finer enum
+// (SEND_REQUESTED / MATERIALIZING fold into "sending"; FAILED / CANCELLED surface
+// in the drill-in) has no separate bucket here. Approval lives on the Spine side —
+// the Proposed queue + review panel above the board — so there's no maker-checker
+// column on the send list. Mirrors the Blog newsroom's column grammar.
+const CAMPAIGN_LANES: {
+  id: Exclude<CampaignFilter, 'all'>;
+  title: string;
+  Icon: IconComponent;
+  emptyTitle: string;
+  emptyMessage: string;
+}[] = [
+  {
+    id: 'draft',
+    title: 'Draft',
+    Icon: IconPencil,
+    emptyTitle: 'No drafts',
+    emptyMessage: 'Start a campaign and it waits here until you send or schedule it.',
+  },
+  {
+    id: 'scheduled',
+    title: 'Scheduled',
+    Icon: IconCalendar,
+    emptyTitle: 'Nothing scheduled',
+    emptyMessage: 'Campaigns queued for a future send land here.',
+  },
+  {
+    id: 'sending',
+    title: 'Sending',
+    Icon: IconSend,
+    emptyTitle: 'Nothing sending',
+    emptyMessage: 'Live sends show here while they work through the audience.',
+  },
+  {
+    id: 'sent',
+    title: 'Sent',
+    Icon: IconCheck,
+    emptyTitle: 'No sends yet',
+    emptyMessage: 'Completed campaigns settle here with their open / click / reply rates.',
+  },
 ];
+
+const perfItemsFor = (r: UnifiedRow): PerfItem[] => {
+  const seq = r.seq;
+  if (r.kind === 'sequence' && seq) {
+    return [
+      { label: 'Enrolled', value: seq.enrolledCount, kind: 'count' },
+      { label: 'Active', value: seq.activeCount, kind: 'count' },
+    ];
+  }
+  if (r.status === 'sent') {
+    return [
+      { label: 'Open', value: r.openRate ?? null, kind: 'pct' },
+      { label: 'Click', value: r.clickRate ?? null, kind: 'pct' },
+      { label: 'Reply', value: r.replies ?? null, kind: 'count' },
+    ];
+  }
+  if (r.status === 'sending' && typeof r.sentCount === 'number') {
+    return [{ label: 'Sent', value: r.sentCount, kind: 'count' }];
+  }
+  return [];
+};
+
+// One campaign/sequence card — the newsroom card grammar (Seal + stage label +
+// title, then audience / perf / when, then the inline lifecycle action). Whole card
+// opens the row (draft → builder w/ the AI copy+layout editor, sequence → editor,
+// live/sent → CampaignDetail); inner Pause/Activate withhold that click via stop().
+const CampaignCard = ({
+  r,
+  onOpen,
+  onDrill,
+  seqBusy,
+  onSeqAction,
+}: {
+  r: UnifiedRow;
+  onOpen: () => void;
+  onDrill: (id: string) => void;
+  seqBusy: string | null;
+  onSeqAction: (id: string, action: 'activate' | 'pause') => void;
+}) => {
+  const seq = r.seq;
+  const perfItems = perfItemsFor(r);
+  const isDraftEditable = r.kind === 'campaign' && r.status === 'draft';
+  const stageLabel =
+    r.kind === 'sequence' ? titleCase(seq?.status ?? '') : r.statusLabel;
+  return (
+    <Paper withBorder radius="md" p="md" {...clickableCard(onOpen)}>
+      <Stack gap="xs">
+        <Group gap={8} wrap="nowrap" align="center">
+          <Seal kind={statusSeal(r.kind === 'sequence' ? (seq?.status ?? '') : r.status)} />
+          <ChannelGlyph channel={r.channel} />
+          <Text
+            size="xs"
+            c="dimmed"
+            fw={600}
+            tt="uppercase"
+            style={{ letterSpacing: '0.04em' }}
+          >
+            {stageLabel}
+          </Text>
+          {r.kind === 'sequence' ? (
+            <Badge size="xs" variant="light" color="gray" ml="auto">
+              Sequence
+            </Badge>
+          ) : null}
+        </Group>
+
+        <Text size="sm" fw={600} lineClamp={2}>
+          {r.name}
+        </Text>
+
+        {r.audience ? (
+          <Text size="xs" c="dimmed" lineClamp={1}>
+            {r.audience}
+          </Text>
+        ) : null}
+
+        {perfItems.length > 0 ? (
+          <PerfStrip items={perfItems} />
+        ) : r.perf ? (
+          <Text size="xs" c="dimmed" ff="monospace">
+            {r.perf}
+          </Text>
+        ) : null}
+
+        {r.kind === 'campaign' ? (
+          <AttributionLink
+            attribution={{
+              leads: r.leads ?? null,
+              deals: r.attributedDealCount ?? null,
+              revenue: r.attributedRevenue ?? null,
+            }}
+            onDrill={r.status === 'draft' ? undefined : () => onDrill(r.id)}
+          />
+        ) : null}
+
+        <Group justify="space-between" gap="xs" wrap="nowrap" align="center" mt={4}>
+          <Group gap={6} wrap="nowrap" style={{ minWidth: 0 }}>
+            <IconClock size={13} style={{ color: 'var(--mantine-color-dimmed)', flexShrink: 0 }} />
+            <Text size="xs" c="dimmed" ff="monospace" truncate>
+              {r.when || '—'}
+            </Text>
+          </Group>
+          {r.kind === 'sequence' && seq?.status === 'RUNNING' ? (
+            <Button
+              size="compact-xs"
+              variant="default"
+              leftSection={<IconPlayerPause size={13} />}
+              loading={seqBusy === r.id}
+              onClick={(e) => {
+                stop(e);
+                onSeqAction(r.id, 'pause');
+              }}
+            >
+              Pause
+            </Button>
+          ) : r.kind === 'sequence' &&
+            (seq?.status === 'DRAFT' || seq?.status === 'PAUSED') ? (
+            <Button
+              size="compact-xs"
+              variant="light"
+              color="red"
+              leftSection={<IconPlayerPlay size={13} />}
+              loading={seqBusy === r.id}
+              onClick={(e) => {
+                stop(e);
+                onSeqAction(r.id, 'activate');
+              }}
+            >
+              Activate
+            </Button>
+          ) : isDraftEditable ? (
+            <Group gap={4} c="blue" wrap="nowrap">
+              <IconPencil size={13} />
+              <Text size="xs" fw={600}>
+                Edit
+              </Text>
+            </Group>
+          ) : null}
+        </Group>
+      </Stack>
+    </Paper>
+  );
+};
 
 // Campaigns tab of the unified Marketing hero — the LIST, ported from the legacy
 // Marketing Cloud CampaignsView (marketing-cloud-campaigns.tsx) into a Mantine
@@ -81,7 +275,6 @@ export const CampaignsTab = ({
 }) => {
   const navigate = useNavigate();
   const notify = usePropelToast();
-  const [filter, setFilter] = useState<CampaignFilter>('all');
   const [seqBusy, setSeqBusy] = useState<string | null>(null);
   // When set, the tab swaps the list for the full CampaignDetail drill-in.
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -100,18 +293,20 @@ export const CampaignsTab = ({
     () => (payload ? buildCampaignRows(payload) : []),
     [payload],
   );
-  const counts = useMemo(() => {
-    const c: Record<CampaignFilter, number> = {
-      all: rows.length,
-      draft: 0,
-      scheduled: 0,
-      sending: 0,
-      sent: 0,
+  // Bucket every campaign/sequence row into its lifecycle lane for the board.
+  const byLane = useMemo(() => {
+    const lanes: Record<Exclude<CampaignFilter, 'all'>, UnifiedRow[]> = {
+      draft: [],
+      scheduled: [],
+      sending: [],
+      sent: [],
     };
-    for (const r of rows) c[r.status] += 1;
-    return c;
+    // r.status is a UnifiedRow lane ('all' is only the filter sentinel, never a row).
+    for (const r of rows) {
+      if (r.status !== 'all') lanes[r.status].push(r);
+    }
+    return lanes;
   }, [rows]);
-  const shown = filter === 'all' ? rows : rows.filter((r) => r.status === filter);
 
   const runSeqAction = async (id: string, action: 'activate' | 'pause') => {
     if (seqBusy !== null) return;
@@ -171,13 +366,21 @@ export const CampaignsTab = ({
 
   return (
     <Box p="md">
-      <Stack gap={2} mb="sm">
-        <Title order={4}>Campaigns</Title>
-        <Text size="sm" c="dimmed">
-          Recent activity across every status — drafts, scheduled, sending, sent,
-          and sequences.
-        </Text>
-      </Stack>
+      <SurfaceIntro
+        eyebrow="The campaign desk"
+        title="Every send, benched by stage — draft to delivered, at a glance."
+        icon={<IconSend size={20} />}
+        actions={
+          <Button
+            color="red"
+            size="compact-sm"
+            leftSection={<IconPlus size={14} />}
+            onClick={newCampaign}
+          >
+            New campaign
+          </Button>
+        }
+      />
 
       {/* V3 — whole campaigns the landing-scout cron proposed, awaiting review */}
       <ProposedCampaignsQueue
@@ -200,33 +403,6 @@ export const CampaignsTab = ({
         onRegenerated={(id, failed) => setSpineReview({ id, failed })}
       />
 
-      <Group justify="space-between" align="center" mb="md" wrap="wrap">
-        <Group gap="xs" wrap="wrap">
-          {FILTERS.map((f) => (
-            <Button
-              key={f.id}
-              size="compact-sm"
-              variant={filter === f.id ? 'filled' : 'default'}
-              color={filter === f.id ? 'red' : undefined}
-              onClick={() => setFilter(f.id)}
-            >
-              {f.label}
-              <Text component="span" size="xs" ml={6} style={{ opacity: 0.7 }}>
-                {counts[f.id]}
-              </Text>
-            </Button>
-          ))}
-        </Group>
-        <Button
-          color="red"
-          size="compact-sm"
-          leftSection={<IconPlus size={14} />}
-          onClick={newCampaign}
-        >
-          New campaign
-        </Button>
-      </Group>
-
       {rows.length === 0 ? (
         <Center mih={220}>
           <Stack align="center" gap={6} maw={360}>
@@ -245,161 +421,40 @@ export const CampaignsTab = ({
             </Button>
           </Stack>
         </Center>
-      ) : shown.length === 0 ? (
-        <Text size="sm" c="dimmed" py="lg">
-          No campaigns match this filter.
-        </Text>
       ) : (
-        <Table highlightOnHover verticalSpacing="sm" striped>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Name</Table.Th>
-              <Table.Th>Audience</Table.Th>
-              <Table.Th ta="right">Performance</Table.Th>
-              <Table.Th>When</Table.Th>
-              <Table.Th ta="right">Status</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {shown.map((r) => {
-              // S6 — every draft is editable now (listing drafts re-edit in
-              // place via the listing-aware builder), so the "Edit" affordance
-              // shows for all campaign drafts regardless of a listing.
-              const isDraftEditable =
-                r.kind === 'campaign' && r.status === 'draft';
-              const seq = r.seq;
-              // Wave-0 chassis proof: the outcome micro-read from the real
-              // UnifiedRow numbers. Sequences show enrolled/active; sent
-              // campaigns show open%/click%/reply; sending campaigns show sent.
-              // Rows with no numbers (draft/scheduled) fall back to the string.
-              const perfItems: PerfItem[] =
-                r.kind === 'sequence' && seq
-                  ? [
-                      { label: 'Enrolled', value: seq.enrolledCount, kind: 'count' },
-                      { label: 'Active', value: seq.activeCount, kind: 'count' },
-                    ]
-                  : r.status === 'sent'
-                    ? [
-                        { label: 'Open', value: r.openRate ?? null, kind: 'pct' },
-                        { label: 'Click', value: r.clickRate ?? null, kind: 'pct' },
-                        { label: 'Reply', value: r.replies ?? null, kind: 'count' },
-                      ]
-                    : r.status === 'sending' && typeof r.sentCount === 'number'
-                      ? [{ label: 'Sent', value: r.sentCount, kind: 'count' }]
-                      : [];
-              return (
-                <Table.Tr
-                  key={`${r.status}-${r.id}`}
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => openRow(r)}
-                >
-                  <Table.Td>
-                    <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
-                      <ChannelGlyph channel={r.channel} />
-                      <Text size="sm" fw={600} truncate>
-                        {r.name}
-                      </Text>
-                      {r.kind === 'sequence' ? (
-                        <Badge size="xs" variant="light" color="gray">
-                          Sequence
-                        </Badge>
-                      ) : null}
-                    </Group>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm" c="dimmed">
-                      {r.audience}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td ta="right">
-                    <Stack gap={4} align="flex-end">
-                      {perfItems.length > 0 ? (
-                        <PerfStrip items={perfItems} />
-                      ) : (
-                        <Text size="sm" c="dimmed" ff="monospace">
-                          {r.perf}
-                        </Text>
-                      )}
-                      {r.kind === 'campaign' ? (
-                        <AttributionLink
-                          attribution={{
-                            leads: r.leads ?? null,
-                            deals: r.attributedDealCount ?? null,
-                            revenue: r.attributedRevenue ?? null,
-                          }}
-                          onDrill={
-                            r.status === 'draft'
-                              ? undefined
-                              : () => setDetailId(r.id)
-                          }
-                        />
-                      ) : null}
-                    </Stack>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm" c="dimmed" ff="monospace">
-                      {r.when || '—'}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Group gap="sm" justify="flex-end" wrap="nowrap">
-                      {r.kind === 'sequence' &&
-                      seq?.status === 'RUNNING' ? (
-                        <Button
-                          size="compact-xs"
-                          variant="default"
-                          leftSection={<IconPlayerPause size={13} />}
-                          loading={seqBusy === r.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void runSeqAction(r.id, 'pause');
-                          }}
-                        >
-                          Pause
-                        </Button>
-                      ) : r.kind === 'sequence' &&
-                        (seq?.status === 'DRAFT' ||
-                          seq?.status === 'PAUSED') ? (
-                        <Button
-                          size="compact-xs"
-                          variant="light"
-                          color="red"
-                          leftSection={<IconPlayerPlay size={13} />}
-                          loading={seqBusy === r.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void runSeqAction(r.id, 'activate');
-                          }}
-                        >
-                          Activate
-                        </Button>
-                      ) : isDraftEditable ? (
-                        <Group gap={4} c="blue">
-                          <IconPencil size={13} />
-                          <Text size="xs" fw={600}>
-                            Edit
-                          </Text>
-                        </Group>
-                      ) : null}
-                      {r.kind === 'sequence' ? (
-                        <Badge
-                          variant="light"
-                          color={seqStatusTone(seq?.status ?? '')}
-                        >
-                          {titleCase(seq?.status ?? '')}
-                        </Badge>
-                      ) : (
-                        <Badge variant="light" color={statusTone(r.status)}>
-                          {r.statusLabel}
-                        </Badge>
-                      )}
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              );
-            })}
-          </Table.Tbody>
-        </Table>
+        <KanbanBoard cols={{ base: 1, sm: 2, lg: 4 }}>
+          {CAMPAIGN_LANES.map((lane) => {
+            const laneRows = byLane[lane.id];
+            return (
+              <KanbanColumn
+                key={lane.id}
+                title={lane.title}
+                count={laneRows.length}
+                icon={
+                  <lane.Icon size={15} style={{ color: 'var(--mantine-color-dimmed)' }} />
+                }
+                empty={
+                  <InvitingEmpty
+                    compact
+                    title={lane.emptyTitle}
+                    message={lane.emptyMessage}
+                  />
+                }
+              >
+                {laneRows.map((r) => (
+                  <CampaignCard
+                    key={`${r.status}-${r.id}`}
+                    r={r}
+                    onOpen={() => openRow(r)}
+                    onDrill={setDetailId}
+                    seqBusy={seqBusy}
+                    onSeqAction={(id, action) => void runSeqAction(id, action)}
+                  />
+                ))}
+              </KanbanColumn>
+            );
+          })}
+        </KanbanBoard>
       )}
     </Box>
   );

@@ -56,9 +56,13 @@ import { ALL_NETWORKS } from '@/propel/lib/socialCalendarConfig';
 import { useCanPublish } from '@/propel/lib/canPublish';
 import {
   AmbientAgentCard,
+  clickableCard,
   InvitingEmpty,
+  KanbanBoard,
+  KanbanColumn,
   Seal,
   statusSeal,
+  stop,
   SubmissionBadge,
   SurfaceIntro,
 } from '@/propel/components/marketingHero/deskShared';
@@ -77,23 +81,9 @@ import { BlogPostDrawer } from '@/propel/components/website/BlogPostDrawer';
 // ship behind the gated CRM deploy; until then the board drops to a clean preview
 // state (empty lanes + honest banner) — it never crashes the hero.
 
-// Every card opens the detail drawer on click; withhold the click from the inner
-// Approve/Reject buttons so those still act inline (real DOM here — the twenty-front
-// hero, not the sandbox — so stopPropagation is reliable).
-const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
-const clickableCard = (onOpen: () => void) => ({
-  style: { cursor: 'pointer' as const },
-  onClick: onOpen,
-  role: 'button' as const,
-  tabIndex: 0,
-  onKeyDown: (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      onOpen();
-    }
-  },
-});
-
+// Card click → drawer; inner action buttons withhold the click via stop(e). The
+// clickableCard/stop helpers + the KanbanColumn/KanbanBoard the lanes use are the
+// SHARED desk primitives (see desk/kit.tsx) so all four marketing boards match.
 const STAGE_META: Record<string, { label: string }> = {
   IDEA: { label: 'Assigned' },
   GROUNDING: { label: 'Researching' },
@@ -170,34 +160,6 @@ const localToIso = (v: string): string | undefined => {
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
 };
-
-// ── newsroom lane ─────────────────────────────────────────────────────────────
-const NewsroomLane = ({
-  title,
-  count,
-  Icon,
-  empty,
-  children,
-}: {
-  title: string;
-  count: number;
-  Icon: IconComponent;
-  empty: ReactNode;
-  children: ReactNode;
-}) => (
-  <Stack gap="sm" style={{ minWidth: 0 }}>
-    <Group gap={6} wrap="nowrap">
-      <Icon size={15} style={{ color: 'var(--mantine-color-dimmed)' }} />
-      <Text size="sm" fw={700}>
-        {title}
-      </Text>
-      <Badge size="xs" variant="light" color="gray" radius="sm">
-        {count}
-      </Badge>
-    </Group>
-    <Stack gap="sm">{count === 0 ? empty : children}</Stack>
-  </Stack>
-);
 
 // ── cards ──────────────────────────────────────────────────────────────────────
 // A shared card head: a status Seal + stage label + locale + recurrence tag.
@@ -724,11 +686,11 @@ export const BlogTab = () => {
           <Loader color="red" />
         </Center>
       ) : (
-        <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} spacing="md">
-          <NewsroomLane
+        <KanbanBoard cols={{ base: 1, sm: 2, lg: 5 }}>
+          <KanbanColumn
             title="Assignments"
             count={assignments.length}
-            Icon={IconSparkles}
+            icon={<IconSparkles size={15} style={{ color: 'var(--mantine-color-dimmed)' }} />}
             empty={
               <InvitingEmpty
                 compact
@@ -746,12 +708,12 @@ export const BlogTab = () => {
                 retrying={retryingId === item.id}
               />
             ))}
-          </NewsroomLane>
+          </KanbanColumn>
 
-          <NewsroomLane
+          <KanbanColumn
             title="Writing"
             count={writing.length}
-            Icon={IconPencil}
+            icon={<IconPencil size={15} style={{ color: 'var(--mantine-color-dimmed)' }} />}
             empty={
               <InvitingEmpty
                 compact
@@ -769,12 +731,12 @@ export const BlogTab = () => {
                 retrying={retryingId === item.id}
               />
             ))}
-          </NewsroomLane>
+          </KanbanColumn>
 
-          <NewsroomLane
+          <KanbanColumn
             title="Copy desk"
             count={visibleColumns.needsApproval.length}
-            Icon={IconCheck}
+            icon={<IconCheck size={15} style={{ color: 'var(--mantine-color-dimmed)' }} />}
             empty={
               <InvitingEmpty
                 compact
@@ -796,12 +758,12 @@ export const BlogTab = () => {
                 onOpen={() => setOpenRow(item)}
               />
             ))}
-          </NewsroomLane>
+          </KanbanColumn>
 
-          <NewsroomLane
+          <KanbanColumn
             title="Scheduled"
             count={visibleColumns.scheduled.length}
-            Icon={IconCalendar}
+            icon={<IconCalendar size={15} style={{ color: 'var(--mantine-color-dimmed)' }} />}
             empty={
               <InvitingEmpty
                 compact
@@ -813,12 +775,12 @@ export const BlogTab = () => {
             {visibleColumns.scheduled.map((item) => (
               <ScheduledCard key={item.id} item={item} onOpen={() => setOpenRow(item)} />
             ))}
-          </NewsroomLane>
+          </KanbanColumn>
 
-          <NewsroomLane
+          <KanbanColumn
             title="Published"
             count={visibleColumns.published.length}
-            Icon={IconFileText}
+            icon={<IconFileText size={15} style={{ color: 'var(--mantine-color-dimmed)' }} />}
             empty={
               <InvitingEmpty
                 compact
@@ -830,8 +792,8 @@ export const BlogTab = () => {
             {visibleColumns.published.map((item) => (
               <PublishedCard key={item.id} item={item} onOpen={() => setOpenRow(item)} />
             ))}
-          </NewsroomLane>
-        </SimpleGrid>
+          </KanbanColumn>
+        </KanbanBoard>
       )}
 
       <BlogPostDrawer row={openRow} onClose={() => setOpenRow(null)} onChanged={reload} />

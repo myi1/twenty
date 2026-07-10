@@ -26,8 +26,10 @@ import {
 } from '@mantine/core';
 import {
   IconAlertTriangle,
+  IconArchive,
   IconCheck,
   IconChevronDown,
+  IconClock,
   IconDeviceFloppy,
   IconExternalLink,
   IconEye,
@@ -41,6 +43,7 @@ import {
   IconUsers,
   IconWorld,
   IconX,
+  type IconComponent,
 } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { useLandingPages } from '@/propel/hooks/useLandingPages';
@@ -76,7 +79,12 @@ import {
 } from '@/propel/lib/landingSectionDefs';
 import { type SectionActionKind } from '@/propel/lib/landingPreviewBridge';
 import { useCanPublish } from '@/propel/lib/canPublish';
-import { SubmissionBadge } from '@/propel/components/marketingHero/deskShared';
+import {
+  InvitingEmpty,
+  KanbanBoard,
+  KanbanColumn,
+  SubmissionBadge,
+} from '@/propel/components/marketingHero/deskShared';
 import { SubmitForApprovalButton } from '@/propel/components/marketingHero/SubmitForApprovalButton';
 import { amplifyBrief, generatePlan } from '@/propel/lib/socialCrm';
 import { ALL_NETWORKS } from '@/propel/lib/socialCalendarConfig';
@@ -241,6 +249,74 @@ const hasFailingPreflight = (page: LandingPageSummary): boolean => {
   const s = readPreflightSummary(page.preflightJson);
   return s !== null && (!s.passed || s.hardFails > 0);
 };
+
+// ── Board lanes ──────────────────────────────────────────────────────────────
+// The landing lifecycle as kanban columns, derived from the REAL landingPage
+// status enum (DRAFT / LIVE / ARCHIVED) + the pre-flight result + the maker-checker
+// submission stamp — mirroring the Blog newsroom's status-column board:
+//   • Needs fixes — a stored pre-flight with hard failures (takes precedence; this
+//                   is the "Fix issues" card).
+//   • Draft       — a DRAFT with no failing pre-flight and not yet submitted.
+//   • In review   — a DRAFT an agent submitted for approval (submittedForApprovalAt).
+//   • Live        — status LIVE (published to /lp/<slug>).
+//   • Archived    — status ARCHIVED.
+// (Bucketing is by the EN PARENT's state; locale siblings ride in the parent card's
+// footer exactly as before, so translation nesting is preserved.)
+type LandingLane = 'fixes' | 'draft' | 'review' | 'live' | 'archived';
+
+const laneOf = (page: LandingPageSummary): LandingLane => {
+  if (hasFailingPreflight(page)) return 'fixes';
+  if (page.status === 'LIVE') return 'live';
+  if (page.status === 'ARCHIVED') return 'archived';
+  const submitted =
+    typeof page.submittedForApprovalAt === 'string' &&
+    page.submittedForApprovalAt !== '';
+  return submitted ? 'review' : 'draft';
+};
+
+const LANDING_LANES: {
+  id: LandingLane;
+  title: string;
+  Icon: IconComponent;
+  emptyTitle: string;
+  emptyMessage: string;
+}[] = [
+  {
+    id: 'fixes',
+    title: 'Needs fixes',
+    Icon: IconAlertTriangle,
+    emptyTitle: 'Nothing to fix',
+    emptyMessage: 'Pages that fail a pre-flight check land here with a Fix issues action.',
+  },
+  {
+    id: 'draft',
+    title: 'Draft',
+    Icon: IconPencil,
+    emptyTitle: 'No drafts',
+    emptyMessage: 'Draft a page from a prompt or template and it waits here.',
+  },
+  {
+    id: 'review',
+    title: 'In review',
+    Icon: IconClock,
+    emptyTitle: 'Nothing awaiting sign-off',
+    emptyMessage: 'Pages submitted for approval queue here for a publisher.',
+  },
+  {
+    id: 'live',
+    title: 'Live',
+    Icon: IconWorld,
+    emptyTitle: 'Nothing live yet',
+    emptyMessage: 'Approved pages go live at /lp/<slug> and settle here.',
+  },
+  {
+    id: 'archived',
+    title: 'Archived',
+    Icon: IconArchive,
+    emptyTitle: 'Nothing archived',
+    emptyMessage: 'Retired pages rest here — nothing to do.',
+  },
+];
 
 // Small pass/fail/warn chip for the list cards — only when the route projects a
 // readable preflightJson (older routes don't → no chip at all).
@@ -713,6 +789,20 @@ export const LandingPagesTab = () => {
     }
     return { parentPages: parents, siblingsByParent: byParent };
   }, [data]);
+
+  // Bucket the EN parents into the board lanes (locale siblings stay nested in
+  // their parent card's footer — see the render).
+  const parentsByLane = useMemo(() => {
+    const lanes: Record<LandingLane, LandingPageSummary[]> = {
+      fixes: [],
+      draft: [],
+      review: [],
+      live: [],
+      archived: [],
+    };
+    for (const p of parentPages) lanes[laneOf(p)].push(p);
+    return lanes;
+  }, [parentPages]);
 
   // ── Stage 3E — the two pinned queues (SC4). Both derive tolerantly off the
   // list projection: pre-3E routes omit source/scoutReason/refresherJson, so
@@ -2504,9 +2594,27 @@ export const LandingPagesTab = () => {
           </Stack>
         </Paper>
       ) : (
-        <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md">
-          {parentPages.map((page) => {
-            const sibs = siblingsByParent.get(page.id) ?? [];
+        <KanbanBoard cols={{ base: 1, sm: 2, lg: 5 }}>
+          {LANDING_LANES.map((lane) => {
+            const laneParents = parentsByLane[lane.id];
+            return (
+              <KanbanColumn
+                key={lane.id}
+                title={lane.title}
+                count={laneParents.length}
+                icon={
+                  <lane.Icon size={15} style={{ color: 'var(--mantine-color-dimmed)' }} />
+                }
+                empty={
+                  <InvitingEmpty
+                    compact
+                    title={lane.emptyTitle}
+                    message={lane.emptyMessage}
+                  />
+                }
+              >
+                {laneParents.map((page) => {
+                  const sibs = siblingsByParent.get(page.id) ?? [];
             // An orphaned translation (its EN parent isn't in the list) renders
             // top-level with its locale made visible.
             const orphanLocale =
@@ -2614,9 +2722,12 @@ export const LandingPagesTab = () => {
                   ) : null
                 }
               />
+                  );
+                })}
+              </KanbanColumn>
             );
           })}
-        </SimpleGrid>
+        </KanbanBoard>
       )}
 
       <Group justify="center" mt="lg">

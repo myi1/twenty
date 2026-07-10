@@ -1,5 +1,16 @@
-import { type ReactNode, useContext } from 'react';
-import { Badge, Box, Center, Group, Loader, Paper, Stack, Text, Tooltip } from '@mantine/core';
+import { type KeyboardEvent, type ReactNode, useContext } from 'react';
+import {
+  Badge,
+  Box,
+  Center,
+  Group,
+  Loader,
+  Paper,
+  SimpleGrid,
+  Stack,
+  Text,
+  Tooltip,
+} from '@mantine/core';
 import { ThemeContext } from 'twenty-ui/theme-constants';
 
 // Shared theme primitives for the Marketing home surfaces (the publisher "Night
@@ -344,4 +355,81 @@ export const InvitingEmpty = ({
       </Stack>
     </Center>
   </Paper>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SHARED KANBAN PRIMITIVES (marketing-tabs upgrade — the newsroom board, extracted)
+//
+// The Blog "newsroom" (BlogTab) is the flagship status-column board. These two
+// primitives are its column + board, lifted out verbatim so the Landing pages,
+// Social and Email boards render with byte-identical column headers, spacing and
+// card affordances — one grammar, four channels. Icon-agnostic (callers pass a
+// styled ReactNode) so this file keeps its no-tabler-dependency contract.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// A whole card is the click target that opens its detail drawer; the inner
+// Approve/Reject/Retry/Submit buttons withhold the click so they still act inline.
+// Real DOM here (the twenty-front hero, not the sandbox) → stopPropagation is
+// reliable. Callers spread {...clickableCard(onOpen)} onto the card <Paper>, and
+// call stop(e) at the top of any inner button handler.
+export const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
+
+export const clickableCard = (onOpen: () => void) => ({
+  style: { cursor: 'pointer' as const },
+  onClick: onOpen,
+  role: 'button' as const,
+  tabIndex: 0,
+  onKeyDown: (e: KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onOpen();
+    }
+  },
+});
+
+// One kanban column: an icon + title + count badge over a vertical stack of cards,
+// or the inviting empty when the lane is quiet. (Was BlogTab's private NewsroomLane;
+// now shared so every marketing board's columns match.)
+export const KanbanColumn = ({
+  title,
+  count,
+  icon,
+  empty,
+  children,
+}: {
+  title: ReactNode;
+  count: number;
+  /** A styled glyph, e.g. <IconSparkles size={15} style={{ color: 'var(--mantine-color-dimmed)' }} />. */
+  icon?: ReactNode;
+  /** Rendered in place of children when count === 0 (usually an <InvitingEmpty compact />). */
+  empty: ReactNode;
+  children: ReactNode;
+}) => (
+  <Stack gap="sm" style={{ minWidth: 0 }}>
+    <Group gap={6} wrap="nowrap">
+      {icon != null ? <Box style={{ display: 'flex', flexShrink: 0 }}>{icon}</Box> : null}
+      <Text size="sm" fw={700}>
+        {title}
+      </Text>
+      <Badge size="xs" variant="light" color="gray" radius="sm">
+        {count}
+      </Badge>
+    </Group>
+    <Stack gap="sm">{count === 0 ? empty : children}</Stack>
+  </Stack>
+);
+
+// The board grid the columns sit in. Same responsive grammar the newsroom uses;
+// callers pass `cols` to match their column count (blog + campaigns = 5, social &
+// landing = 4). Defaults to the 5-lane newsroom layout.
+export const KanbanBoard = ({
+  children,
+  cols = { base: 1, sm: 2, lg: 5 },
+}: {
+  children: ReactNode;
+  cols?: { base?: number; sm?: number; md?: number; lg?: number };
+}) => (
+  <SimpleGrid cols={cols} spacing="md">
+    {children}
+  </SimpleGrid>
 );
