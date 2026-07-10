@@ -2,47 +2,14 @@ import { useCallback, useMemo, useState } from 'react';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import type {
   OffplanSearchResult, OffplanFiltersState, RouteEnvelope, OffplanUnit,
-  OffplanProject, OffplanPin, OffplanMapsResult,
+  OffplanPin, OffplanMapsResult,
 } from './types';
+import { groupByProject, filterProjectsByQuery } from './browseTransforms';
 
 // Cap how many per-project map lookups we fan out per search. The search returns up
 // to `limit` units, which collapse to far fewer projects; we fetch coords for each
 // unique project (one /v1/media/maps call each), in parallel, bounded by this cap.
 const MAX_PIN_LOOKUPS = 48;
-
-// Collapse the flat unit list into one entry per project. The catalog returns every
-// UNIT as a row (the same tower appears N times); the browse rail must show ONE card
-// per project with a from-price + unit count (design §3a).
-function groupByProject(units: OffplanUnit[]): OffplanProject[] {
-  const byProject = new Map<string, OffplanUnit[]>();
-  for (const u of units) {
-    if (!u.projectId) continue;
-    const list = byProject.get(u.projectId);
-    if (list) list.push(u);
-    else byProject.set(u.projectId, [u]);
-  }
-  const projects: OffplanProject[] = [];
-  for (const list of byProject.values()) {
-    const sorted = [...list].sort((a, b) => a.price - b.price);
-    const anchor = sorted[0];
-    const layouts = [...new Set(list.map((u) => u.layoutName).filter(Boolean))];
-    const sqfts = list.map((u) => u.squareFt).filter((n) => n > 0);
-    projects.push({
-      projectId: anchor.projectId,
-      projectName: anchor.projectName,
-      developerName: anchor.developerName,
-      districtId: anchor.districtId,
-      districtName: anchor.districtName,
-      fromPriceAed: anchor.price,
-      unitCount: list.length,
-      layouts,
-      minSquareFt: sqfts.length ? Math.min(...sqfts) : 0,
-      maxSquareFt: sqfts.length ? Math.max(...sqfts) : 0,
-      anchorUnit: anchor,
-    });
-  }
-  return projects.sort((a, b) => a.fromPriceAed - b.fromPriceAed);
-}
 
 export function useOffplanBrowse() {
   const [allUnits, setAllUnits] = useState<OffplanUnit[]>([]);
@@ -112,15 +79,7 @@ export function useOffplanBrowse() {
 
   // Group by project, then apply the free-text `q` filter (project / developer /
   // district substring) client-side over the loaded set.
-  const projects = useMemo(() => {
-    const grouped = groupByProject(allUnits);
-    const needle = q.trim().toLowerCase();
-    if (!needle) return grouped;
-    return grouped.filter((p) =>
-      p.projectName.toLowerCase().includes(needle) ||
-      p.developerName.toLowerCase().includes(needle) ||
-      p.districtName.toLowerCase().includes(needle));
-  }, [allUnits, q]);
+  const projects = useMemo(() => filterProjectsByQuery(groupByProject(allUnits), q), [allUnits, q]);
 
   // Only pin projects that survive the current `q` filter.
   const pins = useMemo(() => {
