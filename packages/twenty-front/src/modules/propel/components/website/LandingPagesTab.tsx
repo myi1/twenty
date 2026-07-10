@@ -84,6 +84,7 @@ import {
   KanbanBoard,
   KanbanColumn,
   SubmissionBadge,
+  SurfaceIntro,
 } from '@/propel/components/marketingHero/deskShared';
 import { SubmitForApprovalButton } from '@/propel/components/marketingHero/SubmitForApprovalButton';
 import { amplifyBrief, generatePlan } from '@/propel/lib/socialCrm';
@@ -2488,22 +2489,21 @@ export const LandingPagesTab = () => {
     <Box p="md">
       {preflightModal}
       {scoutDismissModal}
-      <Group justify="space-between" align="flex-start" mb="md" wrap="nowrap">
-        <Group gap="xs">
-          <ThemeIcon size="lg" variant="light" color="red">
-            <IconLayoutGrid size={18} />
-          </ThemeIcon>
-          <Box>
-            <Title order={4}>Landing pages</Title>
-            <Text size="xs" c="dimmed">
-              Assemble campaign pages from pre-built sections; publish to remaxhub.ae/lp/&lt;slug&gt;.
-            </Text>
-          </Box>
-        </Group>
-        <Button color="red" size="sm" leftSection={<IconPlus size={16} />} onClick={() => openNew()}>
-          New page
-        </Button>
-      </Group>
+      <SurfaceIntro
+        eyebrow="The page studio"
+        title="Every campaign page, benched by stage — drafted, checked, live."
+        icon={<IconLayoutGrid size={20} />}
+        actions={
+          <Button
+            color="red"
+            size="compact-sm"
+            leftSection={<IconPlus size={16} />}
+            onClick={() => openNew()}
+          >
+            New page
+          </Button>
+        }
+      />
 
       {usingMock ? (
         <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="md">
