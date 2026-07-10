@@ -11,12 +11,15 @@ import { OffplanMap } from '@/propel/offplan/OffplanMap';
 import { OffplanCardRail } from '@/propel/offplan/OffplanCardRail';
 import { OffplanProjectDrawer } from '@/propel/offplan/OffplanProjectDrawer';
 import { OffplanShortlistTray } from '@/propel/offplan/OffplanShortlistTray';
-import { OffplanGeneratePanel } from '@/propel/offplan/OffplanGeneratePanel';
+import { OffplanPitchWizard } from '@/propel/offplan/OffplanPitchWizard';
 
 export const OffplanStudioPage = () => {
   const b = useOffplanBrowse();
   const sl = useOffplanShortlist();
-  const [pitchFor, setPitchFor] = useState<{ p: number; u?: number } | null>(null);
+  const [wizard, setWizard] = useState<{
+    ids: number[];
+    anchor?: { projectId: number; unitId?: number };
+  } | null>(null);
 
   // Gold-ring a district bubble when any of its projects is shortlisted.
   const favoritedDistrictIds = useMemo(() => {
@@ -49,12 +52,12 @@ export const OffplanStudioPage = () => {
                     favoritedIds={sl.favoritedIds} favoritedDistrictIds={favoritedDistrictIds}
                     onViewportChange={(bounds, zoom) => { b.setBounds(bounds); b.setZoom(zoom); }}
                     onPinClick={b.openProject} onPinHover={b.setHoveredId} />
-                  <OffplanShortlistTray count={sl.count} onBuild={() => sl.ids[0] != null && setPitchFor({ p: sl.ids[0] })} />
+                  <OffplanShortlistTray count={sl.count} onBuild={() => sl.ids.length > 0 && setWizard({ ids: sl.ids })} />
                 </Box>
                 <Box style={{ width: '40%', minWidth: 0, borderLeft: '1px solid var(--mantine-color-default-border)' }}>
                   <OffplanCardRail visible={b.visible} total={b.points.length}
                     hoveredId={b.hoveredId} onHover={b.setHoveredId} onOpen={b.openProject}
-                    onShortlist={sl.toggle} onPitch={(id) => setPitchFor({ p: id })} />
+                    onShortlist={sl.toggle} onPitch={(id) => setWizard({ ids: [id] })} />
                 </Box>
               </>
             )}
@@ -66,10 +69,11 @@ export const OffplanStudioPage = () => {
             shortlisted={sl.favoritedIds.has(b.selectedId)}
             onClose={() => b.setSelectedId(null)}
             onShortlist={sl.toggle}
-            onPitch={(p, u) => setPitchFor({ p, u })} />
+            onPitch={(p, u) => setWizard({ ids: [p], anchor: { projectId: p, unitId: u } })} />
         )}
-        {pitchFor && (
-          <OffplanGeneratePanel projectExternalId={pitchFor.p} unitExternalId={pitchFor.u} onClose={() => setPitchFor(null)} />
+        {wizard && (
+          <OffplanPitchWizard initialProjectIds={wizard.ids} initialAnchor={wizard.anchor}
+            byId={b.byId} onClose={() => setWizard(null)} />
         )}
       </PageContainer>
     </PropelMantineProvider>
