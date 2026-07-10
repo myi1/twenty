@@ -9,6 +9,7 @@ import {
   IconFileText,
   IconPhone,
   IconSend,
+  IconSettings,
   IconSparkles,
   IconWorld,
 } from 'twenty-ui/display';
@@ -18,6 +19,7 @@ import { CampaignsTab } from '@/propel/components/marketingHero/CampaignsTab';
 import { LeadRoutingTab } from '@/propel/components/marketingHero/LeadRoutingTab';
 import { MarketingHomeTab } from '@/propel/components/marketingHero/MarketingHomeTab';
 import { NumbersTab } from '@/propel/components/marketingHero/NumbersTab';
+import { SettingsTab } from '@/propel/components/marketingHero/SettingsTab';
 import { SocialCalendarTab } from '@/propel/components/marketingHero/SocialCalendarTab';
 import { TemplatesTab } from '@/propel/components/marketingHero/TemplatesTab';
 import { MediaStudioTab } from '@/propel/components/website/MediaStudioTab';
@@ -69,7 +71,8 @@ type HeroTab =
   | 'numbers'
   | 'website'
   | 'media-studio'
-  | 'lead-routing';
+  | 'lead-routing'
+  | 'settings';
 
 // Funnel order — the tabs read left-to-right as the lead-gen engine's stages.
 // Every existing tab value is kept; none is renamed.
@@ -87,6 +90,8 @@ const TAB_VALUES: HeroTab[] = [
   // TOOLS
   'media-studio',
   'numbers',
+  // CONFIGURE
+  'settings',
 ];
 
 // The funnel spine as TINTED ZONES (option C, founder-chosen). Home is the
@@ -94,7 +99,13 @@ const TAB_VALUES: HeroTab[] = [
 // the stage label sits at the START of the band and clearly LEADS the tabs to its
 // RIGHT — no "does this label own the tab left or right of it?" ambiguity, and
 // the tinted tray makes the grouping obvious at a glance. One row.
-type FunnelStage = 'ATTRACT' | 'CAPTURE' | 'NURTURE' | 'CONVERT' | 'TOOLS';
+type FunnelStage =
+  | 'ATTRACT'
+  | 'CAPTURE'
+  | 'NURTURE'
+  | 'CONVERT'
+  | 'TOOLS'
+  | 'CONFIGURE';
 
 const FUNNEL_BANDS: { stage: FunnelStage; tabs: HeroTab[] }[] = [
   { stage: 'ATTRACT', tabs: ['social'] },
@@ -104,6 +115,10 @@ const FUNNEL_BANDS: { stage: FunnelStage; tabs: HeroTab[] }[] = [
   // agents (the filter below drops an empty band).
   { stage: 'CONVERT', tabs: ['lead-routing'] },
   { stage: 'TOOLS', tabs: ['media-studio', 'numbers'] },
+  // CONFIGURE is the far-right terminus: run the funnel left-to-right, then govern
+  // it. The Settings tab is cross-cutting (not a funnel stage), visible to everyone
+  // (its sections gate themselves) — so this band never hides.
+  { stage: 'CONFIGURE', tabs: ['settings'] },
 ];
 
 // Restrained, theme-aware tints: each stage gets ONE Mantine color, rendered only
@@ -117,6 +132,7 @@ const STAGE_COLOR: Record<FunnelStage, string> = {
   NURTURE: 'teal',
   CONVERT: 'orange',
   TOOLS: 'gray',
+  CONFIGURE: 'gray',
 };
 
 const TAB_LABEL: Record<HeroTab, string> = {
@@ -128,6 +144,7 @@ const TAB_LABEL: Record<HeroTab, string> = {
   'lead-routing': 'Lead Routing',
   'media-studio': 'Media Studio',
   numbers: 'Numbers',
+  settings: 'Settings',
 };
 
 const TAB_ICON: Record<HeroTab, ReactNode> = {
@@ -139,6 +156,7 @@ const TAB_ICON: Record<HeroTab, ReactNode> = {
   'lead-routing': <IconArrowsSplit2 size={15} />,
   'media-studio': <IconSparkles size={15} />,
   numbers: <IconPhone size={15} />,
+  settings: <IconSettings size={15} />,
 };
 
 const isHeroTab = (v: string | null): v is HeroTab =>
@@ -229,6 +247,15 @@ export const MarketingHero = () => {
         </Tabs.Panel>
         <Tabs.Panel value="media-studio">
           {activeTab === 'media-studio' ? <MediaStudioTab /> : null}
+        </Tabs.Panel>
+        <Tabs.Panel value="settings">
+          {activeTab === 'settings' ? (
+            <SettingsTab
+              payload={hub}
+              isLoading={hubLoading}
+              reload={reloadHub}
+            />
+          ) : null}
         </Tabs.Panel>
         {canSeeLeadRouting ? (
           <Tabs.Panel value="lead-routing">

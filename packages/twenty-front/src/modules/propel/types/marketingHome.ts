@@ -11,6 +11,8 @@
 // follow a strict "never show data you don't have" contract (docs/MARKETING-CLOUD.md),
 // so the UI renders ONLY present:true blocks and never zero-fills.
 
+import { type SendRulesPayload } from '@/propel/types/campaignBuilder';
+
 // ── Presence wrapper (marketing-presence.ts) ─────────────────────────────────
 export type Presence<T> =
   | { present: true; value: T }
@@ -283,6 +285,12 @@ export interface MarketingHubPayload {
   waTemplates?: WaTemplateOption[];
   emailTemplates?: EmailTemplateOption[];
   customFields?: CustomFieldOption[];
+  // Settings tab (Send rules section). The /marketing/hub route already returns
+  // this singleton (surfaced today only in campaign Review via the builder's
+  // CampaignBuilderHubPayload); typing it here lets the Settings tab read
+  // `hub.sendRules` from the SAME shared fetch — no new route. Presence-guarded
+  // like every field; absent → the section falls back to DEFAULT_SEND_RULES.
+  sendRules?: SendRulesPayload;
 }
 
 // ── POST /s/marketing/dashboard-layout ───────────────────────────────────────
