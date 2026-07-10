@@ -1,5 +1,5 @@
-import { Tabs } from '@mantine/core';
-import { useCallback, useEffect, useMemo } from 'react';
+import { Tabs, Text } from '@mantine/core';
+import { Fragment, type ReactNode, useCallback, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AppPath } from 'twenty-shared/types';
 import {
@@ -71,16 +71,57 @@ type HeroTab =
   | 'media-studio'
   | 'lead-routing';
 
+// Funnel order — the tabs read left-to-right as the lead-gen engine's stages.
+// Section headers (below) are interleaved as non-interactive labels between the
+// groups. Every existing tab value is kept; none is renamed. New Wave-2 CAPTURE
+// tabs (CTAs/Forms/Pages) slot in after `website`.
 const TAB_VALUES: HeroTab[] = [
   'home',
+  // ATTRACT
+  'social',
+  // CAPTURE
+  'website',
+  // NURTURE
   'campaigns',
   'templates',
-  'social',
-  'numbers',
-  'website',
-  'media-studio',
+  // CONVERT
   'lead-routing',
+  // TOOLS
+  'media-studio',
+  'numbers',
 ];
+
+// The funnel spine, printed as non-interactive labels before a tab group. The
+// CONVERT header rides `lead-routing`, so it hides with that manager-gated tab.
+const SECTION_BEFORE: Partial<Record<HeroTab, string>> = {
+  social: 'ATTRACT',
+  website: 'CAPTURE',
+  campaigns: 'NURTURE',
+  'lead-routing': 'CONVERT',
+  'media-studio': 'TOOLS',
+};
+
+const TAB_LABEL: Record<HeroTab, string> = {
+  home: 'Home',
+  social: 'Social',
+  website: 'Website',
+  campaigns: 'Campaigns',
+  templates: 'Templates',
+  'lead-routing': 'Lead Routing',
+  'media-studio': 'Media Studio',
+  numbers: 'Numbers',
+};
+
+const TAB_ICON: Record<HeroTab, ReactNode> = {
+  home: <IconBroadcast size={15} />,
+  social: <IconCalendarEvent size={15} />,
+  website: <IconWorld size={15} />,
+  campaigns: <IconSend size={15} />,
+  templates: <IconFileText size={15} />,
+  'lead-routing': <IconArrowsSplit2 size={15} />,
+  'media-studio': <IconSparkles size={15} />,
+  numbers: <IconPhone size={15} />,
+};
 
 const isHeroTab = (v: string | null): v is HeroTab =>
   v !== null && (TAB_VALUES as string[]).includes(v);
@@ -195,6 +236,13 @@ export const MarketingHero = () => {
           tab scrolls regardless of content length, with exactly one scrollbar. */}
       <PageContainer style={{ flex: 1, minHeight: 0 }}>
         <PageHeader title="Marketing" Icon={IconBroadcast} />
+        {/* The engine invariant — printed above the funnel-framed tab strip so
+            the hub reads as a lead-gen engine, not a toolbox. */}
+        <Text fz="sm" c="dimmed" px="md" pt="xs" style={{ maxWidth: 720 }}>
+          Every visitor is traceable, every lead carries its source, every deal
+          credits the marketing that made it — and every capture point is
+          editable here and counts its own conversions.
+        </Text>
         <Tabs
           value={activeTab}
           onChange={setTab}
@@ -213,35 +261,27 @@ export const MarketingHero = () => {
           }}
         >
           <Tabs.List px="md">
-            <Tabs.Tab value="home" leftSection={<IconBroadcast size={15} />}>
-              Home
-            </Tabs.Tab>
-            <Tabs.Tab value="campaigns" leftSection={<IconSend size={15} />}>
-              Campaigns
-            </Tabs.Tab>
-            <Tabs.Tab value="templates" leftSection={<IconFileText size={15} />}>
-              Templates
-            </Tabs.Tab>
-            <Tabs.Tab value="social" leftSection={<IconCalendarEvent size={15} />}>
-              Social
-            </Tabs.Tab>
-            <Tabs.Tab value="numbers" leftSection={<IconPhone size={15} />}>
-              Numbers
-            </Tabs.Tab>
-            <Tabs.Tab value="website" leftSection={<IconWorld size={15} />}>
-              Website
-            </Tabs.Tab>
-            <Tabs.Tab value="media-studio" leftSection={<IconSparkles size={15} />}>
-              Media Studio
-            </Tabs.Tab>
-            {canSeeLeadRouting ? (
-              <Tabs.Tab
-                value="lead-routing"
-                leftSection={<IconArrowsSplit2 size={15} />}
-              >
-                Lead Routing
-              </Tabs.Tab>
-            ) : null}
+            {TAB_VALUES.filter(
+              (value) => value !== 'lead-routing' || canSeeLeadRouting,
+            ).map((value) => (
+              <Fragment key={value}>
+                {SECTION_BEFORE[value] !== undefined ? (
+                  <Text
+                    fz={10}
+                    fw={700}
+                    tt="uppercase"
+                    c="dimmed"
+                    mx="xs"
+                    style={{ alignSelf: 'center', letterSpacing: '0.12em' }}
+                  >
+                    {SECTION_BEFORE[value]}
+                  </Text>
+                ) : null}
+                <Tabs.Tab value={value} leftSection={TAB_ICON[value]}>
+                  {TAB_LABEL[value]}
+                </Tabs.Tab>
+              </Fragment>
+            ))}
           </Tabs.List>
 
           {tabPanels}
