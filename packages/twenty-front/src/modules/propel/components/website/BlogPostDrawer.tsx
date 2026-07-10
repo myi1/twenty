@@ -29,6 +29,7 @@ import {
   IconX,
 } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
+import { friendlyError } from '@/propel/lib/friendlyError';
 import { useCanPublish } from '@/propel/lib/canPublish';
 import { SubmissionBadge } from '@/propel/components/marketingHero/deskShared';
 import { SubmitForApprovalButton } from '@/propel/components/marketingHero/SubmitForApprovalButton';
@@ -263,7 +264,7 @@ export const BlogPostDrawer = ({
               title="This post failed"
             >
               <Stack gap="sm" align="flex-start">
-                <Text size="sm">{post.lastError}</Text>
+                <Text size="sm">{friendlyError(post.lastError, 'pipeline')}</Text>
                 <Button
                   size="compact-sm"
                   color="red"
@@ -384,7 +385,7 @@ export const BlogPostDrawer = ({
                   >
                     {entry.note ? (
                       <Text size="xs" c="dimmed">
-                        {entry.note}
+                        {friendlyError(entry.note, 'pipeline')}
                       </Text>
                     ) : null}
                     {entry.at ? (

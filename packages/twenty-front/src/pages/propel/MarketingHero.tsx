@@ -1,5 +1,5 @@
-import { Tabs, Text } from '@mantine/core';
-import { Fragment, type ReactNode, useCallback, useEffect, useMemo } from 'react';
+import { Group, Tabs, Text } from '@mantine/core';
+import { type ReactNode, useCallback, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AppPath } from 'twenty-shared/types';
 import {
@@ -72,9 +72,7 @@ type HeroTab =
   | 'lead-routing';
 
 // Funnel order — the tabs read left-to-right as the lead-gen engine's stages.
-// Section headers (below) are interleaved as non-interactive labels between the
-// groups. Every existing tab value is kept; none is renamed. New Wave-2 CAPTURE
-// tabs (CTAs/Forms/Pages) slot in after `website`.
+// Every existing tab value is kept; none is renamed.
 const TAB_VALUES: HeroTab[] = [
   'home',
   // ATTRACT
@@ -91,14 +89,34 @@ const TAB_VALUES: HeroTab[] = [
   'numbers',
 ];
 
-// The funnel spine, printed as non-interactive labels before a tab group. The
-// CONVERT header rides `lead-routing`, so it hides with that manager-gated tab.
-const SECTION_BEFORE: Partial<Record<HeroTab, string>> = {
-  social: 'ATTRACT',
-  website: 'CAPTURE',
-  campaigns: 'NURTURE',
-  'lead-routing': 'CONVERT',
-  'media-studio': 'TOOLS',
+// The funnel spine as TINTED ZONES (option C, founder-chosen). Home is the
+// standalone overview (no band). Every other tab lives inside its stage's band:
+// the stage label sits at the START of the band and clearly LEADS the tabs to its
+// RIGHT — no "does this label own the tab left or right of it?" ambiguity, and
+// the tinted tray makes the grouping obvious at a glance. One row.
+type FunnelStage = 'ATTRACT' | 'CAPTURE' | 'NURTURE' | 'CONVERT' | 'TOOLS';
+
+const FUNNEL_BANDS: { stage: FunnelStage; tabs: HeroTab[] }[] = [
+  { stage: 'ATTRACT', tabs: ['social'] },
+  { stage: 'CAPTURE', tabs: ['website'] },
+  { stage: 'NURTURE', tabs: ['campaigns', 'templates'] },
+  // CONVERT holds only the manager-gated Lead Routing → the whole band hides for
+  // agents (the filter below drops an empty band).
+  { stage: 'CONVERT', tabs: ['lead-routing'] },
+  { stage: 'TOOLS', tabs: ['media-studio', 'numbers'] },
+];
+
+// Restrained, theme-aware tints: each stage gets ONE Mantine color, rendered only
+// as its PALE `-light` background + muted `-light-color` label — not five loud
+// fills. The active tab (a red "pills" pill) is the only saturated element, so the
+// zones read as quiet trays and the selection still pops. Colors track the funnel:
+// awareness → capture → nurture → convert (warm) → neutral tools.
+const STAGE_COLOR: Record<FunnelStage, string> = {
+  ATTRACT: 'grape',
+  CAPTURE: 'cyan',
+  NURTURE: 'teal',
+  CONVERT: 'orange',
+  TOOLS: 'gray',
 };
 
 const TAB_LABEL: Record<HeroTab, string> = {
@@ -247,6 +265,7 @@ export const MarketingHero = () => {
           value={activeTab}
           onChange={setTab}
           color="red"
+          variant="pills"
           keepMounted={false}
           styles={{
             root: {
@@ -260,28 +279,61 @@ export const MarketingHero = () => {
             panel: { flex: 1, minHeight: 0, overflowY: 'auto' },
           }}
         >
-          <Tabs.List px="md">
-            {TAB_VALUES.filter(
-              (value) => value !== 'lead-routing' || canSeeLeadRouting,
-            ).map((value) => (
-              <Fragment key={value}>
-                {SECTION_BEFORE[value] !== undefined ? (
+          {/* Funnel zones (option C). Home stands alone; each stage's tabs sit in
+              a pale tinted tray led by its label. `border: none` drops the pills
+              variant's list baseline so the trays read cleanly; the row scrolls
+              horizontally if it ever outgrows the width rather than wrapping. */}
+          <Tabs.List
+            px="md"
+            style={{
+              border: 'none',
+              flexWrap: 'nowrap',
+              gap: 'var(--mantine-spacing-sm)',
+              alignItems: 'center',
+              overflowX: 'auto',
+            }}
+          >
+            <Tabs.Tab value="home" leftSection={TAB_ICON.home}>
+              {TAB_LABEL.home}
+            </Tabs.Tab>
+            {FUNNEL_BANDS.map((band) => {
+              const bandTabs = band.tabs.filter(
+                (value) => value !== 'lead-routing' || canSeeLeadRouting,
+              );
+              if (bandTabs.length === 0) return null;
+              const color = STAGE_COLOR[band.stage];
+              return (
+                <Group
+                  key={band.stage}
+                  gap={6}
+                  wrap="nowrap"
+                  style={{
+                    background: `var(--mantine-color-${color}-light)`,
+                    borderRadius: 'var(--mantine-radius-md)',
+                    padding: '3px 6px 3px 10px',
+                    flexShrink: 0,
+                  }}
+                >
                   <Text
-                    fz={10}
+                    fz={9}
                     fw={700}
                     tt="uppercase"
-                    c="dimmed"
-                    mx="xs"
-                    style={{ alignSelf: 'center', letterSpacing: '0.12em' }}
+                    style={{
+                      letterSpacing: '0.1em',
+                      color: `var(--mantine-color-${color}-light-color)`,
+                      whiteSpace: 'nowrap',
+                    }}
                   >
-                    {SECTION_BEFORE[value]}
+                    {band.stage}
                   </Text>
-                ) : null}
-                <Tabs.Tab value={value} leftSection={TAB_ICON[value]}>
-                  {TAB_LABEL[value]}
-                </Tabs.Tab>
-              </Fragment>
-            ))}
+                  {bandTabs.map((value) => (
+                    <Tabs.Tab key={value} value={value} leftSection={TAB_ICON[value]}>
+                      {TAB_LABEL[value]}
+                    </Tabs.Tab>
+                  ))}
+                </Group>
+              );
+            })}
           </Tabs.List>
 
           {tabPanels}

@@ -37,6 +37,7 @@ import { useWebsiteSeo } from '@/propel/hooks/useWebsiteSeo';
 import { countBy, relativeAge, type CountBucket } from '@/propel/lib/websiteCrm';
 import { relativeScanAge, type SeoAuditReport } from '@/propel/lib/websiteSeoCrm';
 import type { BlogPost } from '@/propel/lib/blogCrm';
+import { friendlyError } from '@/propel/lib/friendlyError';
 
 // Overview sub-tab (Website tab, spec §6). Everything on it is now REAL and
 // clickable — the founder's "too read-only" note.
@@ -184,7 +185,7 @@ const blogRow = (p: BlogPost): FeedRow => {
         ...base,
         tone: 'failed',
         title: `Draft failed: ${p.title}`,
-        detail: p.lastError || 'The pipeline hit an error on this post.',
+        detail: friendlyError(p.lastError, 'pipeline'),
         when,
       };
     case 'NEEDS_APPROVAL':

@@ -1,4 +1,5 @@
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
+import { friendlyError } from '@/propel/lib/friendlyError';
 import {
   asPreflightChecks,
   type PreflightCheck,
@@ -161,7 +162,7 @@ const failMessage = (body: Envelope | null): string => {
     return 'Could not reach the campaign spine (sign in as a Manager; the feature may not be deployed yet).';
   }
   return typeof body.error === 'string' && body.error
-    ? body.error
+    ? friendlyError(body.error, 'generic')
     : 'Request failed.';
 };
 

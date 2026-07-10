@@ -43,12 +43,14 @@ import {
 import {
   decideBlogPost,
   generateBlogDraft,
+  retryBlogPost,
   cadenceLabel,
   isRecurring,
   BLOG_CADENCES,
   type BlogCadence,
   type BlogPost,
 } from '@/propel/lib/blogCrm';
+import { friendlyError } from '@/propel/lib/friendlyError';
 import { amplifyBrief, generatePlan } from '@/propel/lib/socialCrm';
 import { ALL_NETWORKS } from '@/propel/lib/socialCalendarConfig';
 import { useCanPublish } from '@/propel/lib/canPublish';
@@ -224,7 +226,19 @@ const ScheduledLine = ({ iso, prefix }: { iso: string | null; prefix: string }) 
   ) : null;
 
 // Assignments + Writing (idea → seo_review), plus FAILED surfaced in Writing.
-const PipelineCard = ({ item, onOpen }: { item: BlogPost; onOpen: () => void }) => {
+// A FAILED card shows a human message (never the raw pipeline error) + a Retry
+// action that re-runs the pipeline — an issue is never a dead end.
+const PipelineCard = ({
+  item,
+  onOpen,
+  onRetry,
+  retrying,
+}: {
+  item: BlogPost;
+  onOpen: () => void;
+  onRetry: () => void;
+  retrying: boolean;
+}) => {
   const meta = STAGE_META[item.status] ?? { label: item.status };
   return (
     <Paper withBorder radius="md" p="md" {...clickableCard(onOpen)}>
@@ -239,12 +253,25 @@ const PipelineCard = ({ item, onOpen }: { item: BlogPost; onOpen: () => void }) 
           </Text>
         ) : null}
         <ScheduledLine iso={item.scheduledAt} prefix="Targeting" />
-        {item.status === 'FAILED' && item.lastError ? (
-          <Tooltip label={item.lastError} multiline w={260}>
-            <Text size="xs" c="red" lineClamp={1}>
-              {item.lastError}
+        {item.status === 'FAILED' ? (
+          <Group justify="space-between" gap="xs" wrap="nowrap" align="center">
+            <Text size="xs" c="red" lineClamp={2} style={{ flex: 1, minWidth: 0 }}>
+              {friendlyError(item.lastError, 'pipeline')}
             </Text>
-          </Tooltip>
+            <Button
+              size="compact-xs"
+              variant="light"
+              color="red"
+              leftSection={<IconRefresh size={12} />}
+              loading={retrying}
+              onClick={(e) => {
+                stop(e);
+                onRetry();
+              }}
+            >
+              Retry
+            </Button>
+          </Group>
         ) : null}
       </Stack>
     </Paper>
@@ -413,6 +440,7 @@ export const BlogTab = () => {
 
   const [decidedIds, setDecidedIds] = useState<Set<string>>(new Set());
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
   const [topicSeed, setTopicSeed] = useState('');
   const [cadence, setCadence] = useState<BlogCadence>('ONE_OFF');
   const [scheduledLocal, setScheduledLocal] = useState('');
@@ -535,6 +563,20 @@ export const BlogTab = () => {
         next.delete(id);
         return next;
       });
+      notify(res.error, 'error');
+    }
+  };
+
+  // Retry a FAILED post from the board — re-enters the pipeline (same route the
+  // drawer's Retry uses). The card shows a friendly message; this is its action.
+  const retry = async (id: string) => {
+    setRetryingId(id);
+    const res = await retryBlogPost(id);
+    setRetryingId(null);
+    if (res.ok) {
+      notify('Retry queued — the pipeline will re-run this post.', 'success');
+      reload();
+    } else {
       notify(res.error, 'error');
     }
   };
@@ -696,7 +738,13 @@ export const BlogTab = () => {
             }
           >
             {assignments.map((item) => (
-              <PipelineCard key={item.id} item={item} onOpen={() => setOpenRow(item)} />
+              <PipelineCard
+                key={item.id}
+                item={item}
+                onOpen={() => setOpenRow(item)}
+                onRetry={() => void retry(item.id)}
+                retrying={retryingId === item.id}
+              />
             ))}
           </NewsroomLane>
 
@@ -713,7 +761,13 @@ export const BlogTab = () => {
             }
           >
             {writing.map((item) => (
-              <PipelineCard key={item.id} item={item} onOpen={() => setOpenRow(item)} />
+              <PipelineCard
+                key={item.id}
+                item={item}
+                onOpen={() => setOpenRow(item)}
+                onRetry={() => void retry(item.id)}
+                retrying={retryingId === item.id}
+              />
             ))}
           </NewsroomLane>
 

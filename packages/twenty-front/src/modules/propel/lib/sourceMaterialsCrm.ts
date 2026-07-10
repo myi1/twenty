@@ -1,4 +1,5 @@
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
+import { friendlyError } from '@/propel/lib/friendlyError';
 
 // Data layer for the Source Materials library (Sources SRC-1 / plan SM2). All
 // sourceMaterial CRUD + ingestion runs through ONE Manager/Admin-gated CRM route
@@ -77,7 +78,7 @@ const failMessage = (body: Envelope | null): string => {
   if (body === null) {
     return 'Could not reach the source library (sign in as a Manager; the object may not be deployed yet).';
   }
-  return typeof body.error === 'string' && body.error ? body.error : 'Request failed.';
+  return typeof body.error === 'string' && body.error ? friendlyError(body.error, 'generic') : 'Request failed.';
 };
 
 const KINDS: SourceKind[] = [

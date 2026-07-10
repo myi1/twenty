@@ -1,4 +1,5 @@
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
+import { friendlyError } from '@/propel/lib/friendlyError';
 import { type SocialNetwork } from '@/propel/types/socialCalendar';
 
 // Data layer for the Social Bench (4S-A · Campaign mode). Two Manager/Admin-gated
@@ -98,7 +99,7 @@ const failMessage = (body: Envelope | null): string => {
     return 'Could not reach the social bench (sign in as a Manager; the campaign feature may not be deployed yet).';
   }
   return typeof body.error === 'string' && body.error
-    ? body.error
+    ? friendlyError(body.error, 'generic')
     : 'Request failed.';
 };
 

@@ -1,4 +1,5 @@
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
+import { friendlyError } from '@/propel/lib/friendlyError';
 import type { LandingSectionType, LandingStatus, LandingTheme } from '@/propel/lib/landingSectionDefs';
 
 // Real data layer for the Marketing hub's Landing tab. All landing-page CRUD
@@ -130,7 +131,11 @@ const failMessage = (body: Envelope | null): string => {
   if (body === null) {
     return 'Could not reach the landing-page service (sign in as a Manager; the object may not be deployed yet).';
   }
-  return typeof body.error === 'string' && body.error ? body.error : 'Request failed.';
+  // Raw/technical server strings → friendly message (+ console.error); an
+  // already-human message passes through unchanged.
+  return typeof body.error === 'string' && body.error
+    ? friendlyError(body.error, 'generic')
+    : 'Request failed.';
 };
 
 export async function listLandingPages(): Promise<CrmResult<LandingListPayload>> {

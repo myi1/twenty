@@ -1,4 +1,5 @@
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
+import { friendlyError } from '@/propel/lib/friendlyError';
 
 // Real data layer for the Website hub's Blog tab. All blog-pipeline reads/writes
 // run through three Manager/Admin-gated CRM routes (blog-pipeline worktree,
@@ -119,7 +120,12 @@ const failMessage = (body: Envelope | null): string => {
   if (body === null) {
     return 'Could not reach the blog pipeline (sign in as a Manager; the routes may not be deployed yet).';
   }
-  return typeof body.error === 'string' && body.error ? body.error : 'Request failed.';
+  // Route any server-supplied string through the friendly mapper: a raw/technical
+  // error (e.g. "LLM response was not parseable JSON…") becomes a human message +
+  // is logged to console; an already-human message passes through unchanged.
+  return typeof body.error === 'string' && body.error
+    ? friendlyError(body.error, 'generic')
+    : 'Request failed.';
 };
 
 const asBlogStatus = (v: unknown): BlogStatus =>

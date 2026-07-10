@@ -1,4 +1,5 @@
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
+import { friendlyError } from '@/propel/lib/friendlyError';
 
 // Real data layer for the Asset Library (LP Builder v2 §4.3). All websiteAsset
 // CRUD runs through ONE Manager/Admin-gated CRM route (propel-crm-integration,
@@ -110,7 +111,7 @@ const failMessage = (body: Envelope | null): string => {
   if (body === null) {
     return 'Could not reach the asset library (sign in as a Manager; the object may not be deployed yet).';
   }
-  return typeof body.error === 'string' && body.error ? body.error : 'Request failed.';
+  return typeof body.error === 'string' && body.error ? friendlyError(body.error, 'generic') : 'Request failed.';
 };
 
 export async function listAssets(filter?: AssetFilter): Promise<CrmResult<AssetListPayload>> {

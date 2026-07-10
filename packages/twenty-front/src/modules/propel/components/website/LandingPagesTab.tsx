@@ -234,6 +234,13 @@ const checkLabel = (key: string): string => {
   return words.charAt(0).toUpperCase() + words.slice(1);
 };
 
+// True when the page's STORED pre-flight result has HARD failures — i.e. the
+// card is "in draft with issues". Drives the "Fix issues" affordance.
+const hasFailingPreflight = (page: LandingPageSummary): boolean => {
+  const s = readPreflightSummary(page.preflightJson);
+  return s !== null && (!s.passed || s.hardFails > 0);
+};
+
 // Small pass/fail/warn chip for the list cards — only when the route projects a
 // readable preflightJson (older routes don't → no chip at all).
 const PreflightChip = ({ page }: { page: LandingPageSummary }) => {
@@ -279,6 +286,7 @@ const PageCard = ({
   page,
   onEdit,
   onToggleStatus,
+  onFixIssues,
   canPublish,
   publishLoading,
   onSubmitted,
@@ -289,6 +297,8 @@ const PageCard = ({
   page: LandingPageSummary;
   onEdit: () => void;
   onToggleStatus: () => void;
+  /** Open the pre-flight issues review for a page whose stored checks fail. */
+  onFixIssues: () => void;
   /** Maker-checker (Phase 2): true → a publisher (keeps "Set live"). */
   canPublish: boolean;
   /** The publish verdict is still in flight → the go-live control is disabled. */
@@ -348,6 +358,17 @@ const PageCard = ({
       <Button size="xs" variant="light" color="red" leftSection={<IconPencil size={14} />} onClick={onEdit}>
         Edit
       </Button>
+      {hasFailingPreflight(page) ? (
+        <Button
+          size="xs"
+          variant="light"
+          color="orange"
+          leftSection={<IconAlertTriangle size={14} />}
+          onClick={onFixIssues}
+        >
+          Fix issues
+        </Button>
+      ) : null}
       {page.status === 'LIVE' ? (
         // Unpublish (LIVE → DRAFT) is not a go-live; unchanged for everyone.
         <Button
@@ -976,6 +997,25 @@ export const LandingPagesTab = () => {
       return;
     }
     setBusy(false);
+    if (!pf.ok) {
+      notify(pf.error, 'error');
+      return;
+    }
+    setPreflightState({ pageId: id, checks: pf.checks, running: false, publishing: false });
+  };
+
+  // "Fix issues" from a card whose stored pre-flight is failing — opens the SAME
+  // checklist modal in review mode (read-only; no publish attempt) so the founder
+  // sees exactly WHICH checks fail + their detail (that's what "issues" means),
+  // then Edit/Re-run to clear them. Available to everyone (a read, not a publish).
+  const openIssuesReview = async (id: string) => {
+    setBusy(true);
+    const pf = await preflightPage(id);
+    setBusy(false);
+    if (!pf.ok && pf.unavailable) {
+      notify('Pre-flight checks aren’t available on this workspace yet.', 'info');
+      return;
+    }
     if (!pf.ok) {
       notify(pf.error, 'error');
       return;
@@ -2206,6 +2246,7 @@ export const LandingPagesTab = () => {
                 page={page}
                 onEdit={() => openEdit(page.id)}
                 onToggleStatus={() => toggleStatus(page)}
+                onFixIssues={() => void openIssuesReview(page.id)}
                 canPublish={canPublish}
                 publishLoading={publishLoading}
                 onSubmitted={reload}

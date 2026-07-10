@@ -1,4 +1,5 @@
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
+import { friendlyError } from '@/propel/lib/friendlyError';
 
 // Data layer for social Style-Learning — the "learn from our real post history"
 // seam behind the Social Bench's campaign box. ONE Manager/Admin-gated CRM route
@@ -62,7 +63,7 @@ const failMessage = (body: Envelope | null): string => {
     return 'Could not reach style-learning (sign in as a Manager; the feature may not be deployed yet).';
   }
   return typeof body.error === 'string' && body.error
-    ? body.error
+    ? friendlyError(body.error, 'generic')
     : 'Request failed.';
 };
 

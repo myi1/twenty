@@ -1,4 +1,5 @@
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
+import { friendlyError } from '@/propel/lib/friendlyError';
 import { type AnalyticsRange } from '@/propel/types/marketingHome';
 
 // Data layer for the AI-cost ledger — the "What it cost" block on the Night Desk.
@@ -55,7 +56,7 @@ const failMessage = (body: Envelope | null): string => {
     return 'Could not reach the AI-cost ledger (sign in as a Manager; the feature may not be deployed yet).';
   }
   return typeof body.error === 'string' && body.error
-    ? body.error
+    ? friendlyError(body.error, 'generic')
     : 'Request failed.';
 };
 
