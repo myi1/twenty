@@ -1,43 +1,43 @@
 import { useState } from 'react';
-import { Button, TextInput, Textarea, Stack, Group, CopyButton, Anchor, Alert } from '@mantine/core';
+import { Modal, TextInput, Textarea, Button, Group, Box, Text, Anchor } from '@mantine/core';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
-import type { OffplanUnit, RouteEnvelope } from './types';
 
-export function OffplanGeneratePanel({ unit }: { unit: OffplanUnit }) {
+export function OffplanGeneratePanel({
+  projectExternalId, unitExternalId, onClose,
+}: { projectExternalId: number; unitExternalId?: number; onClose: () => void }) {
   const [clientName, setClientName] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [url, setUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
 
   const generate = async () => {
-    setBusy(true); setError(null); setUrl(null);
-    try {
-      const res = await callPropelRoute<RouteEnvelope<unknown> & { url?: string }>('/offplan/pitch-generate', {
-        projectExternalId: Number(unit.projectId), unitExternalId: unit.externalId,
-        clientName: clientName || undefined, note: note || undefined,
-      });
-      if (!res || !res.ok || !res.url) { setError(res?.error ?? 'generate failed'); return; }
-      setUrl(res.url);
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-    finally { setBusy(false); }
+    setBusy(true); setErr(null);
+    const res = await callPropelRoute<{ ok?: boolean; url?: string; error?: string }>('/offplan/pitch-generate',
+      { projectExternalId, unitExternalId, clientName: clientName || undefined, note: note || undefined });
+    setBusy(false);
+    if (res?.ok && res.url) setUrl(res.url); else setErr(res?.error ?? 'Generation failed');
   };
 
   return (
-    <Stack gap="sm">
-      <TextInput label="Client name" value={clientName} onChange={(e) => setClientName(e.currentTarget.value)} />
-      <Textarea label="Agent note (optional)" value={note} onChange={(e) => setNote(e.currentTarget.value)} autosize minRows={2} />
-      <Button onClick={generate} loading={busy}>Generate branded PDF</Button>
-      {error && <Alert color="red">{error}</Alert>}
-      {url && (
-        <>
-          <iframe title="pitch-preview" src={url} style={{ width: '100%', height: 360, border: '1px solid #ddd' }} />
-          <Group>
-            <Anchor href={url} target="_blank" download><Button variant="light">Download</Button></Anchor>
-            <CopyButton value={url}>{({ copied, copy }) => <Button variant="default" onClick={copy}>{copied ? 'Copied' : 'Copy link'}</Button>}</CopyButton>
+    <Modal opened onClose={onClose} title="Generate branded pitch" size="lg">
+      {!url ? (
+        <Box>
+          <TextInput label="Client name (optional)" value={clientName} onChange={(e) => setClientName(e.currentTarget.value)} mb="sm" />
+          <Textarea label="Your note (optional)" value={note} onChange={(e) => setNote(e.currentTarget.value)} minRows={2} mb="md" />
+          {err && <Text c="red" size="sm" mb="sm">{err}</Text>}
+          <Group justify="flex-end"><Button color="red" loading={busy} onClick={generate}>Generate PDF</Button></Group>
+        </Box>
+      ) : (
+        <Box>
+          <iframe title="pitch" src={url} style={{ width: '100%', height: 460, border: '1px solid var(--mantine-color-default-border)', borderRadius: 8 }} />
+          <Group mt="sm" justify="flex-end">
+            <Anchor href={url} download><Button variant="default">⭳ Download</Button></Anchor>
+            <Button variant="default" onClick={() => navigator.clipboard.writeText(url)}>🔗 Copy link</Button>
+            <Button color="red" onClick={onClose}>Done</Button>
           </Group>
-        </>
+        </Box>
       )}
-    </Stack>
+    </Modal>
   );
 }
