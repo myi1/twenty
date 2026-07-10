@@ -10,6 +10,7 @@ import { OffplanFilters } from '@/propel/offplan/OffplanFilters';
 import { OffplanMap } from '@/propel/offplan/OffplanMap';
 import { OffplanCardRail } from '@/propel/offplan/OffplanCardRail';
 import { OffplanProjectDrawer } from '@/propel/offplan/OffplanProjectDrawer';
+import { OffplanDeveloperDrawer } from '@/propel/offplan/OffplanDeveloperDrawer';
 import { OffplanShortlistTray } from '@/propel/offplan/OffplanShortlistTray';
 import { OffplanPitchWizard } from '@/propel/offplan/OffplanPitchWizard';
 
@@ -20,6 +21,7 @@ export const OffplanStudioPage = () => {
     ids: number[];
     anchor?: { projectId: number; unitId?: number };
   } | null>(null);
+  const [selectedDeveloperSlug, setSelectedDeveloperSlug] = useState<string | null>(null);
 
   // Gold-ring a district bubble when any of its projects is shortlisted.
   const favoritedDistrictIds = useMemo(() => {
@@ -69,7 +71,19 @@ export const OffplanStudioPage = () => {
             shortlisted={sl.favoritedIds.has(b.selectedId)}
             onClose={() => b.setSelectedId(null)}
             onShortlist={sl.toggle}
-            onPitch={(p, u) => setWizard({ ids: [p], anchor: { projectId: p, unitId: u } })} />
+            onPitch={(p, u) => setWizard({ ids: [p], anchor: { projectId: p, unitId: u } })}
+            onOpenDeveloper={setSelectedDeveloperSlug} />
+        )}
+        {selectedDeveloperSlug != null && (
+          <OffplanDeveloperDrawer
+            slug={selectedDeveloperSlug}
+            onClose={() => setSelectedDeveloperSlug(null)}
+            onOpenProject={(id) => { setSelectedDeveloperSlug(null); b.openProject(id); }}
+            onShowOnMap={(slug) => {
+              b.setFilters((f) => ({ ...f, developerSlugs: [slug] }));
+              setSelectedDeveloperSlug(null);
+              b.setSelectedId(null);
+            }} />
         )}
         {wizard && (
           <OffplanPitchWizard initialProjectIds={wizard.ids} initialAnchor={wizard.anchor}
