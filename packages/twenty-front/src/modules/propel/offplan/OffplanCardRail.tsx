@@ -1,4 +1,4 @@
-import { ScrollArea, Card, Text, Group, Badge, Button, Box } from '@mantine/core';
+import { ScrollArea, Card, Text, Group, Badge, Button, Box, Image, Anchor } from '@mantine/core';
 import { useEffect, useRef } from 'react';
 import { isoToQuarterLabel } from './handover';
 import type { OffplanMapPoint } from './types';
@@ -7,7 +7,7 @@ const WINDOW = 60; // cap DOM cards (no virtualization lib available)
 const aed = (n: number | null) => (n == null ? '—' : `AED ${Math.round(n).toLocaleString('en-US')}`);
 
 export function OffplanCardRail({
-  visible, total, hoveredId, onHover, onOpen, onShortlist, onPitch,
+  visible, total, hoveredId, onHover, onOpen, onShortlist, onPitch, onOpenDeveloper,
 }: {
   visible: OffplanMapPoint[];
   total: number;
@@ -16,6 +16,7 @@ export function OffplanCardRail({
   onOpen: (id: number) => void;
   onShortlist: (id: number) => void;
   onPitch: (id: number) => void;
+  onOpenDeveloper?: (slug: string) => void;
 }) {
   const rowRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   useEffect(() => {
@@ -36,19 +37,37 @@ export function OffplanCardRail({
               onMouseEnter={() => onHover(p.externalId)} onMouseLeave={() => onHover(null)}
               onClick={() => onOpen(p.externalId)}
               style={{ cursor: 'pointer', outline: hoveredId === p.externalId ? '1px solid var(--mantine-color-red-6)' : undefined }}>
-              <Group justify="space-between" wrap="nowrap">
-                <Text fw={600} size="sm" lineClamp={1}>{p.name}</Text>
-                {p.isLaunch && <Badge color="green" size="xs">New launch</Badge>}
-              </Group>
-              <Text size="xs" c="dimmed">{p.developerName} · {p.districtName}</Text>
-              <Group gap="md" mt={6}>
-                <Text fw={700} size="sm" c="red">from {aed(p.priceFromAed)}</Text>
-                <Text size="xs" c="dimmed">{p.unitCount} units</Text>
-                {p.handover && <Text size="xs" c="dimmed">Handover {isoToQuarterLabel(p.handover)}</Text>}
-              </Group>
-              <Group gap="xs" mt={8}>
-                <Button size="compact-xs" variant="default" onClick={(e) => { e.stopPropagation(); onShortlist(p.externalId); }}>＋ Shortlist</Button>
-                <Button size="compact-xs" color="red" onClick={(e) => { e.stopPropagation(); onPitch(p.externalId); }}>Pitch</Button>
+              <Group wrap="nowrap" gap="sm" align="flex-start">
+                {p.heroImageUrl ? (
+                  <Image src={p.heroImageUrl} w={84} h={68} radius="sm" fit="cover" style={{ flex: 'none' }} />
+                ) : (
+                  <Box w={84} h={68} style={{ flex: 'none', borderRadius: 6, background: 'linear-gradient(135deg,#2a4368,#16273f)' }} />
+                )}
+                <Box style={{ flex: 1, minWidth: 0 }}>
+                  <Group justify="space-between" wrap="nowrap">
+                    <Text fw={600} size="sm" lineClamp={1}>{p.name}</Text>
+                    {p.isLaunch && <Badge color="green" size="xs">New launch</Badge>}
+                  </Group>
+                  <Text size="xs" c="dimmed" lineClamp={1}>
+                    {onOpenDeveloper && p.developerSlug ? (
+                      <Anchor size="xs" onClick={(e) => { e.stopPropagation(); onOpenDeveloper(p.developerSlug!); }}>
+                        {p.developerName ?? p.developerSlug}
+                      </Anchor>
+                    ) : (
+                      p.developerName
+                    )}
+                    {' · '}{p.districtName}
+                  </Text>
+                  <Group gap="md" mt={6}>
+                    <Text fw={700} size="sm" c="red">from {aed(p.priceFromAed)}</Text>
+                    <Text size="xs" c="dimmed">{p.unitCount} units</Text>
+                    {p.handover && <Text size="xs" c="dimmed">Handover {isoToQuarterLabel(p.handover)}</Text>}
+                  </Group>
+                  <Group gap="xs" mt={8}>
+                    <Button size="compact-xs" variant="default" onClick={(e) => { e.stopPropagation(); onShortlist(p.externalId); }}>＋ Shortlist</Button>
+                    <Button size="compact-xs" color="red" onClick={(e) => { e.stopPropagation(); onPitch(p.externalId); }}>Pitch</Button>
+                  </Group>
+                </Box>
               </Group>
             </Card>
           ))}

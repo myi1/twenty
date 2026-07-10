@@ -59,7 +59,8 @@ export const OffplanStudioPage = () => {
                 <Box style={{ width: '40%', minWidth: 0, borderLeft: '1px solid var(--mantine-color-default-border)' }}>
                   <OffplanCardRail visible={b.visible} total={b.points.length}
                     hoveredId={b.hoveredId} onHover={b.setHoveredId} onOpen={b.openProject}
-                    onShortlist={sl.toggle} onPitch={(id) => setWizard({ ids: [id] })} />
+                    onShortlist={sl.toggle} onPitch={(id) => setWizard({ ids: [id] })}
+                    onOpenDeveloper={setSelectedDeveloperSlug} />
                 </Box>
               </>
             )}

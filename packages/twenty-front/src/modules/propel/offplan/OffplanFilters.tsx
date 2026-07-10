@@ -1,7 +1,22 @@
 import { useMemo, useState } from 'react';
-import { Group, TextInput, RangeSlider, MultiSelect, Select, Switch, Box, Text } from '@mantine/core';
+import { ActionIcon, Group, Loader, TextInput, RangeSlider, MultiSelect, Select, Switch, Box, Text, Tooltip } from '@mantine/core';
+import { IconSparkles } from 'twenty-ui/display';
+import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import { quarterCutoffIso } from './handover';
 import type { OffplanMapPoint, OffplanBrowseFilters } from './types';
+
+const GOLD = '#d4af37';
+
+type AiFilters = {
+  minPriceAed?: number | null;
+  maxPriceAed?: number | null;
+  bedrooms?: number | null;
+  districtNames?: string[] | null;
+  developerName?: string | null;
+  handoverBeforeIso?: string | null;
+  newLaunchOnly?: boolean | null;
+  q?: string | null;
+};
 
 const uniq = (pairs: Array<[string, string]>) => {
   const m = new Map<string, string>();
@@ -32,11 +47,62 @@ export function OffplanFilters({
     else onChange({ handoverBeforeIso: undefined });
   };
 
+  // ✦ AI natural-language search: sends the free text to assist.aiSearch and
+  // applies the STRUCTURED filters it extracts as hard client-side filters —
+  // the AI never invents ids or numbers we don't map ourselves.
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiHidden, setAiHidden] = useState(false);
+  const runAiSearch = async () => {
+    const prompt = filters.q.trim();
+    if (!prompt || aiBusy) return;
+    setAiBusy(true);
+    const districtNames = [...new Set(points.map((p) => p.districtName).filter(Boolean))].slice(0, 120);
+    const res = await callPropelRoute<{ ok?: boolean; code?: string; filters?: AiFilters }>(
+      '/offplan/assist',
+      { action: 'aiSearch', prompt, districtNames },
+    );
+    setAiBusy(false);
+    if (res?.ok && res.filters) {
+      const f = res.filters;
+      const wanted = new Set((f.districtNames ?? []).map((n) => n.toLowerCase()));
+      const districtIds = [...new Set(
+        points.filter((p) => wanted.has(p.districtName.toLowerCase())).map((p) => p.districtId),
+      )];
+      const devSlug = f.developerName
+        ? points.find((p) => p.developerName?.toLowerCase() === f.developerName!.toLowerCase())?.developerSlug
+        : null;
+      onChange({
+        q: f.q ?? '',
+        districtIds,
+        minPriceAed: f.minPriceAed ?? undefined,
+        maxPriceAed: f.maxPriceAed ?? undefined,
+        handoverBeforeIso: f.handoverBeforeIso ?? undefined,
+        developerSlugs: devSlug ? [devSlug] : [],
+        newLaunchOnly: f.newLaunchOnly === true,
+      });
+      onBedChange(f.bedrooms ?? undefined, undefined);
+    } else if (res?.code === 'AI_UNAVAILABLE') {
+      setAiHidden(true);
+    }
+    // AI_PARSE_FAILED / null → silent fallback: the plain q filter already applies as typed.
+  };
+
   return (
     <Box style={{ padding: '8px 12px', borderBottom: '1px solid var(--mantine-color-default-border)' }}>
       <Group gap="xs" wrap="wrap">
         <TextInput placeholder="Search project, developer, area…" value={filters.q}
-          onChange={(e) => onChange({ q: e.currentTarget.value })} style={{ flex: 1, minWidth: 220 }} />
+          onChange={(e) => onChange({ q: e.currentTarget.value })} style={{ flex: 1, minWidth: 220 }}
+          rightSection={
+            aiBusy ? (
+              <Loader size={14} />
+            ) : !aiHidden && filters.q.trim() !== '' ? (
+              <Tooltip label="Ask AI to turn this into filters">
+                <ActionIcon variant="subtle" color="gray" onClick={() => void runAiSearch()}>
+                  <IconSparkles size={14} color={GOLD} />
+                </ActionIcon>
+              </Tooltip>
+            ) : undefined
+          } />
         <MultiSelect placeholder="District" data={districtOptions} value={filters.districtIds}
           onChange={(v) => onChange({ districtIds: v })} searchable clearable maw={200} />
         <MultiSelect placeholder="Developer" data={developerOptions} value={filters.developerSlugs}
