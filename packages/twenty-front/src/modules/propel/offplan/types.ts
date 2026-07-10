@@ -50,8 +50,106 @@ export type OffplanMapPoint = {
   handover: string | null;
   developerName: string | null;
   developerSlug: string | null;
+  heroImageUrl?: string | null;
 };
 export type OffplanMapPointsResult = { points: OffplanMapPoint[]; total: number };
+
+// Full project detail from /offplan/browse { action:'projectDetail' } →
+// geniemap POST /v1/projects/detail. Deliberately separate from the lean
+// OffplanMapPoint — the point feed stays small; detail is fetched lazily.
+export type OffplanProjectDetail = {
+  externalId: number;
+  slug: string;
+  name: string;
+  description: string | null;
+  status: string;
+  isLaunch: boolean;
+  hasResale: boolean;
+  has3DModel: boolean;
+  handover: string | null;
+  startOfSales: string | null;
+  minPriceAed: number | null;
+  maxPriceAed: number | null;
+  minSquareFt: number | null;
+  maxSquareFt: number | null;
+  ownershipType: string | null;
+  eoiAed: number | null;
+  nocPct: number | null;
+  serviceCharge: number | null;
+  commissionMinPct: number | null;
+  commissionMaxPct: number | null;
+  unitCount: number;
+  unitTypes: Array<{ id?: string; name?: string }>;
+  lat: number | null;
+  lon: number | null;
+  developer: { name: string; slug: string; description: string | null };
+  district: { id: string; name: string };
+  amenities: Array<{ name: string | null; code: string | null }>;
+  paymentPlans: Array<{
+    id: string;
+    name: string;
+    description: string | null;
+    downPaymentPct: number | null;
+    postHandover: boolean;
+    items: Array<{
+      rawName: string;
+      description: string | null;
+      order: number;
+      installmentPct: number | null;
+      dldPct: number | null;
+      adminFeeAed: number | null;
+      conditional: boolean;
+      condition: string | null;
+    }>;
+  }>;
+  renders: { primary: string | null; gallery: string[] };
+  documents: Array<{ kind: string; label: string; url: string }>;
+};
+
+// Developer profile from /offplan/browse { action:'developerDetail' }.
+export type OffplanDeveloperDetail = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  isJointVenture: boolean;
+  contactName: string | null;
+  contactPhone: string | null;
+  site: string | null;
+  activeProjects: number;
+  portfolio: Array<{
+    externalId: number;
+    name: string;
+    districtName: string;
+    status: string;
+    isLaunch: boolean;
+    handover: string | null;
+    minPrice: number | null;
+    unitCount: number;
+  }>;
+  portfolioTotal: number;
+};
+
+// ── Pitch wizard ─────────────────────────────────────────────────────────────
+export type PitchClient = { id: string; name: string; phoneE164: string | null };
+export type PitchTheme = 'nocturne' | 'riviera' | 'atlas';
+export type PitchSections = {
+  cover: boolean;
+  districtIntro: boolean;
+  projectPages: boolean;
+  units: boolean;
+  layouts: boolean;
+  amenities: boolean;
+  paymentPlan: boolean;
+  areaStrength: boolean;
+  investorRoi: boolean;
+};
+export type PitchGenerated = {
+  projectExternalId: number;
+  url: string;
+  filename?: string;
+  noteId?: string;
+};
 
 // Client-side browse filters applied over the full point feed. `projectIdAllowlist`
 // is set only when a unit-level (beds/layout) filter narrows to a matching id set.
