@@ -2,10 +2,14 @@ import { useEffect, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-// Tiles come from the CRM/image-service proxy — NO key in the bundle. The proxy base
-// is injected at runtime via window.__propelConfig?.imageServiceProxy or defaults to
-// same-origin '/image' rewrite; adjust TILE_BASE to the staging proxy path.
-const TILE_BASE = (window as any).__propelConfig?.tileBase ?? '/tiles';
+// Tiles come from the image-service tile proxy — NO Mapbox key in the bundle (the
+// token stays server-side in the image-service). `window.__propelConfig.tileBase`
+// overrides at runtime (set this in prod to a same-origin `/tiles` reverse-proxy).
+// Default = the staging m4 image-service origin, which the m4 browser reaches
+// directly at http://localhost:3006 (same pattern as MEDIA_PROXY_URL). The tile
+// route sends `access-control-allow-origin: *` so MapLibre's WebGL upload works
+// cross-origin.
+const TILE_BASE = (window as any).__propelConfig?.tileBase ?? 'http://localhost:3006/tiles';
 
 export function OffplanMap({ points }: { points: Array<{ lon: number; lat: number; label: string }> }) {
   const ref = useRef<HTMLDivElement>(null);
