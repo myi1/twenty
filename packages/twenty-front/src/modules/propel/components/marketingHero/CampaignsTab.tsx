@@ -21,6 +21,7 @@ import {
   IconPlayerPlay,
   IconPlus,
 } from 'twenty-ui/display';
+import { AttributionLink, PerfStrip, type PerfItem } from '@/propel/components/desk';
 import { CampaignDetail } from '@/propel/components/marketingHero/CampaignDetail';
 import { CampaignReviewPanel } from '@/propel/components/marketingHero/CampaignReviewPanel';
 import { CampaignSpinePanel } from '@/propel/components/marketingHero/CampaignSpinePanel';
@@ -267,6 +268,25 @@ export const CampaignsTab = ({
               const isDraftEditable =
                 r.kind === 'campaign' && r.status === 'draft';
               const seq = r.seq;
+              // Wave-0 chassis proof: the outcome micro-read from the real
+              // UnifiedRow numbers. Sequences show enrolled/active; sent
+              // campaigns show open%/click%/reply; sending campaigns show sent.
+              // Rows with no numbers (draft/scheduled) fall back to the string.
+              const perfItems: PerfItem[] =
+                r.kind === 'sequence' && seq
+                  ? [
+                      { label: 'Enrolled', value: seq.enrolledCount, kind: 'count' },
+                      { label: 'Active', value: seq.activeCount, kind: 'count' },
+                    ]
+                  : r.status === 'sent'
+                    ? [
+                        { label: 'Open', value: r.openRate ?? null, kind: 'pct' },
+                        { label: 'Click', value: r.clickRate ?? null, kind: 'pct' },
+                        { label: 'Reply', value: r.replies ?? null, kind: 'count' },
+                      ]
+                    : r.status === 'sending' && typeof r.sentCount === 'number'
+                      ? [{ label: 'Sent', value: r.sentCount, kind: 'count' }]
+                      : [];
               return (
                 <Table.Tr
                   key={`${r.status}-${r.id}`}
@@ -292,9 +312,29 @@ export const CampaignsTab = ({
                     </Text>
                   </Table.Td>
                   <Table.Td ta="right">
-                    <Text size="sm" c="dimmed" ff="monospace">
-                      {r.perf}
-                    </Text>
+                    <Stack gap={4} align="flex-end">
+                      {perfItems.length > 0 ? (
+                        <PerfStrip items={perfItems} />
+                      ) : (
+                        <Text size="sm" c="dimmed" ff="monospace">
+                          {r.perf}
+                        </Text>
+                      )}
+                      {r.kind === 'campaign' ? (
+                        <AttributionLink
+                          attribution={{
+                            leads: r.leads ?? null,
+                            deals: r.attributedDealCount ?? null,
+                            revenue: r.attributedRevenue ?? null,
+                          }}
+                          onDrill={
+                            r.status === 'draft'
+                              ? undefined
+                              : () => setDetailId(r.id)
+                          }
+                        />
+                      ) : null}
+                    </Stack>
                   </Table.Td>
                   <Table.Td>
                     <Text size="sm" c="dimmed" ff="monospace">

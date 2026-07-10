@@ -46,6 +46,17 @@ export type UnifiedRow = {
   // listing-backed drafts can't be edited in the segment-only builder (it would
   // strip the listing + drop the permit gate) — they open the read-only detail.
   hasListing?: boolean;
+  // Numeric perf carried for the Wave-0 control-room PerfStrip (additive; the
+  // formatted `perf` string above stays as the fallback for rows with no numbers).
+  sentCount?: number | null;
+  openRate?: number | null; // whole-number percent
+  clickRate?: number | null; // whole-number percent
+  replies?: number | null;
+  // Attribution roll-up — populated by the Wave 1 attribution loop (spine rolls).
+  // Null today, so AttributionLink renders its honest "no leads yet".
+  leads?: number | null;
+  attributedDealCount?: number | null;
+  attributedRevenue?: number | null;
 };
 
 export const buildCampaignRows = (
@@ -69,6 +80,7 @@ export const buildCampaignRows = (
         ? `${fmt(d.pendingLeft)} queued`
         : `${fmt(d.sentCount)} sent · ${fmt(d.pendingLeft)} left`,
       kind: 'campaign',
+      sentCount: d.sentCount,
     });
   }
 
@@ -116,6 +128,9 @@ export const buildCampaignRows = (
       audience: '—',
       perf: `${pct(r.openRate)} open · ${fmt(r.replies)} reply`,
       kind: 'campaign',
+      openRate: r.openRate,
+      clickRate: r.clickRate,
+      replies: r.replies,
     });
   }
 
