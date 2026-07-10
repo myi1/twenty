@@ -1,15 +1,33 @@
-import { Box, Drawer, LoadingOverlay, Text } from '@mantine/core';
+import { useMemo, useState } from 'react';
+import { Box, LoadingOverlay, Text } from '@mantine/core';
 import { IconMap } from 'twenty-ui/display';
 import { PropelMantineProvider } from '@/propel/components/PropelMantineProvider';
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { useOffplanBrowse } from '@/propel/offplan/useOffplanBrowse';
+import { useOffplanShortlist } from '@/propel/offplan/useOffplanShortlist';
 import { OffplanFilters } from '@/propel/offplan/OffplanFilters';
 import { OffplanMap } from '@/propel/offplan/OffplanMap';
 import { OffplanCardRail } from '@/propel/offplan/OffplanCardRail';
+import { OffplanProjectDrawer } from '@/propel/offplan/OffplanProjectDrawer';
+import { OffplanShortlistTray } from '@/propel/offplan/OffplanShortlistTray';
+import { OffplanGeneratePanel } from '@/propel/offplan/OffplanGeneratePanel';
 
 export const OffplanStudioPage = () => {
   const b = useOffplanBrowse();
+  const sl = useOffplanShortlist();
+  const [pitchFor, setPitchFor] = useState<{ p: number; u?: number } | null>(null);
+
+  // Gold-ring a district bubble when any of its projects is shortlisted.
+  const favoritedDistrictIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const id of sl.ids) {
+      const d = b.byId.get(id)?.districtId;
+      if (d) set.add(d);
+    }
+    return set;
+  }, [sl.ids, b.byId]);
+
   return (
     <PropelMantineProvider>
       <PageContainer style={{ flex: 1, minHeight: 0 }}>
@@ -24,28 +42,34 @@ export const OffplanStudioPage = () => {
               <Text c="dimmed" m="md">{b.error}</Text>
             ) : (
               <>
-                <Box style={{ width: '60%', minWidth: 0 }}>
+                <Box style={{ position: 'relative', width: '60%', minWidth: 0 }}>
                   <OffplanMap
                     visiblePoints={b.visible} clusters={b.clusters}
                     selectedId={b.selectedId} hoveredId={b.hoveredId} viewedIds={b.viewedIds}
+                    favoritedIds={sl.favoritedIds} favoritedDistrictIds={favoritedDistrictIds}
                     onViewportChange={(bounds, zoom) => { b.setBounds(bounds); b.setZoom(zoom); }}
                     onPinClick={b.openProject} onPinHover={b.setHoveredId} />
+                  <OffplanShortlistTray count={sl.count} onBuild={() => sl.ids[0] != null && setPitchFor({ p: sl.ids[0] })} />
                 </Box>
                 <Box style={{ width: '40%', minWidth: 0, borderLeft: '1px solid var(--mantine-color-default-border)' }}>
                   <OffplanCardRail visible={b.visible} total={b.points.length}
                     hoveredId={b.hoveredId} onHover={b.setHoveredId} onOpen={b.openProject}
-                    onShortlist={b.openProject} onPitch={b.openProject} />
+                    onShortlist={sl.toggle} onPitch={(id) => setPitchFor({ p: id })} />
                 </Box>
               </>
             )}
           </Box>
         </Box>
         {b.selectedId != null && b.byId.get(b.selectedId) && (
-          <Drawer opened position="right" size={640} onClose={() => b.setSelectedId(null)}
-            title={<div><Text fw={700}>{b.byId.get(b.selectedId)!.name}</Text><Text size="xs" c="dimmed">{b.byId.get(b.selectedId)!.developerName} · {b.byId.get(b.selectedId)!.districtName}</Text></div>}>
-            <Text fw={700} c="red">from AED {b.byId.get(b.selectedId)!.priceFromAed?.toLocaleString('en-US') ?? '—'} · {b.byId.get(b.selectedId)!.unitCount} units</Text>
-            <Text size="sm" c="dimmed" mt="md">Full project detail (units, payment plan, area, documents) lands in the next batch.</Text>
-          </Drawer>
+          <OffplanProjectDrawer
+            point={b.byId.get(b.selectedId)!}
+            shortlisted={sl.favoritedIds.has(b.selectedId)}
+            onClose={() => b.setSelectedId(null)}
+            onShortlist={sl.toggle}
+            onPitch={(p, u) => setPitchFor({ p, u })} />
+        )}
+        {pitchFor && (
+          <OffplanGeneratePanel projectExternalId={pitchFor.p} unitExternalId={pitchFor.u} onClose={() => setPitchFor(null)} />
         )}
       </PageContainer>
     </PropelMantineProvider>
