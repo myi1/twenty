@@ -58,6 +58,7 @@ import {
   translatePage,
   TRANSLATE_LOCALES,
   type BenchLogEntry,
+  type LandingPageFull,
   type LandingPageSummary,
   type LandingSection,
   type PreflightCheck,
@@ -264,6 +265,134 @@ const PreflightChip = ({ page }: { page: LandingPageSummary }) => {
     <Badge color="teal" variant="light" size="sm" leftSection={<IconCheck size={12} />}>
       Checks
     </Badge>
+  );
+};
+
+// The keys the pre-flight gate emits that need the full page editor to fix (a
+// lead-form section, real images, a valid section schema, the mobile budget).
+const EDITOR_FIX_KEYS = new Set([
+  'leadFormPresent',
+  'imagesResolve',
+  'schemaValid',
+  'mobileBudget',
+]);
+
+// A short "here's what to do in the editor" hint per editor-fixable check.
+const EDITOR_FIX_HINT: Record<string, string> = {
+  leadFormPresent: 'Add a lead-capture section (Lead form / Booking) in the editor.',
+  imagesResolve: 'Replace the broken or missing images in the editor.',
+  schemaValid: 'Fix the section content in the editor so it validates.',
+  mobileBudget: 'Trim or lighten sections in the editor to fit the mobile budget.',
+};
+
+// The inline fix control for ONE failed pre-flight check (fix mode only). Permit
+// and meta are fixed in place here; everything else opens the editor at the right
+// spot. Fixing is a DRAFT save (maker-allowed) — publishing stays gated below.
+const PreflightFixControl = ({
+  check,
+  page,
+  busy,
+  onFixPermit,
+  onFixMeta,
+  onEditPage,
+}: {
+  check: PreflightCheck;
+  page: LandingPageFull;
+  busy: boolean;
+  onFixPermit: (permit: string) => void;
+  onFixMeta: (headline: string, metaDescription: string) => void;
+  onEditPage: (hint: string) => void;
+}) => {
+  const [permit, setPermit] = useState('');
+  const [headline, setHeadline] = useState(page.headline ?? '');
+  const [metaDescription, setMetaDescription] = useState(page.metaDescription ?? '');
+
+  if (check.key === 'permitCheck') {
+    return (
+      <Group gap="xs" wrap="nowrap" mt={6} align="flex-end">
+        <TextInput
+          size="xs"
+          label="Trakheesi permit number"
+          placeholder="e.g. 7128394520"
+          value={permit}
+          onChange={(e) => setPermit(e.currentTarget.value)}
+          style={{ flex: 1, minWidth: 0 }}
+          disabled={busy}
+        />
+        <Button
+          size="xs"
+          color="teal"
+          leftSection={<IconDeviceFloppy size={13} />}
+          loading={busy}
+          onClick={() => onFixPermit(permit)}
+        >
+          Save + re-check
+        </Button>
+      </Group>
+    );
+  }
+
+  if (check.key === 'metaPresent') {
+    return (
+      <Stack gap={6} mt={6}>
+        <TextInput
+          size="xs"
+          label="Headline"
+          placeholder="The page's SEO headline"
+          value={headline}
+          onChange={(e) => setHeadline(e.currentTarget.value)}
+          disabled={busy}
+        />
+        <Textarea
+          size="xs"
+          label="Meta description"
+          placeholder="One or two sentences for search results"
+          value={metaDescription}
+          onChange={(e) => setMetaDescription(e.currentTarget.value)}
+          autosize
+          minRows={2}
+          disabled={busy}
+        />
+        <Group justify="flex-end">
+          <Button
+            size="xs"
+            color="teal"
+            leftSection={<IconDeviceFloppy size={13} />}
+            loading={busy}
+            onClick={() => onFixMeta(headline, metaDescription)}
+          >
+            Save + re-check
+          </Button>
+        </Group>
+      </Stack>
+    );
+  }
+
+  if (check.key === 'legalReady') {
+    // The legal footer is composed from the workspace BRAND KIT (RERA line +
+    // disclaimer), not a per-page field — so it's a Settings fix, not an editor
+    // or inline one. Guide rather than offer a control that can't write it.
+    return (
+      <Text size="xs" c="dimmed" mt={6}>
+        Complete the brand kit legal block (RERA line + disclaimer) in Settings — the
+        site composes the mandatory legal footer from it.
+      </Text>
+    );
+  }
+
+  // Everything else → open the editor at the relevant spot (never a dead end).
+  const hint = EDITOR_FIX_HINT[check.key] ?? 'Fix this in the page editor.';
+  return (
+    <Button
+      size="xs"
+      variant="light"
+      color="red"
+      leftSection={<IconPencil size={13} />}
+      mt={6}
+      onClick={() => onEditPage(hint)}
+    >
+      Fix in editor
+    </Button>
   );
 };
 
@@ -503,6 +632,12 @@ export const LandingPagesTab = () => {
     checks: PreflightCheck[];
     running: boolean;
     publishing: boolean;
+    // Present only when the modal is opened via "Fix issues" (openIssuesReview):
+    // the full page, so a failing check can be fixed IN PLACE (permit / meta) and
+    // re-checked. Absent on the publish-gate path (openPublishGate) — those rows
+    // fall back to "Fix in editor". `fixBusy` = an inline fix save is in flight.
+    page?: LandingPageFull;
+    fixBusy?: boolean;
   } | null>(null);
   // Stage 3D — the post-publish auto-translate loop + translations queue.
   // `translateState` drives the passive progress strip ("Translating… AR ✓ RU ⏳");
@@ -1004,13 +1139,15 @@ export const LandingPagesTab = () => {
     setPreflightState({ pageId: id, checks: pf.checks, running: false, publishing: false });
   };
 
-  // "Fix issues" from a card whose stored pre-flight is failing — opens the SAME
-  // checklist modal in review mode (read-only; no publish attempt) so the founder
-  // sees exactly WHICH checks fail + their detail (that's what "issues" means),
-  // then Edit/Re-run to clear them. Available to everyone (a read, not a publish).
+  // "Fix issues" from a card whose stored pre-flight is failing — opens the
+  // checklist modal in FIX mode: it shows which checks fail AND makes each fixable
+  // in place (permit / meta inline; the rest → "Fix in editor"), then re-runs.
+  // Fetches the full page so the inline fixes have its sections/meta to edit.
+  // Available to everyone — fixing is a save (maker-allowed), not a publish; the
+  // Publish/Submit decision stays maker-checker gated in the modal footer.
   const openIssuesReview = async (id: string) => {
     setBusy(true);
-    const pf = await preflightPage(id);
+    const [pf, pageRes] = await Promise.all([preflightPage(id), getLandingPage(id)]);
     setBusy(false);
     if (!pf.ok && pf.unavailable) {
       notify('Pre-flight checks aren’t available on this workspace yet.', 'info');
@@ -1020,7 +1157,99 @@ export const LandingPagesTab = () => {
       notify(pf.error, 'error');
       return;
     }
-    setPreflightState({ pageId: id, checks: pf.checks, running: false, publishing: false });
+    // External tracking pages (area / developer / RCBI attribution rows) carry NO
+    // builder sections — they're not real pages, so they must never read as a
+    // "broken" build with fixable issues.
+    if (pageRes.ok && pageRes.data.sections.length === 0) {
+      notify(
+        'This is a tracking page (area / developer / RCBI), not a builder page — there’s nothing to fix here.',
+        'info',
+      );
+      return;
+    }
+    setPreflightState({
+      pageId: id,
+      checks: pf.checks,
+      running: false,
+      publishing: false,
+      page: pageRes.ok ? pageRes.data : undefined,
+    });
+  };
+
+  // Persist an inline fix (updated sections and/or meta) as a DRAFT save, then
+  // auto re-run the checks so a cleared check flips green without a manual step.
+  // A DRAFT save is a maker action (never a publish), so it's allowed for agents.
+  const applyFixAndRerun = async (
+    patch: Partial<Pick<LandingPageFull, 'sections' | 'headline' | 'metaDescription'>>,
+  ) => {
+    const st = preflightState;
+    if (!st || !st.page || st.fixBusy) return;
+    const page = st.page;
+    const next: LandingPageFull = { ...page, ...patch };
+    setPreflightState((s) => (s ? { ...s, fixBusy: true } : s));
+    const res = await saveLandingPage({
+      id: page.id,
+      title: page.title,
+      slug: page.slug,
+      theme: page.theme,
+      status: 'DRAFT',
+      headline: next.headline,
+      metaDescription: next.metaDescription,
+      ogImageUrl: page.ogImageUrl,
+      sections: next.sections,
+    });
+    if (!res.ok) {
+      setPreflightState((s) => (s ? { ...s, fixBusy: false } : s));
+      notify(res.error, 'error');
+      return;
+    }
+    // Re-run the gate against the just-saved page and refresh the local copy.
+    const pf = await preflightPage(page.id);
+    setPreflightState((s) =>
+      s
+        ? {
+            ...s,
+            fixBusy: false,
+            page: next,
+            ...(pf.ok ? { checks: pf.checks } : {}),
+          }
+        : s,
+    );
+    reload();
+    if (pf.ok) {
+      const stillFailing = pf.checks.some((c) => c.level === 'HARD' && !c.ok);
+      notify(stillFailing ? 'Saved — some checks still need attention.' : 'Fixed — all checks pass.', stillFailing ? 'info' : 'success');
+    }
+  };
+
+  // Set the Trakheesi permit number: the check passes when a `permitNumber` prop
+  // is present on ANY section, so we stamp it onto the FIRST section's props (the
+  // site composes the legal footer from it). A page with no sections can't carry
+  // it — but such pages are skipped as trackers above.
+  const fixPermit = async (permit: string) => {
+    const st = preflightState;
+    if (!st?.page) return;
+    const value = permit.trim();
+    if (value === '') {
+      notify('Enter the Trakheesi permit number.', 'error');
+      return;
+    }
+    const sections = st.page.sections.map((s, i) =>
+      i === 0 ? { ...s, props: { ...s.props, permitNumber: value } } : s,
+    );
+    await applyFixAndRerun({ sections });
+  };
+
+  const fixMeta = async (headline: string, metaDescription: string) => {
+    if (!preflightState?.page) return;
+    if (headline.trim() === '' || metaDescription.trim() === '') {
+      notify('Enter both the headline and the meta description.', 'error');
+      return;
+    }
+    await applyFixAndRerun({
+      headline: headline.trim(),
+      metaDescription: metaDescription.trim(),
+    });
   };
 
   const rerunChecks = async () => {
@@ -1414,7 +1643,7 @@ export const LandingPagesTab = () => {
                   <IconAlertTriangle size={12} />
                 )}
               </ThemeIcon>
-              <Box style={{ minWidth: 0 }}>
+              <Box style={{ minWidth: 0, flex: 1 }}>
                 <Group gap={6} wrap="nowrap">
                   <Text size="sm" fw={hardFail ? 600 : 500}>
                     {checkLabel(c.key)}
@@ -1429,6 +1658,24 @@ export const LandingPagesTab = () => {
                   <Text size="xs" c={hardFail ? 'red' : 'dimmed'}>
                     {c.detail}
                   </Text>
+                ) : null}
+                {/* Fix mode (opened via "Fix issues"): make each FAILED check
+                    actionable in place. Publish-gate path has no page → no inline
+                    fix (that flow just checks + publishes). */}
+                {!c.ok && preflightState?.page ? (
+                  <PreflightFixControl
+                    check={c}
+                    page={preflightState.page}
+                    busy={preflightState?.fixBusy ?? false}
+                    onFixPermit={(permit) => void fixPermit(permit)}
+                    onFixMeta={(h, m) => void fixMeta(h, m)}
+                    onEditPage={(hint) => {
+                      const id = preflightState?.pageId;
+                      setPreflightState(null);
+                      notify(hint, 'info');
+                      if (id) void openEdit(id);
+                    }}
+                  />
                 ) : null}
               </Box>
             </Group>
@@ -1460,16 +1707,41 @@ export const LandingPagesTab = () => {
           >
             Cancel
           </Button>
-          <Button
-            size="sm"
-            color="teal"
-            leftSection={<IconRocket size={14} />}
-            disabled={pfHardFails > 0 || pfChecks.length === 0 || (preflightState?.running ?? false)}
-            loading={preflightState?.publishing ?? false}
-            onClick={() => void publishFromModal()}
-          >
-            Publish
-          </Button>
+          {/* Maker-checker: fixing checks ≠ publishing. A publisher gets Publish;
+              a maker who has cleared the checks submits for approval instead. Both
+              require no HARD fails. */}
+          {canPublish ? (
+            <Button
+              size="sm"
+              color="teal"
+              leftSection={<IconRocket size={14} />}
+              disabled={
+                pfHardFails > 0 ||
+                pfChecks.length === 0 ||
+                (preflightState?.running ?? false) ||
+                (preflightState?.fixBusy ?? false)
+              }
+              loading={preflightState?.publishing ?? false}
+              onClick={() => void publishFromModal()}
+            >
+              Publish
+            </Button>
+          ) : pfHardFails === 0 && pfChecks.length > 0 && preflightState ? (
+            <SubmitForApprovalButton
+              kind="LANDING_PAGE"
+              id={preflightState.pageId}
+              alreadySubmitted={false}
+              onSubmitted={() => {
+                setPreflightState(null);
+                reload();
+              }}
+              size="sm"
+            />
+          ) : (
+            <Button size="sm" color="teal" leftSection={<IconRocket size={14} />} disabled>
+              Publish
+            </Button>
+          )}
         </Group>
       </Group>
     </Modal>

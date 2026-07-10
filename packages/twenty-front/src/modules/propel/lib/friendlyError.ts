@@ -31,6 +31,41 @@ export type FriendlyErrorContext =
   | 'image'
   | 'load';
 
+// The blog pipeline stores its failures as `<stage>: <technical reason>` in
+// lastError / pipelineLog notes (stages: ideate · ground · write/drafting · seo ·
+// critic · translate — e.g. "critic: verdict=fail score=0<70", "ground: Exceeded
+// 4 tool rounds without final answer"). We map on the STAGE PREFIX, not the reason
+// content, so ANY reason a stage emits (now or later) becomes a friendly per-stage
+// message instead of leaking raw. The raw string still goes to console.error.
+const STAGE_PREFIX =
+  /^(ideate|ground|grounding|write|writing|draft|drafting|seo|critic|review|translate|translating)\s*:/i;
+
+const STAGE_MESSAGE: Record<string, string> = {
+  ideate: 'Couldn’t land an angle for this one — retry it.',
+  ground: 'Couldn’t gather enough live data for this one — retry it.',
+  grounding: 'Couldn’t gather enough live data for this one — retry it.',
+  write: 'The draft didn’t come together — retry it.',
+  writing: 'The draft didn’t come together — retry it.',
+  draft: 'The draft didn’t come together — retry it.',
+  drafting: 'The draft didn’t come together — retry it.',
+  seo: 'The SEO pass failed — retry it.',
+  critic: 'This draft didn’t pass review — retry it.',
+  review: 'This draft didn’t pass review — retry it.',
+  translate: 'Couldn’t translate this post — retry it.',
+  translating: 'Couldn’t translate this post — retry it.',
+};
+
+// Bare pipeline-failure smells that can appear WITHOUT a stage prefix — map to the
+// generic pipeline "snag" message rather than leak the raw internal reason.
+const BARE_PIPELINE_MARKERS: RegExp[] = [
+  /verdict\s*=\s*fail/i,
+  /score\s*=\s*\d+\s*<\s*\d+/i, // "score=0<70"
+  /exceeded\s+\d+\s+tool\s+rounds/i,
+  /without\s+final\s+answer/i,
+  /ungrounded\s+figures?/i,
+  /no\s+verifiable\s+facts?/i,
+];
+
 // The friendly fallback used when the raw string is technical or empty. Each ends
 // with a concrete next step so the user is never stranded.
 const CONTEXT_MESSAGE: Record<FriendlyErrorContext, string> = {
@@ -103,9 +138,12 @@ const logOnce = (context: FriendlyErrorContext, raw: string): void => {
 /**
  * Map a raw error string to a human-friendly one.
  *
- * - empty / technical → the context's friendly fallback (and the raw is logged
- *   once to console.error for debugging);
+ * - `<stage>: …` blog-pipeline failure → the per-stage friendly message;
+ * - empty / bare-pipeline / network / technical → a friendly fallback;
  * - already-human → returned unchanged.
+ *
+ * In every non-passthrough case the raw string is logged once to console.error so
+ * the technical detail is always available for debugging.
  */
 export const friendlyError = (
   raw: string | null | undefined,
@@ -113,14 +151,33 @@ export const friendlyError = (
 ): string => {
   const t = (raw ?? '').trim();
   if (t === '') return CONTEXT_MESSAGE[context];
+
+  // 1. `<stage>: <reason>` — map on the STAGE PREFIX (not the reason content) so
+  //    any reason the blog pipeline emits becomes a friendly per-stage message.
+  const stageMatch = STAGE_PREFIX.exec(t);
+  if (stageMatch) {
+    logOnce(context, t);
+    return STAGE_MESSAGE[stageMatch[1].toLowerCase()] ?? CONTEXT_MESSAGE.pipeline;
+  }
+
+  // 2. Bare pipeline-failure smells (no stage prefix) → the generic "snag".
+  if (BARE_PIPELINE_MARKERS.some((re) => re.test(t))) {
+    logOnce(context, t);
+    return CONTEXT_MESSAGE.pipeline;
+  }
+
+  // 3. Network/connectivity → the network message regardless of context.
   if (NETWORK_MARKERS.test(t)) {
     logOnce(context, t);
     return CONTEXT_MESSAGE.network;
   }
+
+  // 4. Anything else that looks technical → the context's friendly fallback.
   if (looksTechnical(t)) {
     logOnce(context, t);
     return CONTEXT_MESSAGE[context];
   }
-  // A clean human sentence (our own data-layer fallbacks) — trust it as-is.
+
+  // 5. A clean human sentence (our own data-layer fallbacks) — trust it as-is.
   return t;
 };
