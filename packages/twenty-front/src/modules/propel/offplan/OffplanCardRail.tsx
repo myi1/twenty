@@ -1,67 +1,60 @@
+import { ScrollArea, Card, Text, Group, Badge, Button, Box } from '@mantine/core';
 import { useEffect, useRef } from 'react';
-import { ScrollArea, Card, Text, Badge, Stack, Group } from '@mantine/core';
-import type { OffplanProject } from './types';
+import { isoToQuarterLabel } from './handover';
+import type { OffplanMapPoint } from './types';
 
-const aed = (n: number) => 'AED ' + Math.round(n).toLocaleString('en-US');
+const WINDOW = 60; // cap DOM cards (no virtualization lib available)
+const aed = (n: number | null) => (n == null ? '—' : `AED ${Math.round(n).toLocaleString('en-US')}`);
 
 export function OffplanCardRail({
-  projects, onOpen, highlightedProjectId,
+  visible, total, hoveredId, onHover, onOpen, onShortlist, onPitch,
 }: {
-  projects: OffplanProject[];
-  onOpen: (p: OffplanProject) => void;
-  highlightedProjectId?: string | null;
+  visible: OffplanMapPoint[];
+  total: number;
+  hoveredId: number | null;
+  onHover: (id: number | null) => void;
+  onOpen: (id: number) => void;
+  onShortlist: (id: number) => void;
+  onPitch: (id: number) => void;
 }) {
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-
-  // Scroll the highlighted card (e.g. after a map pin click) into view.
+  const rowRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   useEffect(() => {
-    if (!highlightedProjectId) return;
-    const el = cardRefs.current.get(highlightedProjectId);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, [highlightedProjectId]);
+    if (hoveredId != null) rowRefs.current.get(hoveredId)?.scrollIntoView({ block: 'nearest' });
+  }, [hoveredId]);
 
   return (
-    <ScrollArea style={{ height: '100%' }} viewportRef={viewportRef}>
-      <Stack p="sm" gap="sm">
-        <Text size="sm" c="dimmed" px={4}>
-          {projects.length} {projects.length === 1 ? 'project' : 'projects'}
-        </Text>
-        {projects.map((p) => {
-          const active = p.projectId === highlightedProjectId;
-          const sizeRange = p.minSquareFt
-            ? p.minSquareFt === p.maxSquareFt
-              ? `${Math.round(p.minSquareFt)} sqft`
-              : `${Math.round(p.minSquareFt)}–${Math.round(p.maxSquareFt)} sqft`
-            : null;
-          return (
-            <Card
-              key={p.projectId}
-              ref={(el) => { if (el) cardRefs.current.set(p.projectId, el); }}
-              withBorder
-              shadow={active ? 'md' : 'sm'}
-              padding="sm"
-              onClick={() => onOpen(p)}
-              style={{
-                cursor: 'pointer',
-                borderColor: active ? 'var(--mantine-color-blue-5)' : undefined,
-                borderWidth: active ? 2 : undefined,
-              }}
-            >
-              <Text fw={600}>{p.projectName}</Text>
-              <Text size="sm" c="dimmed">{p.developerName} · {p.districtName}</Text>
-              <Group mt={6} justify="space-between" wrap="nowrap">
-                <Badge variant="light">
-                  {p.unitCount} {p.unitCount === 1 ? 'unit' : 'units'}
-                  {p.layouts.length ? ` · ${p.layouts.slice(0, 3).join(', ')}` : ''}
-                </Badge>
-                <Text fw={600} style={{ whiteSpace: 'nowrap' }}>from {aed(p.fromPriceAed)}</Text>
+    <Box style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <Group justify="space-between" p="xs">
+        <Text fw={700} size="sm">{visible.length} projects in view</Text>
+        <Text size="xs" c="dimmed">of {total} total</Text>
+      </Group>
+      <ScrollArea style={{ flex: 1 }}>
+        <Box p="xs" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {visible.slice(0, WINDOW).map((p) => (
+            <Card key={p.externalId} withBorder padding="sm" radius="md"
+              ref={(el) => { if (el) rowRefs.current.set(p.externalId, el); }}
+              onMouseEnter={() => onHover(p.externalId)} onMouseLeave={() => onHover(null)}
+              onClick={() => onOpen(p.externalId)}
+              style={{ cursor: 'pointer', outline: hoveredId === p.externalId ? '1px solid var(--mantine-color-red-6)' : undefined }}>
+              <Group justify="space-between" wrap="nowrap">
+                <Text fw={600} size="sm" lineClamp={1}>{p.name}</Text>
+                {p.isLaunch && <Badge color="green" size="xs">New launch</Badge>}
               </Group>
-              {sizeRange && <Text size="xs" c="dimmed" mt={4}>{sizeRange}</Text>}
+              <Text size="xs" c="dimmed">{p.developerName} · {p.districtName}</Text>
+              <Group gap="md" mt={6}>
+                <Text fw={700} size="sm" c="red">from {aed(p.priceFromAed)}</Text>
+                <Text size="xs" c="dimmed">{p.unitCount} units</Text>
+                {p.handover && <Text size="xs" c="dimmed">Handover {isoToQuarterLabel(p.handover)}</Text>}
+              </Group>
+              <Group gap="xs" mt={8}>
+                <Button size="compact-xs" variant="default" onClick={(e) => { e.stopPropagation(); onShortlist(p.externalId); }}>＋ Shortlist</Button>
+                <Button size="compact-xs" color="red" onClick={(e) => { e.stopPropagation(); onPitch(p.externalId); }}>Pitch</Button>
+              </Group>
             </Card>
-          );
-        })}
-      </Stack>
-    </ScrollArea>
+          ))}
+          {visible.length > WINDOW && <Text size="xs" c="dimmed" ta="center">Showing first {WINDOW} of {visible.length} — zoom/pan or filter to narrow.</Text>}
+        </Box>
+      </ScrollArea>
+    </Box>
   );
 }
