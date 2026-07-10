@@ -20,11 +20,45 @@ export type OffplanProject = {
 export type OffplanPin = { projectId: string; lon: number; lat: number; label: string };
 
 export type OffplanFiltersState = {
-  q: string; districtIds: string[]; minPriceAed?: number; maxPriceAed?: number;
-  minBedrooms?: number; maxBedrooms?: number;
+  q: string;
+  districtIds: string[];
+  minPriceAed?: number;
+  maxPriceAed?: number;
+  minBedrooms?: number;
+  maxBedrooms?: number;
+  handoverBeforeIso?: string; // derived from a "before Q<n> <year>" picker (Plan 2)
+  developerSlugs?: string[];
 };
 export type OffplanMapsResult = {
   project?: { externalId: number; name: string };
   location?: { lat: number | null; lon: number | null };
 };
 export type RouteEnvelope<T> = { ok: boolean; data?: T; error?: string; code?: string };
+
+// A bulk map point from /offplan/browse { action:'mapPoints' } → geniemap /v1/map/points.
+export type OffplanMapPoint = {
+  externalId: number;
+  name: string;
+  lat: number;
+  lon: number;
+  districtId: string;
+  districtName: string;
+  priceFromAed: number | null;
+  unitCount: number;
+  isLaunch: boolean;
+  status: string;
+};
+export type OffplanMapPointsResult = { points: OffplanMapPoint[]; total: number };
+
+// A district-level cluster rendered as a labelled bubble at low zoom.
+export type OffplanDistrictCluster = {
+  districtId: string;
+  districtName: string;
+  count: number;
+  lat: number; // mean of member points
+  lon: number;
+  minPriceFromAed: number | null;
+};
+
+// [west, south, east, north] — MapLibre LngLatBounds order.
+export type MapBounds = { west: number; south: number; east: number; north: number };
