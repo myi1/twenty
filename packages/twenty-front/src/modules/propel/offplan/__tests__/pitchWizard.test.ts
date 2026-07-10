@@ -2,6 +2,7 @@ import {
   WIZARD_STEPS,
   canProceed,
   defaultWaMessage,
+  ensurePitchLinks,
   gotoStep,
   initWizard,
   nextStep,
@@ -115,34 +116,79 @@ describe('step navigation', () => {
 });
 
 describe('defaultWaMessage', () => {
-  it('greets the client by first name and includes every project name and url', () => {
+  it('greets the client by first name and lists each pair as name — url', () => {
     const s = {
       ...initWizard([7, 9]),
       client: { id: 'p1', name: 'Nancy Al Habtoor', phoneE164: '+9715' },
     };
-    const msg = defaultWaMessage(
-      s,
-      ['Marina Vista', 'Palm Crest'],
-      ['https://x/a.pdf', 'https://x/b.pdf'],
-    );
+    const msg = defaultWaMessage(s, [
+      { name: 'Marina Vista', url: 'https://x/a.pdf' },
+      { name: 'Palm Crest', url: 'https://x/b.pdf' },
+    ]);
     expect(msg).toContain('Hi Nancy');
-    expect(msg).toContain('Marina Vista');
-    expect(msg).toContain('Palm Crest');
-    expect(msg).toContain('https://x/a.pdf');
-    expect(msg).toContain('https://x/b.pdf');
+    expect(msg).toContain('• Marina Vista — https://x/a.pdf');
+    expect(msg).toContain('• Palm Crest — https://x/b.pdf');
   });
 
   it('omits the personal greeting when no client is attached', () => {
     const s = initWizard([7]);
-    const msg = defaultWaMessage(s, ['Marina Vista'], ['https://x/a.pdf']);
+    const msg = defaultWaMessage(s, [{ name: 'Marina Vista', url: 'https://x/a.pdf' }]);
     expect(msg).not.toMatch(/Hi\s+\w+,/); // no "Hi <name>,"
     expect(msg).toContain('https://x/a.pdf');
   });
 
-  it('still includes urls that outnumber project names', () => {
-    const s = initWizard([7, 9]);
-    const msg = defaultWaMessage(s, ['Marina Vista'], ['https://x/a.pdf', 'https://x/b.pdf']);
-    expect(msg).toContain('https://x/a.pdf');
-    expect(msg).toContain('https://x/b.pdf');
+  it('partial failure: only successful projects appear, each name next to ITS url', () => {
+    // 3 projects selected, generation succeeded for #7 and #3 only —
+    // the message is built from success PAIRS, never from the full selection
+    // zipped against a shorter url list (which mispaired names and urls).
+    const s = initWizard([7, 9, 3]);
+    const msg = defaultWaMessage(s, [
+      { name: 'Marina Vista', url: 'https://x/a.pdf' },
+      { name: 'Golf Greens', url: 'https://x/c.pdf' },
+    ]);
+    expect(msg).toContain('• Marina Vista — https://x/a.pdf');
+    expect(msg).toContain('• Golf Greens — https://x/c.pdf');
+    expect(msg).not.toContain('Palm Crest'); // the failed project never appears
+    // and no cross-pairing: Golf Greens must NOT sit next to a.pdf
+    expect(msg).not.toContain('Golf Greens — https://x/a.pdf');
+    expect(msg).not.toContain('Marina Vista — https://x/c.pdf');
+  });
+
+  it('uses singular copy for one pair, plural for many', () => {
+    const s = initWizard([7]);
+    expect(
+      defaultWaMessage(s, [{ name: 'Marina Vista', url: 'https://x/a.pdf' }]),
+    ).toContain('Here is the presentation');
+    expect(
+      defaultWaMessage(s, [
+        { name: 'Marina Vista', url: 'https://x/a.pdf' },
+        { name: 'Palm Crest', url: 'https://x/b.pdf' },
+      ]),
+    ).toContain('Here are the presentations');
+  });
+});
+
+describe('ensurePitchLinks', () => {
+  const pairs = [
+    { name: 'Marina Vista', url: 'https://x/a.pdf' },
+    { name: 'Palm Crest', url: 'https://x/b.pdf' },
+  ];
+
+  it('appends the links block when the base message has no link', () => {
+    const out = ensurePitchLinks('Hi Nancy, sharing two great options.', pairs);
+    expect(out).toContain('Hi Nancy, sharing two great options.');
+    expect(out).toContain('• Marina Vista — https://x/a.pdf');
+    expect(out).toContain('• Palm Crest — https://x/b.pdf');
+    // links come AFTER the base message
+    expect(out.indexOf('https://x/a.pdf')).toBeGreaterThan(out.indexOf('options.'));
+  });
+
+  it('leaves a message that already contains a link untouched', () => {
+    const base = 'Hi,\n• Marina Vista — https://x/a.pdf';
+    expect(ensurePitchLinks(base, pairs)).toBe(base);
+  });
+
+  it('is a no-op when there are no pairs', () => {
+    expect(ensurePitchLinks('Hi Nancy.', [])).toBe('Hi Nancy.');
   });
 });

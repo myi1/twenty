@@ -28,14 +28,17 @@ import {
 } from 'twenty-ui/display';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import {
+  WA_MESSAGE_MAX,
   WIZARD_STEPS,
   canProceed,
   defaultWaMessage,
+  ensurePitchLinks,
   gotoStep,
   initWizard,
   nextStep,
   prevStep,
   removeProject,
+  type PitchLinkPair,
   type PitchWizardState,
 } from './pitchWizard';
 import type {
@@ -94,11 +97,13 @@ const Thumb = ({ point, w, h }: { point?: OffplanMapPoint; w: number; h: number 
 const OffplanPitchStepper = ({
   active,
   maxReached,
+  locked,
   onGoto,
   meta,
 }: {
   active: number;
   maxReached: number;
+  locked: boolean;
   onGoto: (n: number) => void;
   meta: string;
 }) => (
@@ -119,13 +124,19 @@ const OffplanPitchStepper = ({
       {WIZARD_STEPS.map((label, idx) => {
         const done = idx < active;
         const current = idx === active;
-        const clickable = idx <= maxReached && idx !== active;
+        // One-way door: once generation has started, steps 0-3 are sealed —
+        // regenerating from stale state is not a thing.
+        const sealed = locked && idx < 4;
+        const clickable = idx <= maxReached && idx !== active && !sealed;
         return (
           <Group
             key={label}
             gap={8}
             wrap="nowrap"
-            style={{ cursor: clickable ? 'pointer' : 'default' }}
+            style={{
+              cursor: clickable ? 'pointer' : 'default',
+              opacity: sealed ? 0.45 : 1,
+            }}
             onClick={() => clickable && onGoto(idx)}
           >
             <Box
@@ -206,8 +217,17 @@ export function OffplanPitchWizard({
   const [waText, setWaText] = useState('');
   const [waBusy, setWaBusy] = useState(false);
   const [waResult, setWaResult] = useState<'queued' | string | null>(null);
+  // Single-shot: after ANY send attempt (success OR failure) the button stays
+  // disabled — a failed response may still have queued the message server-side,
+  // so a retry risks a duplicate to the client.
+  const [sendAttempted, setSendAttempted] = useState(false);
   const [copied, setCopied] = useState(false);
   const genStartedRef = useRef(false);
+
+  // One-way door: once generation has started, the earlier steps are sealed
+  // (Back + rail jumps to 0-3 disabled) — the PDFs on the Send step would no
+  // longer match a re-edited selection.
+  const locked = genStartedRef.current || state.generated.length > 0;
 
   const points = useMemo(
     () =>
@@ -228,6 +248,7 @@ export function OffplanPitchWizard({
     if (q.length < 2) {
       setPeople(null);
       setSearchError(null);
+      setSearching(false); // clearing the query mid-flight must not strand the spinner
       return;
     }
     let alive = true;
@@ -332,11 +353,15 @@ export function OffplanPitchWizard({
       }
       setGenerating(false);
       setState((s) => ({ ...s, generated: collected }));
-      const names = ids.map((id) => byId.get(id)?.name ?? `Project ${id}`);
-      setWaText(
-        state.waMessage ||
-          defaultWaMessage(state, names, collected.map((g) => g.url)),
-      );
+      // Pair each SUCCESSFUL project with ITS url — never zip the full
+      // selection against the (possibly shorter) success list.
+      const pairs: PitchLinkPair[] = collected.map((g) => ({
+        name: byId.get(g.projectExternalId)?.name ?? `Project ${g.projectExternalId}`,
+        url: g.url,
+      }));
+      const base = state.waMessage || defaultWaMessage(state, pairs);
+      // An AI-drafted waMessage carries no urls — always ship the links.
+      setWaText(ensurePitchLinks(base, pairs));
     })();
     return () => {
       alive = false;
@@ -346,18 +371,36 @@ export function OffplanPitchWizard({
 
   // ── WhatsApp send ──────────────────────────────────────────────────────────
   const sendWhatsApp = async () => {
-    if (!state.client) return;
+    if (!state.client || sendAttempted) return;
+    setSendAttempted(true); // single-shot — never invite a resend
     setWaBusy(true);
     setWaResult(null);
-    const res = await callPropelRoute<{ ok?: boolean; queued?: boolean; code?: string }>(
-      '/offplan/assist',
-      { action: 'waSend', personId: state.client.id, message: waText },
-    );
+    const res = await callPropelRoute<{
+      ok?: boolean;
+      queued?: boolean;
+      code?: string;
+      error?: string;
+    }>('/offplan/assist', {
+      action: 'waSend',
+      personId: state.client.id,
+      message: waText,
+    });
     setWaBusy(false);
-    if (res?.ok) setWaResult('queued');
-    else if (res?.code === 'NO_PHONE') setWaResult('Client has no valid phone.');
-    else if (res?.code === 'WA_NOT_CONFIGURED') setWaResult('WhatsApp is not configured.');
-    else setWaResult('Send failed — try again.');
+    if (res?.ok) {
+      setWaResult('queued');
+      return;
+    }
+    const detail =
+      res?.code === 'NO_PHONE'
+        ? 'client has no valid phone number'
+        : res?.code === 'WA_NOT_CONFIGURED'
+          ? 'WhatsApp service not configured on this environment'
+          : res?.error;
+    setWaResult(
+      `Send failed — do not resend: the message may still be queued. Check the client's WhatsApp thread first.${
+        detail ? ` (${detail})` : ''
+      }`,
+    );
   };
 
   const copyAll = async () => {
@@ -539,8 +582,11 @@ export function OffplanPitchWizard({
             </Card>
           ))}
         </Group>
+        <Text size="xs" c="dimmed" mt={6}>
+          Affects the preview &amp; message copy — PDF theming/sections land in P1.
+        </Text>
       </Box>
-      <Group gap="sm">
+      <Group gap="sm" align="flex-end">
         <Select
           label="Language"
           data={LANGUAGES}
@@ -548,33 +594,45 @@ export function OffplanPitchWizard({
           onChange={(v) => v && setState((s) => ({ ...s, language: v }))}
           maw={160}
         />
-        <Select
-          label="Currency"
-          data={CURRENCIES}
-          value={state.currency}
-          onChange={(v) => v && setState((s) => ({ ...s, currency: v }))}
-          maw={120}
-        />
+        {/* Currency has no effect yet (PDF renders AED) — kept visible, disabled until P1. */}
+        <Tooltip label="P1">
+          <Box maw={120}>
+            <Select
+              label="Currency"
+              data={CURRENCIES}
+              value={state.currency}
+              disabled
+              onChange={(v) => v && setState((s) => ({ ...s, currency: v }))}
+            />
+          </Box>
+        </Tooltip>
       </Group>
       <Box>
         <Text fw={700} mb={8}>
           Sections
         </Text>
-        <Group gap="xs">
-          {(Object.keys(SECTION_LABELS) as Array<keyof PitchSections>).map((k) => (
-            <Chip
-              key={k}
-              size="xs"
-              color="red"
-              checked={state.sections[k]}
-              onChange={(checked) =>
-                setState((s) => ({ ...s, sections: { ...s.sections, [k]: checked } }))
-              }
-            >
-              {SECTION_LABELS[k]}
-            </Chip>
-          ))}
-        </Group>
+        {/* Section toggles don't reach the PDF renderer yet — kept visible, disabled until P1. */}
+        <Tooltip label="P1">
+          <Group gap="xs">
+            {(Object.keys(SECTION_LABELS) as Array<keyof PitchSections>).map((k) => (
+              <Chip
+                key={k}
+                size="xs"
+                color="red"
+                disabled
+                checked={state.sections[k]}
+                onChange={(checked) =>
+                  setState((s) => ({ ...s, sections: { ...s.sections, [k]: checked } }))
+                }
+              >
+                {SECTION_LABELS[k]}
+              </Chip>
+            ))}
+          </Group>
+        </Tooltip>
+        <Text size="xs" c="dimmed" mt={6}>
+          Affects the preview &amp; message copy — PDF theming/sections land in P1.
+        </Text>
       </Box>
       <Switch
         label="Hide developer"
@@ -700,7 +758,12 @@ export function OffplanPitchWizard({
   };
 
   const renderSend = () => {
-    const canSendWa = state.client?.phoneE164 != null && state.generated.length > 0;
+    const overLimit = waText.length > WA_MESSAGE_MAX;
+    const canSendWa =
+      state.client?.phoneE164 != null &&
+      state.generated.length > 0 &&
+      !sendAttempted &&
+      !overLimit;
     return (
       <Stack gap="md">
         <Text fw={700}>Generate & send</Text>
@@ -760,6 +823,11 @@ export function OffplanPitchWizard({
                 autosize
                 onChange={(e) => setWaText(e.currentTarget.value)}
               />
+              <Text size="xs" c={overLimit ? 'red' : 'dimmed'} mt={4}>
+                {waText.length} / {WA_MESSAGE_MAX}
+                {overLimit &&
+                  ' — too long: the server rejects messages over 1500 characters. Shorten it to send.'}
+              </Text>
               <Group mt="xs" gap="xs">
                 <Button
                   color="red"
@@ -781,7 +849,7 @@ export function OffplanPitchWizard({
                   </Badge>
                 )}
                 {waResult != null && waResult !== 'queued' && (
-                  <Text size="xs" c="red">
+                  <Text size="xs" c="red" style={{ flex: 1, minWidth: 200 }}>
                     {waResult}
                   </Text>
                 )}
@@ -822,7 +890,11 @@ export function OffplanPitchWizard({
         <OffplanPitchStepper
           active={state.step}
           maxReached={maxReached}
-          onGoto={(n) => setState((s) => gotoStep(s, n))}
+          locked={locked}
+          onGoto={(n) => {
+            if (locked && n < 4) return; // one-way door after generation
+            setState((s) => gotoStep(s, n));
+          }}
           meta={meta}
         />
         <Box style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
@@ -836,8 +908,11 @@ export function OffplanPitchWizard({
           >
             <Button
               variant="default"
-              disabled={state.step === 0 || generating}
-              onClick={() => setState((s) => prevStep(s))}
+              disabled={state.step === 0 || generating || locked}
+              onClick={() => {
+                if (locked) return; // one-way door after generation
+                setState((s) => prevStep(s));
+              }}
             >
               ← Back
             </Button>

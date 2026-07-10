@@ -104,30 +104,45 @@ export function gotoStep(s: PitchWizardState, n: number): PitchWizardState {
   return { ...s, step: clampStep(n) };
 }
 
-// Grounded default WhatsApp message: client first name (when attached), the
-// supplied project names and PDF links — nothing invented.
+// The WhatsApp send route rejects messages longer than this — surfaced in the
+// wizard as a character counter + send block.
+export const WA_MESSAGE_MAX = 1500;
+
+// A successfully generated pitch: the project's display name paired with ITS
+// PDF url. Built only from successes — never zip the full selection against a
+// shorter url list (that mispairs names and links on partial failure).
+export type PitchLinkPair = { name: string; url: string };
+
+export function pitchLinksBlock(pairs: PitchLinkPair[]): string {
+  return pairs.map((p) => `• ${p.name} — ${p.url}`).join('\n');
+}
+
+// Grounded default WhatsApp message: client first name (when attached) and
+// one bullet per successful pair — nothing invented.
 export function defaultWaMessage(
   s: PitchWizardState,
-  projectNames: string[],
-  urls: string[],
+  pairs: PitchLinkPair[],
 ): string {
   const first = s.client?.name?.trim().split(/\s+/)[0];
   const greeting = first ? `Hi ${first},` : 'Hi,';
-  const lines: string[] = projectNames.map((name, i) =>
-    urls[i] ? `• ${name} — ${urls[i]}` : `• ${name}`,
-  );
-  for (let i = projectNames.length; i < urls.length; i++) {
-    lines.push(`• ${urls[i]}`);
-  }
-  const plural = Math.max(projectNames.length, urls.length) > 1;
   return [
     greeting,
     '',
-    plural
+    pairs.length > 1
       ? 'Here are the presentations I put together for you:'
       : 'Here is the presentation I put together for you:',
-    ...lines,
+    pitchLinksBlock(pairs),
     '',
     'Happy to walk you through any of them — just reply here.',
   ].join('\n');
+}
+
+// Never send a linkless pitch message: when the chosen base copy (e.g. the AI
+// waMessage) carries no link, append the PDF links block.
+export function ensurePitchLinks(
+  message: string,
+  pairs: PitchLinkPair[],
+): string {
+  if (pairs.length === 0 || message.includes('http')) return message;
+  return `${message}\n\n${pitchLinksBlock(pairs)}`;
 }
