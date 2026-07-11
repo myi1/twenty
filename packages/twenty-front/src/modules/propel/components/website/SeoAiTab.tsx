@@ -31,7 +31,6 @@ import {
   IconRefresh,
   IconSearch,
   IconSparkles,
-  IconSwords,
   IconTarget,
   IconWand,
   IconWorld,
@@ -331,7 +330,7 @@ const RivalBadges = ({ rivals }: { rivals: AiDetectedRival[] }) => {
             size="xs"
             variant={r.cited ? 'filled' : 'light'}
             color="orange"
-            leftSection={<IconSwords size={10} />}
+            leftSection={<IconTarget size={10} />}
           >
             {r.name}
           </Badge>
