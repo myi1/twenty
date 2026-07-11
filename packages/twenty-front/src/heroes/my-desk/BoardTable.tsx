@@ -15,7 +15,7 @@
 
 import { useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import styled from '@emotion/styled';
-import { IconComment, IconDotsVertical, IconNotes, IconPhone } from 'twenty-ui/display';
+import { IconCalendar, IconClock, IconComment, IconExternalLink, IconNotes, IconPhone } from 'twenty-ui/display';
 
 import { DUR, EASE, SPACE } from '../_pulse/pulse-tokens';
 import { FONT_DISPLAY, FONT_MONO, FONT_UI, P, Seal } from '../_pulse/pulse';
@@ -197,6 +197,35 @@ const RowAction = styled.button`
   &:disabled { cursor: not-allowed; opacity: .35; }
 `;
 
+const OverflowMenu = styled.div`
+  position: fixed;
+  z-index: 5000;
+  width: 214px;
+  padding: 6px;
+  border: 1px solid var(--p-line);
+  border-radius: var(--p-radius-sm);
+  background: var(--p-surface-2);
+  box-shadow: var(--p-shadow-pop);
+`;
+
+const OverflowItem = styled.button`
+  all: unset;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--p-ink);
+  font: 500 12.5px ${FONT_UI};
+  cursor: pointer;
+  transition: background ${DUR.tooltip}ms ${EASE.out};
+  svg { color: var(--p-ink-2); }
+  &:hover, &:focus-visible { background: var(--p-surface); }
+`;
+
 const Ellipsis = styled.div`
   white-space: nowrap;
   overflow: hidden;
@@ -235,6 +264,7 @@ const Chip = styled.button<{ $on: boolean; $cold?: boolean }>`
 // ── Measured-truncation tooltip — appears only when a cell is actually cut
 // (el.scrollWidth > el.clientWidth), matching mockup L1716–1741. ───────────
 type TooltipState = { text: string; x: number; y: number } | null;
+type OverflowState = { row: DeskRow; x: number; y: number } | null;
 
 const Tooltip = ({ tooltip }: { tooltip: TooltipState }) => {
   if (!tooltip) return null;
@@ -283,12 +313,13 @@ export const BoardTable = ({
   stripFilter: StripFilter | null;
   /** Row click opens the peek drawer; action clicks are kept separate below. */
   onRowClick: (row: DeskRow) => void;
-  onRowAction: (action: 'call' | 'whatsapp' | 'note' | 'more', row: DeskRow) => void;
+  onRowAction: (action: 'call' | 'whatsapp' | 'note' | 'task' | 'viewing' | 'snooze' | 'open', row: DeskRow) => void;
 }) => {
   const [laneFilter, setLaneFilter] = useState<LaneFilter>('all');
   const [actionRowId, setActionRowId] = useState<string | null>(null);
   const [colWidths, setColWidths] = useState<(string | null)[]>(() => COL_DEFAULTS.map(() => null));
   const [tooltip, setTooltip] = useState<TooltipState>(null);
+  const [overflow, setOverflow] = useState<OverflowState>(null);
   const headerCellRefs = useRef<(HTMLDivElement | null)[]>([]);
   const dragRef = useRef<{ i: number; startX: number; startWidth: number } | null>(null);
   const tooltipTimerRef = useRef<number | undefined>(undefined);
@@ -394,6 +425,26 @@ export const BoardTable = ({
     if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
       setActionRowId(null);
     }
+  };
+
+  const openOverflow = (event: ReactMouseEvent<HTMLButtonElement>, row: DeskRow) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const itemCount = 2 + (row.laneObject === 'secondaryOpportunity' ? 1 : 0) + (row.laneObject === 'lead' ? 1 : 0);
+    const menuHeight = itemCount * 36 + 12;
+    setOverflow({
+      row,
+      x: Math.max(8, Math.min(rect.right - 214, window.innerWidth - 222)),
+      y: rect.bottom + 6 + menuHeight > window.innerHeight
+        ? Math.max(8, rect.top - menuHeight - 6)
+        : rect.bottom + 6,
+    });
+  };
+
+  const chooseOverflow = (action: 'task' | 'viewing' | 'snooze' | 'open') => {
+    if (!overflow) return;
+    const row = overflow.row;
+    setOverflow(null);
+    onRowAction(action, row);
   };
 
   return (
@@ -670,8 +721,8 @@ export const BoardTable = ({
                     aria-label={`More actions for ${row.name}`}
                     title="More actions"
                     onMouseDown={() => { actionClickRef.current = true; }}
-                    onClick={() => onRowAction('more', row)}
-                  ><IconDotsVertical size={13} /></RowAction>
+                    onClick={(event) => openOverflow(event, row)}
+                  ><span aria-hidden style={{ font: `600 17px/1 ${FONT_UI}`, transform: 'translateY(-2px)' }}>⋯</span></RowAction>
                 </ActionTray>
               </div>
             </RowEl>
@@ -683,6 +734,39 @@ export const BoardTable = ({
           </div>
         )}
       </div>
+
+      {overflow && (
+        <>
+          <button
+            type="button"
+            aria-label="Close more actions"
+            onClick={() => setOverflow(null)}
+            style={{ all: 'unset', position: 'fixed', inset: 0, zIndex: 4999 }}
+          />
+          <OverflowMenu
+            role="menu"
+            aria-label={`More actions for ${overflow.row.name}`}
+            style={{ left: overflow.x, top: overflow.y }}
+          >
+            {overflow.row.laneObject === 'secondaryOpportunity' && (
+              <OverflowItem type="button" role="menuitem" onClick={() => chooseOverflow('viewing')}>
+                <IconCalendar size={15} /> Log a viewing
+              </OverflowItem>
+            )}
+            <OverflowItem type="button" role="menuitem" onClick={() => chooseOverflow('task')}>
+              <IconClock size={15} /> Create a task
+            </OverflowItem>
+            {overflow.row.laneObject === 'lead' && (
+              <OverflowItem type="button" role="menuitem" onClick={() => chooseOverflow('snooze')}>
+                <IconClock size={15} /> Snooze
+              </OverflowItem>
+            )}
+            <OverflowItem type="button" role="menuitem" onClick={() => chooseOverflow('open')}>
+              <IconExternalLink size={15} /> Open full record <span aria-hidden style={{ marginLeft: 'auto' }}>→</span>
+            </OverflowItem>
+          </OverflowMenu>
+        </>
+      )}
 
       <Tooltip tooltip={tooltip} />
     </div>

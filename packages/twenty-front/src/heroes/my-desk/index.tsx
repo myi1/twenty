@@ -25,7 +25,7 @@ import { type PropelHeroHost } from '@/propel/runtime/heroHost';
 import { FONT_DISPLAY, PulseFonts, PulseNocturne } from '../_pulse/pulse';
 
 import { BoardTable } from './BoardTable';
-import { PeekDrawer, type DrawerMode } from './PeekDrawer';
+import { deskRecordPath, PeekDrawer, type DrawerMode } from './PeekDrawer';
 import { RightRail } from './RightRail';
 import { TodayStrip, type StripFilter } from './TodayStrip';
 import { fetchBoard, fetchRail, fetchTimeline } from './deskApi';
@@ -192,6 +192,10 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
               onRowAction={(action, row) => {
                 if (action === 'call' && row.phoneE164) {
                   startCall(row);
+                  return;
+                }
+                if (action === 'open') {
+                  host.navigate(deskRecordPath(row));
                   return;
                 }
                 setDrawer({ rowId: row.id, mode: action === 'call' ? 'overview' : action });

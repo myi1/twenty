@@ -19,7 +19,7 @@ import { fetchTimeline, fetchWaContext, runDeskAction, sendDeskWhatsApp } from '
 import { formatAedTotal, formatRelative, formatStageLabel } from './format';
 import type { DeskRow, DeskTimelineEvent, DeskWaContextResponse } from './types';
 
-export type DrawerMode = 'overview' | 'note' | 'whatsapp' | 'more' | 'postCall';
+export type DrawerMode = 'overview' | 'note' | 'whatsapp' | 'more' | 'task' | 'viewing' | 'snooze' | 'postCall';
 
 const Scrim = styled.button`
   all: unset;
@@ -131,6 +131,8 @@ const OBJECT_SINGULAR: Record<DeskRow['laneObject'], string> = {
   deal: 'deal',
 };
 
+export const deskRecordPath = (row: DeskRow) => `/object/${OBJECT_SINGULAR[row.laneObject]}/${row.recordId}`;
+
 const eventLabel = (event: DeskTimelineEvent): string => ({
   NOTE: 'Note', TASK: 'Task', CALL: 'Call', WHATSAPP: 'WhatsApp',
 })[event.type];
@@ -236,7 +238,7 @@ export const PeekDrawer = ({
     }
   };
 
-  const openFullRecord = () => host.navigate(`/object/${OBJECT_SINGULAR[row.laneObject]}/${row.recordId}`);
+  const openFullRecord = () => host.navigate(deskRecordPath(row));
 
   return (
     <>
@@ -307,9 +309,9 @@ export const PeekDrawer = ({
             </Section>
           )}
 
-          {activeMode === 'more' && (
+          {(['more', 'task', 'viewing', 'snooze'] as DrawerMode[]).includes(activeMode) && (
             <>
-              <Section title="Create a follow-up task">
+              {(activeMode === 'more' || activeMode === 'task') && <Section title="Create a follow-up task">
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px', gap: 8 }}>
                   <Input value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="What needs to happen?" />
                   <Input type="datetime-local" value={taskDue} onChange={(e) => setTaskDue(e.target.value)} />
@@ -317,8 +319,8 @@ export const PeekDrawer = ({
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}><Button disabled={busy || !taskTitle.trim() || !taskDue} onClick={async () => {
                   if (await write('createTask', { title: taskTitle.trim(), dueAt: new Date(taskDue).toISOString() }, 'Task created')) { setTaskTitle(''); setTaskDue(''); }
                 }}><IconClock size={14} /> Create task</Button></div>
-              </Section>
-              {row.laneObject === 'secondaryOpportunity' && <Section title="Book a viewing">
+              </Section>}
+              {(activeMode === 'more' || activeMode === 'viewing') && row.laneObject === 'secondaryOpportunity' && <Section title="Book a viewing">
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px', gap: 8 }}>
                   <Input value={viewingLabel} onChange={(e) => setViewingLabel(e.target.value)} placeholder="Property or meeting point" />
                   <Input type="datetime-local" value={viewingAt} onChange={(e) => setViewingAt(e.target.value)} />
@@ -327,7 +329,7 @@ export const PeekDrawer = ({
                   if (await write('logViewing', { propertyLabel: viewingLabel.trim(), at: new Date(viewingAt).toISOString() }, 'Viewing booked')) { setViewingLabel(''); setViewingAt(''); }
                 }}><IconCalendar size={14} /> Book viewing</Button></div>
               </Section>}
-              {row.laneObject === 'lead' && <Section title="Snooze">
+              {(activeMode === 'more' || activeMode === 'snooze') && row.laneObject === 'lead' && <Section title="Snooze">
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {[['Later today', 4], ['Tomorrow', 24], ['Next week', 168]].map(([label, hours]) => <Button key={String(label)} disabled={busy || !row.personId} onClick={async () => {
                     const until = new Date(Date.now() + Number(hours) * 3_600_000).toISOString();
