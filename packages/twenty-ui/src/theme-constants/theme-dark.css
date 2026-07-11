@@ -173,6 +173,7 @@
   --t-font-weight-medium: 500;
   --t-font-weight-semi-bold: 600;
   --t-font-family: 'Hanken Grotesk', sans-serif;
+  --t-font-family-display: 'Fraunces', Georgia, serif;
   --t-name: dark;
   --t-snack-bar-success-color: color(display-p3 0.297 0.637 0.581);
   --t-snack-bar-success-background-color: #11ff992d;

@@ -14,4 +14,8 @@ export const FONT_COMMON = {
     semiBold: 600,
   },
   family: "'Hanken Grotesk', sans-serif",
+  // PROPEL-NOCTURNE PATCH (Tier B) — re-apply on Twenty upgrade.
+  // Serif display face for page/section titles (emits
+  // --t-font-family-display via the theme regenerator).
+  familyDisplay: "'Fraunces', Georgia, serif",
 };

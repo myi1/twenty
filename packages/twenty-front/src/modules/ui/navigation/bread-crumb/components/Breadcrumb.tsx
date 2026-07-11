@@ -10,11 +10,15 @@ export type BreadcrumbProps = {
   links: { children: string | ReactNode; href?: string }[];
 };
 
+// PROPEL-NOCTURNE PATCH (Tier B) — re-apply on Twenty upgrade.
+// The breadcrumb is the visible table-view / record title in the top bar;
+// size follows the ≥15px title rule (family inherits the display face from
+// PageHeader's title container).
 const StyledWrapper = styled.nav`
   align-items: center;
   color: ${themeCssVariables.font.color.tertiary};
   display: grid;
-  font-size: ${themeCssVariables.font.size.md};
+  font-size: ${themeCssVariables.font.size.lg};
   grid-auto-flow: column;
   grid-column-gap: ${themeCssVariables.spacing[1]};
   height: ${themeCssVariables.spacing[8]};
