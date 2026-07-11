@@ -1,5 +1,5 @@
-import type { OffplanMapPoint, OffplanBrowseFilters, MapBounds, MarkerMode } from './types';
-import { isWithinBounds } from './mapGeo';
+import type { OffplanMapPoint, OffplanBrowseFilters, OffplanDistrictCluster, MapBounds, MarkerMode } from './types';
+import { groupPointsByDistrict, isWithinBounds } from './mapGeo';
 import { DISTRICT_ZOOM_MAX } from './types';
 
 export function applyFilters(points: OffplanMapPoint[], f: OffplanBrowseFilters): OffplanMapPoint[] {
@@ -23,6 +23,17 @@ export function applyFilters(points: OffplanMapPoint[], f: OffplanBrowseFilters)
     }
     return true;
   });
+}
+
+// One filtered source for every browse surface. Keeping the matched points and
+// district bubbles together prevents the low-zoom map from drifting away from
+// the filtered card rail.
+export function selectFilteredMap(
+  points: OffplanMapPoint[],
+  filters: OffplanBrowseFilters,
+): { matched: OffplanMapPoint[]; clusters: OffplanDistrictCluster[] } {
+  const matched = applyFilters(points, filters);
+  return { matched, clusters: groupPointsByDistrict(matched) };
 }
 
 // In-viewport points, cheapest first (null price-from sorts last).

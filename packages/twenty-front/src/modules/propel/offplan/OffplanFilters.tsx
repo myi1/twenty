@@ -555,23 +555,23 @@ export function OffplanFilters({
           <FieldLabel>District</FieldLabel>
           <MultiSelect placeholder={filters.districtIds.length === 0 ? 'All districts' : undefined} data={districtOptions} value={filters.districtIds}
             onChange={(v) => onChange({ districtIds: v })} searchable clearable size="xs"
-            styles={MULTI_STYLES} {...w(150)} />
+            styles={MULTI_STYLES} {...w(170)} />
         </Field>
         <Field>
           <FieldLabel>Developer</FieldLabel>
           <MultiSelect placeholder={filters.developerSlugs.length === 0 ? 'All developers' : undefined} data={developerOptions} value={filters.developerSlugs}
             onChange={(v) => onChange({ developerSlugs: v })} searchable clearable size="xs"
-            styles={MULTI_STYLES} {...w(150)} />
+            styles={MULTI_STYLES} {...w(220)} />
         </Field>
         <Field>
           <FieldLabel>Handover</FieldLabel>
           <Select placeholder="Any date" data={HANDOVER_OPTS} value={handoverValue}
-            onChange={setHandover} clearable size="xs" styles={SELECT_STYLES} {...w(118)} />
+            onChange={setHandover} clearable size="xs" styles={SELECT_STYLES} {...w(130)} />
         </Field>
         <Field>
           <FieldLabel>Beds</FieldLabel>
           <Select placeholder="Any" data={BED_OPTS} value={bedsValue}
-            onChange={setBeds} clearable size="xs" styles={SELECT_STYLES} {...w(inPanel ? 132 : 96)} />
+            onChange={setBeds} clearable size="xs" styles={SELECT_STYLES} {...w(inPanel ? 132 : 110)} />
         </Field>
       </>
     );
@@ -614,11 +614,10 @@ export function OffplanFilters({
     </>
   );
 
-  // Meta cluster rides the LABEL row (absolutely top-right) so it never costs
-  // the control row horizontal budget — that's what let the wide layout fit.
+  // Filter status sits beside search on the first desktop row. Keeping it in
+  // normal flow avoids collisions when the app shell changes the usable width.
   const clearCluster = activeCount > 0 && (
-    <Group gap={2} wrap="nowrap"
-      style={{ position: 'absolute', top: SPACE[2], right: SPACE[3], lineHeight: 1 }}>
+    <Group gap={2} wrap="nowrap" style={{ lineHeight: 1, flex: 'none' }}>
       <span style={{ fontSize: 11.5, color: P.ink2, whiteSpace: 'nowrap' }}>
         {activeCount} filter{activeCount === 1 ? '' : 's'}
       </span>
@@ -632,56 +631,65 @@ export function OffplanFilters({
   return (
     <Bar ref={barRef} $light={light}>
       <PulseFonts />
-      {clearCluster}
       {narrow ? (
-        <Group gap={SPACE[2]} wrap="nowrap" align="flex-end">
-          {searchField}
-          <Field>
-            <FieldLabel>Filters</FieldLabel>
-            <BarPopover
-              width={340}
-              align="left"
-              light={light}
-              open={panelOpen}
-              onClose={() => setPanelOpen(false)}
-              trigger={
-                <PriceTrigger type="button" $active={collapsedCount > 0}
-                  onClick={() => setPanelOpen((o) => !o)}
-                  style={{ fontFamily: 'inherit', color: collapsedCount > 0 ? 'var(--p-ink)' : undefined }}>
-                  <IconFilter size={14} color={collapsedCount > 0 ? P.accent : P.ink2} />
-                  Filters
-                  {collapsedCount > 0 && (
-                    <span style={{
-                      fontFamily: FONT_MONO, fontSize: 10, fontWeight: 600, lineHeight: 1,
-                      color: P.accent, background: P.accentTint,
-                      border: `1px solid ${P.accent}`, borderRadius: RADIUS.pill,
-                      padding: '2px 6px',
-                    }}>
-                      {collapsedCount}
-                    </span>
-                  )}
-                </PriceTrigger>
-              }
-            >
-              <div style={{ display: 'flex', flexDirection: 'column', gap: SPACE[3] }}>
-                {selectFields(true)}
-                <div style={{ borderTop: '1px solid var(--p-line)', paddingTop: SPACE[3] }}>
-                  <PriceEditor draft={priceDraft} onDraft={setPriceDraft} onCommit={commitPrice} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: SPACE[2] }}>
+          <Group gap={SPACE[2]} wrap="nowrap" align="flex-end">
+            {searchField}
+            <Field>
+              <FieldLabel>Filters</FieldLabel>
+              <BarPopover
+                width={340}
+                align="right"
+                light={light}
+                open={panelOpen}
+                onClose={() => setPanelOpen(false)}
+                trigger={
+                  <PriceTrigger type="button" $active={collapsedCount > 0}
+                    onClick={() => setPanelOpen((o) => !o)}
+                    style={{ fontFamily: 'inherit', color: collapsedCount > 0 ? 'var(--p-ink)' : undefined }}>
+                    <IconFilter size={14} color={collapsedCount > 0 ? P.accent : P.ink2} />
+                    Filters
+                    {collapsedCount > 0 && (
+                      <span style={{
+                        fontFamily: FONT_MONO, fontSize: 10, fontWeight: 600, lineHeight: 1,
+                        color: P.accent, background: P.accentTint,
+                        border: `1px solid ${P.accent}`, borderRadius: RADIUS.pill,
+                        padding: '2px 6px',
+                      }}>
+                        {collapsedCount}
+                      </span>
+                    )}
+                  </PriceTrigger>
+                }
+              >
+                <div style={{ display: 'flex', flexDirection: 'column', gap: SPACE[3] }}>
+                  {selectFields(true)}
+                  <div style={{ borderTop: '1px solid var(--p-line)', paddingTop: SPACE[3] }}>
+                    <PriceEditor draft={priceDraft} onDraft={setPriceDraft} onCommit={commitPrice} />
+                  </div>
                 </div>
-              </div>
-            </BarPopover>
-          </Field>
-          {chips}
-        </Group>
+              </BarPopover>
+            </Field>
+          </Group>
+          <Group gap={SPACE[2]} wrap="nowrap" justify="space-between">
+            <Group gap={SPACE[2]} wrap="nowrap">{chips}</Group>
+            {clearCluster}
+          </Group>
+        </div>
       ) : (
-        <Group gap={SPACE[2]} wrap="nowrap" align="flex-end">
-          {searchField}
-          {selectFields(false)}
-          {priceControl}
-          {/* hairline seam between the filter group and the toggle chips */}
-          <div style={{ width: 1, height: CONTROL_H, background: P.line, margin: `0 ${SPACE[1]}px` }} />
-          {chips}
-        </Group>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: SPACE[2] }}>
+          <Group gap={SPACE[3]} wrap="nowrap" align="flex-end">
+            {searchField}
+            {clearCluster}
+          </Group>
+          <Group gap={SPACE[2]} wrap="nowrap" align="flex-end">
+            {selectFields(false)}
+            {priceControl}
+            {/* hairline seam between the filter group and the toggle chips */}
+            <div style={{ width: 1, height: CONTROL_H, background: P.line, margin: `0 ${SPACE[1]}px` }} />
+            {chips}
+          </Group>
+        </div>
       )}
     </Bar>
   );

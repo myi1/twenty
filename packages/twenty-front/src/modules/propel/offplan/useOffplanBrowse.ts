@@ -2,13 +2,13 @@ import { useCallback, useMemo, useState } from 'react';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import { useOffplanMapData } from './useOffplanMapData';
 import { useOffplanMapAreas } from './useOffplanMapAreas';
-import { applyFilters, selectVisibleProjects } from './browseSelect';
+import { selectFilteredMap, selectVisibleProjects } from './browseSelect';
 import type { OffplanBrowseFilters, MapBounds, OffplanSearchResult, RouteEnvelope } from './types';
 
 const EMPTY_FILTERS: OffplanBrowseFilters = { q: '', districtIds: [], developerSlugs: [], newLaunchOnly: false, stockedOnly: false };
 
 export function useOffplanBrowse() {
-  const { points, byId, clusters, loading, error } = useOffplanMapData();
+  const { points, byId, loading, error } = useOffplanMapData();
   // Decorative district shading — loads independently; never blocks the browse.
   const { areas } = useOffplanMapAreas();
   const [filters, setFilters] = useState<OffplanBrowseFilters>(EMPTY_FILTERS);
@@ -38,7 +38,10 @@ export function useOffplanBrowse() {
     setFilters((f) => ({ ...f, projectIdAllowlist: ids }));
   }, []);
 
-  const matched = useMemo(() => applyFilters(points, filters), [points, filters]);
+  const { matched, clusters } = useMemo(
+    () => selectFilteredMap(points, filters),
+    [points, filters],
+  );
   const visible = useMemo(() => (bounds ? selectVisibleProjects(matched, bounds) : matched), [matched, bounds]);
 
   const openProject = useCallback((id: number) => {

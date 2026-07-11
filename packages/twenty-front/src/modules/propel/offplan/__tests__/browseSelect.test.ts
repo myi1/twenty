@@ -1,4 +1,4 @@
-import { applyFilters, selectVisibleProjects, markerModeForZoom } from '../browseSelect';
+import { applyFilters, selectFilteredMap, selectVisibleProjects, markerModeForZoom } from '../browseSelect';
 import type { OffplanMapPoint, OffplanBrowseFilters, MapBounds } from '../types';
 
 const pt = (o: Partial<OffplanMapPoint> = {}): OffplanMapPoint => ({
@@ -33,6 +33,19 @@ describe('applyFilters', () => {
   it('filters by text over name/developer/district and by projectId allowlist', () => {
     expect(applyFilters([pt({ externalId: 1, name: 'Aristo' }), pt({ externalId: 2, name: 'Zeta' })], { ...base, q: 'zet' }).map((p) => p.externalId)).toEqual([2]);
     expect(applyFilters([pt({ externalId: 1 }), pt({ externalId: 2 })], { ...base, projectIdAllowlist: new Set([2]) }).map((p) => p.externalId)).toEqual([2]);
+  });
+  it('builds district map clusters from the filtered projects only', () => {
+    const { matched, clusters } = selectFilteredMap([
+      pt({ externalId: 1, developerSlug: 'emaar', districtId: 'hills', districtName: 'Dubai Hills' }),
+      pt({ externalId: 2, developerSlug: 'emaar', districtId: 'south', districtName: 'Emaar South' }),
+      pt({ externalId: 3, developerSlug: 'damac', districtId: 'hills', districtName: 'Dubai Hills' }),
+    ], { ...base, developerSlugs: ['emaar'] });
+
+    expect(matched.map((p) => p.externalId)).toEqual([1, 2]);
+    expect(clusters.map((c) => [c.districtName, c.count])).toEqual([
+      ['Dubai Hills', 1],
+      ['Emaar South', 1],
+    ]);
   });
 });
 
