@@ -64,6 +64,24 @@ export type OffplanMapPointsResult = {
   hasMore?: boolean;
 };
 
+// One shaded district polygon from /offplan/browse { action:'areas' } →
+// geniemap POST /v1/map/areas. GeoJSON Polygon (WGS-84 lon/lat) + the vendor
+// colour; rendered as a MapLibre fill+line+label layer beneath the project pins.
+export type OffplanMapArea = {
+  districtId: string;
+  name: string;
+  color: string;
+  geometry: { type: 'Polygon'; coordinates: number[][][] };
+};
+
+// Paged shape from /v1/map/areas (same IPC-truncation reason as map points).
+export type OffplanMapAreasResult = {
+  areas: OffplanMapArea[];
+  total: number;
+  nextOffset?: number;
+  hasMore?: boolean;
+};
+
 // Full project detail from /offplan/browse { action:'projectDetail' } →
 // geniemap POST /v1/projects/detail. Deliberately separate from the lean
 // OffplanMapPoint — the point feed stays small; detail is fetched lazily.

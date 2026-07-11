@@ -49,7 +49,7 @@ export const OffplanStudioPage = () => {
               <>
                 <Box style={{ position: 'relative', width: '60%', minWidth: 0 }}>
                   <OffplanMap
-                    visiblePoints={b.visible} clusters={b.clusters}
+                    visiblePoints={b.visible} clusters={b.clusters} areas={b.areas}
                     selectedId={b.selectedId} hoveredId={b.hoveredId} viewedIds={b.viewedIds}
                     favoritedIds={sl.favoritedIds} favoritedDistrictIds={favoritedDistrictIds}
                     onViewportChange={(bounds, zoom) => { b.setBounds(bounds); b.setZoom(zoom); }}

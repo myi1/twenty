@@ -16,6 +16,7 @@ import {
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import { formatAed } from '@/propel/lib/formatMoney';
 import { OffplanHeroImage } from './OffplanHeroImage';
+import { OffplanGalleryLightbox } from './OffplanGalleryLightbox';
 import { isoToQuarterLabel } from './handover';
 import type {
   OffplanMapPoint,
@@ -49,10 +50,12 @@ export function OffplanProjectDrawer({
   const [detail, setDetail] = useState<OffplanProjectDetail | null>(null);
   const [anchorUnitId, setAnchorUnitId] = useState<number | undefined>(undefined);
   const [tab, setTab] = useState<string | null>(null);
+  // Index into `galleryImages` of the render shown full-screen; null = closed.
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   useEffect(() => {
     let alive = true;
-    setDetail(null); setUnits(null); setArea(null); setAnchorUnitId(undefined); setTab(null);
+    setDetail(null); setUnits(null); setArea(null); setAnchorUnitId(undefined); setTab(null); setLightboxIndex(null);
     (async () => {
       const u = await callPropelRoute<RouteEnvelope<OffplanSearchResult>>('/offplan/browse', { action: 'search', params: { projectExternalId: point.externalId, limit: 100 } });
       if (alive) { const list = u?.ok ? u.data?.units ?? [] : []; setUnits(list); setAnchorUnitId([...list].sort((a, b) => a.price - b.price)[0]?.externalId); }
@@ -81,7 +84,16 @@ export function OffplanProjectDrawer({
   const downPct = firstPlan?.downPaymentPct ?? null;
 
   const heroSrc = detail?.renders?.primary ?? point.heroImageUrl ?? null;
-  const gallery = (detail?.renders?.gallery ?? []).slice(0, 4);
+  // The full browsable render set: primary first, then the gallery, de-duped and
+  // limited to absolute URLs (a bare B2 key isn't browser-resolvable — same guard
+  // as OffplanHeroImage). This backs both the thumbnail strip and the lightbox.
+  const galleryImages = useMemo(() => {
+    const isRenderable = (s: string | null | undefined): s is string =>
+      !!s && /^(https?:)?\/\//i.test(s);
+    const ordered = [heroSrc, ...(detail?.renders?.gallery ?? [])].filter(isRenderable);
+    return Array.from(new Set(ordered));
+  }, [heroSrc, detail?.renders?.gallery]);
+  const hasGallery = galleryImages.length > 0;
 
   const y = area?.signals?.yield?.value;
   const areaRent = area?.signals?.rent?.value;
@@ -125,6 +137,7 @@ export function OffplanProjectDrawer({
     : 'overview';
 
   return (
+    <>
     <Drawer
       opened
       position="right"
@@ -136,16 +149,39 @@ export function OffplanProjectDrawer({
       <ScrollArea style={{ flex: 1 }}>
         {/* ── Hero ─────────────────────────────────────────────── */}
         <Box style={{ position: 'relative' }}>
-          <OffplanHeroImage src={heroSrc} h={210} radius={0} alt={point.name} />
+          <Box
+            onClick={() => hasGallery && setLightboxIndex(0)}
+            style={{ cursor: hasGallery ? 'zoom-in' : 'default', position: 'relative' }}
+          >
+            <OffplanHeroImage src={heroSrc} h={210} radius={0} alt={point.name} />
+            {hasGallery && galleryImages.length > 1 && (
+              <Box
+                style={{
+                  position: 'absolute', bottom: 10, left: 12,
+                  background: 'rgba(6,10,18,.72)', color: '#fff',
+                  borderRadius: 14, padding: '3px 10px',
+                  font: '600 11px system-ui', letterSpacing: .3, pointerEvents: 'none',
+                }}
+              >⤢ {galleryImages.length} photos</Box>
+            )}
+          </Box>
           <Group gap={6} style={{ position: 'absolute', top: 12, right: 12 }}>
             {point.isLaunch && (
               <Badge size="sm" style={{ background: BRASS, color: '#1a1408' }}>New launch</Badge>
             )}
           </Group>
-          {gallery.length > 0 && (
+          {hasGallery && galleryImages.length > 1 && (
             <Group gap={6} px="md" py={8} wrap="nowrap" style={{ overflowX: 'auto' }}>
-              {gallery.map((g, i) => (
-                <OffplanHeroImage key={`${g}-${i}`} src={g} w={92} h={60} radius={6} alt={`${point.name} render ${i + 2}`} />
+              {galleryImages.map((g, i) => (
+                <Box
+                  key={`${g}-${i}`}
+                  onClick={() => setLightboxIndex(i)}
+                  style={{ flex: 'none', cursor: 'pointer', borderRadius: 6, overflow: 'hidden', transition: 'opacity 160ms ease-out' }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.opacity = '0.82'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.opacity = '1'; }}
+                >
+                  <OffplanHeroImage src={g} w={92} h={60} radius={6} alt={`${point.name} render ${i + 1}`} />
+                </Box>
               ))}
             </Group>
           )}
@@ -334,6 +370,16 @@ export function OffplanProjectDrawer({
         </Group>
       </Group>
     </Drawer>
+    {lightboxIndex !== null && hasGallery && (
+      <OffplanGalleryLightbox
+        images={galleryImages}
+        index={lightboxIndex}
+        alt={point.name}
+        onIndex={setLightboxIndex}
+        onClose={() => setLightboxIndex(null)}
+      />
+    )}
+    </>
   );
 }
 

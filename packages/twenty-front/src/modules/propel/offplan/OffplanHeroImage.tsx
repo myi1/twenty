@@ -26,7 +26,7 @@ export function OffplanHeroImage({
   alt,
 }: {
   src?: string | null;
-  h: number;
+  h: number | string;
   w?: number | string;
   radius?: string | number;
   alt?: string;

@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import { useOffplanMapData } from './useOffplanMapData';
+import { useOffplanMapAreas } from './useOffplanMapAreas';
 import { applyFilters, selectVisibleProjects } from './browseSelect';
 import type { OffplanBrowseFilters, MapBounds, OffplanSearchResult, RouteEnvelope } from './types';
 
@@ -8,6 +9,8 @@ const EMPTY_FILTERS: OffplanBrowseFilters = { q: '', districtIds: [], developerS
 
 export function useOffplanBrowse() {
   const { points, byId, clusters, loading, error } = useOffplanMapData();
+  // Decorative district shading — loads independently; never blocks the browse.
+  const { areas } = useOffplanMapAreas();
   const [filters, setFilters] = useState<OffplanBrowseFilters>(EMPTY_FILTERS);
   const [bounds, setBounds] = useState<MapBounds | null>(null);
   const [zoom, setZoom] = useState(9);
@@ -44,7 +47,7 @@ export function useOffplanBrowse() {
   }, []);
 
   return {
-    points, byId, clusters, loading, error,
+    points, byId, clusters, areas, loading, error,
     filters, setFilters, applyBedFilter,
     bounds, setBounds, zoom, setZoom,
     matched, visible, visibleCount: visible.length,
