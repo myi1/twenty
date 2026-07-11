@@ -9,9 +9,17 @@ import { REACT_APP_SERVER_BASE_URL } from '~/config';
 //
 // Returns the parsed JSON body on a 2xx response, otherwise `null` — every caller
 // treats `null` as "no data" and renders an empty/error state rather than throwing.
+//
+// `init.signal` (optional) aborts the underlying fetch — an abort resolves to
+// `null` like any other failure. Callers with a deadline should pass
+// AbortSignal.timeout(...) rather than racing a bare timer: only an abort
+// actually FREES the socket, and a stalled request that is merely raced keeps
+// holding one of Chrome's 6 per-host connections (observed starving the whole
+// staging tab pool on 2026-07-11).
 export const callPropelRoute = async <T>(
   path: string,
   body: object,
+  init: { signal?: AbortSignal } = {},
 ): Promise<T | null> => {
   const token = getTokenPair()?.accessOrWorkspaceAgnosticToken?.token;
   if (token === undefined || token === '') {
@@ -46,6 +54,7 @@ export const callPropelRoute = async <T>(
         authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(payload),
+      signal: init.signal,
     });
 
     if (!response.ok) {

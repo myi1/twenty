@@ -78,17 +78,15 @@ const PAGE_LIMIT = 80;
 // Hard stop so a confused server can never loop us forever (~15×120 rows).
 const MAX_PAGES = 15;
 // A stalled request (seen on staging: a fetch that never settles) must degrade
-// to the Try-again state, never an endless spinner. callPropelRoute has no
-// timeout of its own, so each page call is raced against this deadline.
+// to the Try-again state, never an endless spinner — and must ABORT so the
+// zombie request frees its socket (a merely-raced stall keeps holding one of
+// Chrome's 6 per-host connections and starves every other tab).
 const CALL_TIMEOUT_MS = 20_000;
 
 const callFeedPage = (body: object): Promise<FeedResponse | null> =>
-  Promise.race([
-    callPropelRoute<FeedResponse>('/marketing/competitor-feed', body),
-    new Promise<null>((resolve) => {
-      setTimeout(() => resolve(null), CALL_TIMEOUT_MS);
-    }),
-  ]);
+  callPropelRoute<FeedResponse>('/marketing/competitor-feed', body, {
+    signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
+  });
 
 // Format badge: REELS/VIDEO/CAROUSEL/PHOTO in plain words with stable colors
 // (mirrors the retired sandbox panel so the founder sees the same vocabulary).
