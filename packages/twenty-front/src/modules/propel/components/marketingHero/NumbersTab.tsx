@@ -35,7 +35,9 @@ import { DetailDrawer, Seal, statusSeal } from '@/propel/components/desk';
 // /voice/numbers/update. NOTE (design ledger §3): richer per-number config
 // (assignment to an agent/team, caller-ID, recording/voicemail) needs NEW backend
 // fields on phone-number.object.ts + a route extension, so it is deferred; the
-// Assignment column shows the interim regionPrefixes read. The `name` field is NOT
+// column is headed "Region prefixes" because that is literally what it shows —
+// do NOT title it "Assignment" until real assignment data exists (honest-UI
+// sweep). The `name` field is NOT
 // writable via the current update route, so it is displayed read-only here.
 //
 // Manager/Admin only: a mount-time probe answers before any control renders so the
@@ -366,7 +368,7 @@ export const NumbersTab = () => {
               <Table.Th>Label</Table.Th>
               <Table.Th>Provider</Table.Th>
               <Table.Th>Type / Country</Table.Th>
-              <Table.Th>Assignment</Table.Th>
+              <Table.Th>Region prefixes</Table.Th>
               <Table.Th>Status</Table.Th>
               <Table.Th>Cost</Table.Th>
               <Table.Th ta="right">Actions</Table.Th>

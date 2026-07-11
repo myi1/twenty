@@ -246,8 +246,8 @@ export const SiteLeadDrawer = ({
                 }
               />
               <Field label="Campaign" value={lead.utmCampaign} />
-              <Field label="UTM source" value={lead.utmSource} />
-              <Field label="UTM medium" value={lead.utmMedium} />
+              <Field label="Came from" value={lead.utmSource} />
+              <Field label="Channel type" value={lead.utmMedium} />
               <Field label="Lead intent" value={enumLabel(lead.leadIntent)} />
             </Stack>
           </Paper>

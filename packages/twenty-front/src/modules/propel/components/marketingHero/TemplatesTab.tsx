@@ -63,10 +63,10 @@ import { WaTemplateModal } from './WaTemplateModal';
 //   • (modals) /marketing/save-email-template, /marketing/save-template,
 //     /marketing/wa-template-create
 //
-// Perf and Updated columns are STUBBED ("—") — there is no per-template stats
-// rollup and `updatedAt` isn't in the /marketing/hub payload yet (both are
-// backend items in the design ledger §4). The columns exist so the table shape is
-// final; they light up when the data lands.
+// Perf and Updated columns were REMOVED (honest-UI sweep): there is no
+// per-template stats rollup and `updatedAt` isn't in the /marketing/hub payload
+// (both are backend items in the design ledger §4). Re-add the columns WITH the
+// data when it lands — never ship a permanently-"—" column.
 
 type TplFilter = TemplatesChannel; // 'ALL' | 'EMAIL' | 'WHATSAPP'
 
@@ -446,16 +446,6 @@ export const TemplatesTab = ({
             </Badge>
           </Table.Td>
           <Table.Td>
-            <Text size="sm" c="dimmed">
-              —
-            </Text>
-          </Table.Td>
-          <Table.Td>
-            <Text size="sm" c="dimmed">
-              —
-            </Text>
-          </Table.Td>
-          <Table.Td>
             <Group gap={4} wrap="nowrap" justify="flex-end">
               <Button
                 size="compact-xs"
@@ -510,16 +500,6 @@ export const TemplatesTab = ({
             <Badge size="sm" variant="light" color="gray">
               {t.languageCode}
             </Badge>
-          </Table.Td>
-          <Table.Td>
-            <Text size="sm" c="dimmed">
-              —
-            </Text>
-          </Table.Td>
-          <Table.Td>
-            <Text size="sm" c="dimmed">
-              —
-            </Text>
           </Table.Td>
           <Table.Td>
             <Group gap={4} wrap="nowrap" justify="flex-end">
@@ -659,8 +639,6 @@ export const TemplatesTab = ({
               <Table.Th>Status</Table.Th>
               <Table.Th>Category</Table.Th>
               <Table.Th>Language</Table.Th>
-              <Table.Th>Perf</Table.Th>
-              <Table.Th>Updated</Table.Th>
               <Table.Th ta="right">Actions</Table.Th>
             </Table.Tr>
           </Table.Thead>

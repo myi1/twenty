@@ -1,4 +1,4 @@
-import { Anchor, Badge, Box, Group, Image, Stack, Text } from '@mantine/core';
+import { Anchor, Badge, Box, Group, Stack, Text } from '@mantine/core';
 import {
   IconAlertTriangle,
   IconCheck,
@@ -16,6 +16,7 @@ import {
   type ExpiryIndicator,
   mediaExpiryIndicator,
 } from '@/propel/lib/inboxThread';
+import { ImageWithFallback } from '@/propel/components/shared/ImageWithFallback';
 
 // Per-channel identity = a clean colored lettermark (Ig / f / Wa), not a generic
 // chat glyph — a megaphone on a Facebook DM reads wrong. Colors are fixed brand
@@ -122,14 +123,19 @@ export const MediaBlock = ({
         aria-label={kind === 'STICKER' ? 'Open sticker' : 'Open image'}
         style={{ display: 'block', marginBottom: 5, lineHeight: 0 }}
       >
-        <Image
+        <ImageWithFallback
           src={url}
           alt={kind === 'STICKER' ? 'Sticker' : 'Image'}
-          radius="md"
-          fit="cover"
-          loading="lazy"
-          mah={280}
-          maw={220}
+          fallbackLabel="Image unavailable — it may have expired"
+          style={{
+            borderRadius: 'var(--mantine-radius-md)',
+            display: 'block',
+            maxHeight: 280,
+            maxWidth: 220,
+            minHeight: 90,
+            minWidth: 140,
+            objectFit: 'cover',
+          }}
         />
       </Anchor>
     );

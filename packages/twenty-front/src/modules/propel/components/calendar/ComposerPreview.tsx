@@ -6,6 +6,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { CHANNEL_META } from '@/propel/lib/socialCalendarConfig';
 import { type ComposerMedia } from '@/propel/lib/socialComposer';
 import { StyledPreviewCard } from '@/propel/components/calendar/composerStyles';
+import { ImageWithFallback } from '@/propel/components/shared/ImageWithFallback';
 import { type SocialNetwork } from '@/propel/types/socialCalendar';
 
 // Live per-channel preview (§11 RIGHT pane). Renders the composing post roughly as
@@ -93,7 +94,7 @@ const PreviewMedia = ({
       {first?.kind === 'video' ? (
         <video src={src} muted preload="metadata" />
       ) : (
-        <img src={src} alt="" />
+        <ImageWithFallback src={src} />
       )}
     </div>
   );

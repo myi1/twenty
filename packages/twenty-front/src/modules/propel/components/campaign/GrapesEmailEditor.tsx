@@ -83,13 +83,25 @@ import 'grapesjs/dist/css/grapes.min.css';
 // object used as a key), so keying pluginsOpts by the imported function is
 // brittle. Calling the plugin ourselves with an explicit opts object is the
 // reliable way to pass MJML options. The wrapper IS the plugin we register.
+// A sensible placeholder so a freshly-dropped mj-image isn't a blank box.
+// Inline SVG data URI — the old via.placeholder.com URL depended on an external
+// service that regularly goes down, which rendered the browser's broken-image
+// glyph inside the canvas (the honest-UI sweep's ImageWithFallback can't reach
+// inside the GrapesJS iframe, so the placeholder itself must be unbreakable).
+const IMAGE_PLACEHOLDER_SRC =
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="300">' +
+      '<rect width="100%" height="100%" fill="#eeeeee"/>' +
+      '<text x="50%" y="50%" fill="#999999" font-family="Arial, sans-serif" font-size="28" text-anchor="middle" dominant-baseline="middle">Image</text>' +
+      '</svg>',
+  );
+
 const mjmlPlugin = (editor: Editor) =>
   grapesjsMjml(editor, {
     // Keep the plugin's default MJML block set (we add Propel blocks on top).
     resetBlocks: false,
-    // A sensible placeholder so a freshly-dropped mj-image isn't a blank box.
-    imagePlaceholderSrc:
-      'https://via.placeholder.com/600x300/eeeeee/999999?text=Image',
+    imagePlaceholderSrc: IMAGE_PLACEHOLDER_SRC,
   });
 
 // ── Brand kit (REAL logos + colors) ──────────────────────────────────────────

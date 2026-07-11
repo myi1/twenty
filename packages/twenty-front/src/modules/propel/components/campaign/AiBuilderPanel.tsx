@@ -18,6 +18,7 @@ import {
   IconSparkles,
 } from 'twenty-ui/display';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
+import { friendlyDateTime } from '@/propel/lib/humanDate';
 import { aiText, envelopeMessage } from '@/propel/lib/campaignBuilderConfig';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import {
@@ -271,7 +272,9 @@ export const AiBuilderPanel = ({
             )}
             {plan.subject && <PlanRow label="Subject">{plan.subject}</PlanRow>}
             {plan.scheduledAt && (
-              <PlanRow label="Scheduled">{plan.scheduledAt}</PlanRow>
+              <PlanRow label="Scheduled">
+                {friendlyDateTime(plan.scheduledAt) || plan.scheduledAt}
+              </PlanRow>
             )}
             {truth?.permitWarning && (
               <Group gap={6} align="flex-start" wrap="nowrap">

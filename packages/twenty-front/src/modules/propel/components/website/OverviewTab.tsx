@@ -30,10 +30,10 @@ import {
   IconTrendingUp,
   IconWorld,
 } from 'twenty-ui/display';
-import { getWebsiteOverview } from '@/propel/mocks/websiteMockData';
 import { useSiteLeads } from '@/propel/hooks/useSiteLeads';
 import { useBlogPipeline } from '@/propel/hooks/useBlogPipeline';
 import { useWebsiteSeo } from '@/propel/hooks/useWebsiteSeo';
+import { useAiVisibility } from '@/propel/hooks/useAiVisibility';
 import { countBy, relativeAge, type CountBucket } from '@/propel/lib/websiteCrm';
 import { relativeScanAge, type SeoAuditReport } from '@/propel/lib/websiteSeoCrm';
 import type { BlogPost } from '@/propel/lib/blogCrm';
@@ -48,7 +48,8 @@ import { friendlyError } from '@/propel/lib/friendlyError';
 //     "Scheduler publish failed — Ghost API timeout" mock rows. Blog rows drill
 //     into Blog; the crawl row drills into SEO and AI.
 //   • Search visibility → SEO health + pages reachable are REAL (useWebsiteSeo);
-//     AI citations stays a PREVIEW (no GSC/LLM feed yet).
+//     the AI row is REAL too — tracked-prompt count from the same
+//     /website/ai-visibility board SeoAiTab reads (useAiVisibility, 0.6.39).
 
 type SubTab = 'blog' | 'site-leads' | 'seo-ai';
 
@@ -193,7 +194,7 @@ const blogRow = (p: BlogPost): FeedRow => {
         ...base,
         tone: 'review',
         title: `Needs your approval: ${p.title}`,
-        detail: p.excerpt || 'A finished draft is waiting for the HumanGate.',
+        detail: p.excerpt || 'A finished draft is waiting for your review.',
         when,
       };
     case 'DRAFTING':
@@ -338,16 +339,22 @@ const ActivityFeed = ({
   );
 };
 
-// ── search visibility (SEO health + pages real, AI citations preview) ──────────
+// ── search visibility (SEO health + pages + AI-tracked prompts, all REAL) ──────
+// The AI row reads the same /website/ai-visibility board SeoAiTab uses (live
+// since 0.6.39) — `aiPromptsTracked` is the count of active tracked prompts, or
+// null when the board couldn't load (rendered as an honest dash, never a fake
+// number).
 const SearchVisibilityPanel = ({
   report,
   seoLoading,
-  aiCitations,
+  aiPromptsTracked,
+  aiLoading,
   onOpen,
 }: {
   report: SeoAuditReport | null;
   seoLoading: boolean;
-  aiCitations: number;
+  aiPromptsTracked: number | null;
+  aiLoading: boolean;
   onOpen: () => void;
 }) => {
   const reachablePct =
@@ -404,15 +411,19 @@ const SearchVisibilityPanel = ({
           )}
 
           <Group justify="space-between">
-            <Group gap={6}>
-              <Text size="sm">AI citations</Text>
-              <Badge color="gray" variant="light" size="xs">
-                Preview
+            <Text size="sm">AI visibility</Text>
+            {aiLoading ? (
+              <Loader size="xs" color="red" />
+            ) : aiPromptsTracked !== null ? (
+              <Badge color="teal" variant="light" radius="sm">
+                {aiPromptsTracked} tracked{' '}
+                {aiPromptsTracked === 1 ? 'prompt' : 'prompts'}
               </Badge>
-            </Group>
-            <Badge color="teal" variant="light" radius="sm">
-              {aiCitations} tracked prompts
-            </Badge>
+            ) : (
+              <Text size="sm" c="dimmed">
+                —
+              </Text>
+            )}
           </Group>
         </Stack>
       </Paper>
@@ -425,10 +436,10 @@ export const OverviewTab = ({
 }: {
   onNavigateSubTab: (sub: string) => void;
 }) => {
-  const mock = getWebsiteOverview();
   const { phase, error, leads, metrics, reload } = useSiteLeads();
   const blog = useBlogPipeline();
   const seo = useWebsiteSeo();
+  const aiVis = useAiVisibility();
 
   const goSiteLeads = () => onNavigateSubTab('site-leads');
   const goSubTab = (sub: SubTab) => onNavigateSubTab(sub);
@@ -582,7 +593,12 @@ export const OverviewTab = ({
         <SearchVisibilityPanel
           report={seo.data}
           seoLoading={seo.phase === 'loading'}
-          aiCitations={mock.searchVisibility.aiCitations}
+          aiPromptsTracked={
+            aiVis.phase === 'ready' && aiVis.data !== null
+              ? aiVis.data.prompts.filter((p) => p.isActive).length
+              : null
+          }
+          aiLoading={aiVis.phase === 'loading'}
           onOpen={() => goSubTab('seo-ai')}
         />
       </SimpleGrid>

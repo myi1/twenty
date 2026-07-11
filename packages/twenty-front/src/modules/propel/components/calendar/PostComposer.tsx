@@ -34,6 +34,7 @@ import { AiCopyControls } from '@/propel/components/calendar/AiCopyControls';
 import { AiImageControls } from '@/propel/components/calendar/AiImageControls';
 import { CanvaControls } from '@/propel/components/calendar/CanvaControls';
 import { ComposerPreview } from '@/propel/components/calendar/ComposerPreview';
+import { ImageWithFallback } from '@/propel/components/shared/ImageWithFallback';
 import {
   StyledComposerBackdrop,
   StyledComposerOverlay,
@@ -1156,7 +1157,7 @@ const MediaTile = ({
             media.kind === 'video' ? (
               <video src={src} muted preload="metadata" />
             ) : (
-              <img src={src} alt="" style={{ opacity: 0.55 }} />
+              <ImageWithFallback src={src} style={{ opacity: 0.55 }} />
             )
           ) : null}
           {/* Large-video B2 upload progress bar (images upload instantly, no bar). */}
@@ -1184,7 +1185,7 @@ const MediaTile = ({
         media.kind === 'video' ? (
           <video src={src} muted preload="metadata" />
         ) : (
-          <img src={src} alt="" />
+          <ImageWithFallback src={src} />
         )
       ) : (
         <div className="propel-media-tile--uploading">

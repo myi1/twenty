@@ -20,7 +20,6 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import {
-  IconCheck,
   IconChevronDown,
   IconRefresh,
   IconSparkles,
@@ -47,7 +46,7 @@ import { type SocialNetwork } from '@/propel/types/socialCalendar';
 // Social Bench 4S-A — the "Create campaign" brief box. A brief → the bench
 // (Strategist → Copywriter → Designer → Scheduler) → a PROPOSED plan of bespoke
 // per-platform draft posts the founder reviews and one-click approves onto the
-// Social calendar. Mirrors the Landing tab's Stage-3A box (brief + optimistic
+// Social calendar. Mirrors the Landing tab's Stage-3A box (brief + honest
 // agent strip during the single synchronous ~30–45s await; on {ok, planId} the
 // parent opens the plan review). Nothing publishes here — approval is a separate
 // gated step in PlanReviewPanel.
@@ -66,35 +65,22 @@ const NETWORK_LABEL: Record<SocialNetwork, string> = {
   TIKTOK: 'TikTok',
 };
 
-// The four bench agents, in run order. The strip ticks each to "done" as the
-// synchronous route progresses (optimistic timed progression — one pill is
-// "active" with a spinner, earlier pills are "done"; on the single await
-// resolving we mark all four done, then open the fresh plan in review).
+// The four bench agents, in run order — shown as a roster while the single
+// synchronous generate call runs. HONEST state (no-fake-data rule): the route
+// gives no per-agent progress signal, so the strip does NOT fake per-agent
+// checkmarks on a wall-clock timer (the old ~10s "optimistic progression").
+// One indeterminate loader + the roster says what's happening without
+// inventing precision we don't have.
 const AGENT_STAGES = ['Strategist', 'Copywriter', 'Designer', 'Scheduler'] as const;
 
-const AgentStrip = ({ stage }: { stage: number }) => (
+const AgentStrip = () => (
   <Group gap="xs" mt="sm" wrap="wrap">
-    {AGENT_STAGES.map((name, i) => {
-      const done = i < stage;
-      const active = i === stage;
-      return (
-        <Badge
-          key={name}
-          size="sm"
-          variant={active ? 'filled' : done ? 'light' : 'outline'}
-          color={done ? 'teal' : active ? 'red' : 'gray'}
-          leftSection={
-            done ? (
-              <IconCheck size={12} />
-            ) : active ? (
-              <Loader size={10} color="white" />
-            ) : undefined
-          }
-        >
-          {name}
-        </Badge>
-      );
-    })}
+    <Loader size={14} color="red" />
+    {AGENT_STAGES.map((name) => (
+      <Badge key={name} size="sm" variant="outline" color="gray">
+        {name}
+      </Badge>
+    ))}
   </Group>
 );
 
@@ -289,10 +275,9 @@ export const SocialCampaignPanel = ({
   // Sources grounding (SRC-1 / plan SM6): ≤8 library sources picked via the
   // "Add sources" popover; their ids ride the generatePlan call (SM3).
   const [planSources, setPlanSources] = useState<SelectedSource[]>([]);
-  // Bench run state. `generating` = a run is in flight; `stage` (0–4) drives the
-  // agent strip; `featureOff` dims the box when the route reports the LLM key unset.
+  // Bench run state. `generating` = a run is in flight (drives the honest agent
+  // strip); `featureOff` dims the box when the route reports the LLM key unset.
   const [generating, setGenerating] = useState(false);
-  const [stage, setStage] = useState(0);
   const [featureOff, setFeatureOff] = useState(false);
   // Style-learning: the cached Style Profile (null → the note hides, i.e. cold
   // read / unavailable), a refresh spinner, and the per-run "Use my style"
@@ -337,7 +322,6 @@ export const SocialCampaignPanel = ({
     setStartDate('');
     setEndDate('');
     setPlanSources([]);
-    setStage(0);
     setUseStyle(true);
   };
 
@@ -367,12 +351,6 @@ export const SocialCampaignPanel = ({
     }
 
     setGenerating(true);
-    setStage(0);
-    // Optimistic progression: tick to the next agent every ~10s (cap at the last
-    // one) so the strip reads as forward motion during the synchronous await.
-    const timer = window.setInterval(() => {
-      setStage((s) => (s < AGENT_STAGES.length - 1 ? s + 1 : s));
-    }, 10_000);
 
     const res = await generatePlan(
       trimmed,
@@ -382,8 +360,6 @@ export const SocialCampaignPanel = ({
       undefined,
       useStyle,
     );
-    window.clearInterval(timer);
-    setStage(AGENT_STAGES.length); // all four done
 
     if (res.ok) {
       setGenerating(false);
@@ -394,7 +370,6 @@ export const SocialCampaignPanel = ({
     }
 
     setGenerating(false);
-    setStage(0);
     if (res.featureOff) {
       setFeatureOff(true);
       return;
@@ -493,7 +468,7 @@ export const SocialCampaignPanel = ({
             <Text size="sm" fw={500}>
               The bench is drafting your campaign…
             </Text>
-            <AgentStrip stage={stage} />
+            <AgentStrip />
           </Box>
         ) : null}
 

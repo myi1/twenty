@@ -60,6 +60,7 @@ import {
   listCampaigns,
 } from '@/propel/lib/campaignSpineCrm';
 import { composeDeskBrief } from '@/propel/lib/composeDeskBrief';
+import { friendlyDate } from '@/propel/lib/humanDate';
 import {
   type PendingApprovalItem,
   approveWorkItem,
@@ -302,7 +303,7 @@ const ScoutRow = ({
   const [busy, setBusy] = useState(false);
   const win =
     item.windowStart && item.windowEnd
-      ? `${item.windowStart.slice(0, 10)} → ${item.windowEnd.slice(0, 10)}`
+      ? `${friendlyDate(item.windowStart)} → ${friendlyDate(item.windowEnd)}`
       : '';
 
   const dismiss = async () => {
@@ -413,7 +414,7 @@ const SocialPlanRow = ({
           </Text>
           <Text size="xs" c="dimmed">
             Social plan
-            {plan.createdAt ? ` · ${plan.createdAt.slice(0, 10)}` : ''}
+            {plan.createdAt ? ` · ${friendlyDate(plan.createdAt)}` : ''}
           </Text>
         </Box>
         <Button
@@ -557,7 +558,7 @@ const SubmittedApprovalRow = ({
         <Text size="xs" c="dimmed">
           {KIND_LABEL[item.kind]}
           {item.submittedForApprovalAt
-            ? ` · submitted ${item.submittedForApprovalAt.slice(0, 10)}`
+            ? ` · submitted ${friendlyDate(item.submittedForApprovalAt)}`
             : ''}
         </Text>
       </Box>
@@ -1079,16 +1080,16 @@ export const NightDeskHome = () => {
     rows.push({
       key: 'scout',
       seal: 'brass',
-      label: 'Proposed by Scout',
+      label: 'Suggested campaigns',
       count: counts.scout,
       summary:
         counts.scout === 0
-          ? 'The Scout has nothing new'
+          ? 'No new suggestions'
           : `${counts.scout} ${plural('campaign', counts.scout)} drafted for your sign-off`,
       body:
         counts.scout === 0 ? (
           <Text size="sm" c="dimmed">
-            The Scout hasn’t proposed anything new.
+            No new campaign suggestions overnight.
           </Text>
         ) : (
           <Stack gap="xs">
@@ -1226,8 +1227,8 @@ export const NightDeskHome = () => {
     overnightLines.push({
       text:
         counts.scout > 0
-          ? `The Scout proposed ${counts.scout} ${plural('campaign', counts.scout)}.`
-          : 'The Scout had a quiet night — nothing new proposed.',
+          ? `${counts.scout} new campaign ${plural('suggestion', counts.scout)} drafted overnight for your review.`
+          : 'A quiet night — no new campaign suggestions.',
     });
   }
   if (landingAvailable) {
