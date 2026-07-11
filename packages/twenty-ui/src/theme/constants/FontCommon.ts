@@ -13,5 +13,5 @@ export const FONT_COMMON = {
     medium: 500,
     semiBold: 600,
   },
-  family: 'Inter, sans-serif',
+  family: "'Hanken Grotesk', sans-serif",
 };
