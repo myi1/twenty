@@ -254,9 +254,10 @@ function BarPopover({
   );
 }
 
-// Mantine parts styled onto the token ledger. Height is pinned so every control
-// in the row reads as one instrument; MultiSelects keep minHeight only so
-// selected pills can grow the field.
+// Mantine parts styled onto the token ledger. Every control stays one 30px
+// instrument row. Mantine's searchable MultiSelect normally reserves a 100px
+// input after selected pills, which wraps and grows the control vertically.
+// Collapse that search field's minimum and keep the pill group on one line.
 const selectInput = {
   fontFamily: 'inherit',
   fontSize: 12.5,
@@ -269,7 +270,18 @@ const SELECT_STYLES = {
   input: { ...selectInput, height: CONTROL_H, minHeight: CONTROL_H },
 } as const;
 const MULTI_STYLES = {
-  input: { ...selectInput, minHeight: CONTROL_H, paddingTop: 2, paddingBottom: 2 },
+  input: {
+    ...selectInput,
+    height: CONTROL_H,
+    minHeight: CONTROL_H,
+    maxHeight: CONTROL_H,
+    overflow: 'hidden',
+    paddingTop: 2,
+    paddingBottom: 2,
+  },
+  pillsList: { flexWrap: 'nowrap', overflow: 'hidden', height: '100%' },
+  pill: { minWidth: 0, maxWidth: '100%' },
+  inputField: { minWidth: 8 },
 } as const;
 
 type AiFilters = {
