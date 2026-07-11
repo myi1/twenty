@@ -38,3 +38,14 @@ export const formatAedTotal = (totalAed: number): string => {
   if (totalAed >= 1_000) return `AED ${Math.round(totalAed / 1_000)}K`;
   return `AED ${totalAed}`;
 };
+
+/** Plain-language phrase for a raw native stage enum ("VIEWING_BOOKED" →
+ *  "Viewing Booked") — the Stage column never shows an UPPER_CASE enum or a
+ *  pill. Tolerant of any input casing. */
+export const formatStageLabel = (stage: string): string =>
+  stage
+    .toLowerCase()
+    .split('_')
+    .filter(Boolean)
+    .map((word) => word[0].toUpperCase() + word.slice(1))
+    .join(' ') || stage;

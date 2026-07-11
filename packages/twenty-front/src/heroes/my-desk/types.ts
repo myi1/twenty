@@ -90,6 +90,11 @@ export type DeskRailResponse =
     }
   | DeskErrorResponse;
 
+/** The successful-response shape of the rail action — narrows out the shared
+ *  `{ ok: false; error }` envelope so panel code never has to re-check `ok`.
+ *  Shared across index.tsx / TodayStrip.tsx / RightRail.tsx (Task 12). */
+export type DeskRailOk = Extract<DeskRailResponse, { ok: true }>;
+
 // timeline — the peek-drawer event feed for one record (one page today;
 // nextCursor is always null until a unified cursor across the 4 source types lands).
 export type DeskTimelineEvent = {
