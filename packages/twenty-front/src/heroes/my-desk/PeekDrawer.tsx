@@ -8,7 +8,6 @@ import {
   IconExternalLink,
   IconNotes,
   IconPhone,
-  IconPlus,
   IconX,
 } from 'twenty-ui/display';
 
@@ -144,6 +143,7 @@ export const PeekDrawer = ({
   onClose,
   onStartCall,
   onRowPatch,
+  onMoveStage,
 }: {
   row: DeskRow;
   mode: DrawerMode;
@@ -151,6 +151,7 @@ export const PeekDrawer = ({
   onClose: () => void;
   onStartCall: () => void;
   onRowPatch: (patch: Partial<DeskRow>) => void;
+  onMoveStage: (anchor: { x: number; y: number }) => void;
 }) => {
   const [activeMode, setActiveMode] = useState(mode);
   const [timeline, setTimeline] = useState<DeskTimelineEvent[]>([]);
@@ -252,7 +253,20 @@ export const PeekDrawer = ({
             <div style={{ font: `500 21px ${FONT_DISPLAY}`, color: P.ink }}>{row.name}</div>
             <div style={{ font: `12px ${FONT_UI}`, color: P.ink2, marginTop: 3 }}>{row.meta}</div>
             <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <Seal tone="new" label={formatStageLabel(row.stage)} />
+              {row.laneObject === 'lead' ? <Seal tone="new" label={formatStageLabel(row.stage)} /> : (
+                <button
+                  type="button"
+                  aria-label={`Move ${row.name} to another stage`}
+                  title="Move stage"
+                  onClick={(event) => {
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    onMoveStage({ x: rect.left, y: rect.bottom + 6 });
+                  }}
+                  style={{ all: 'unset', display: 'inline-flex', borderRadius: 999, cursor: 'pointer' }}
+                >
+                  <Seal tone="new" label={formatStageLabel(row.stage)} />
+                </button>
+              )}
               {row.valueAed !== null && <span style={{ font: `500 12px ${FONT_MONO}`, color: P.accent }}>~{formatAedTotal(row.valueAed)}</span>}
             </div>
           </div>
@@ -263,7 +277,6 @@ export const PeekDrawer = ({
           <Button type="button" disabled={!row.phoneE164} title={row.phoneE164 ? 'Call' : 'No phone number'} onClick={onStartCall}><IconPhone size={14} /> Call</Button>
           <Button type="button" disabled={!row.phoneE164 || !row.hasWhatsApp} title={!row.phoneE164 ? 'No phone number yet' : row.hasWhatsApp ? 'WhatsApp' : 'Not on WhatsApp yet'} onClick={() => setActiveMode('whatsapp')}><IconComment size={14} /> WhatsApp</Button>
           <Button type="button" onClick={() => setActiveMode('note')}><IconNotes size={14} /> Note</Button>
-          <Button type="button" onClick={() => setActiveMode('more')}><IconPlus size={14} /> More</Button>
         </div>
 
         <div style={{ overflowY: 'auto', flex: 1 }}>

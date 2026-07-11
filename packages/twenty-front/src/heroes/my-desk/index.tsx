@@ -28,8 +28,10 @@ import { BoardTable } from './BoardTable';
 import { deskRecordPath, PeekDrawer, type DrawerMode } from './PeekDrawer';
 import { RightRail } from './RightRail';
 import { TodayStrip, type StripFilter } from './TodayStrip';
-import { fetchBoard, fetchRail, fetchTimeline } from './deskApi';
-import type { DeskRailOk, DeskRow } from './types';
+import { fetchBoard, fetchRail, fetchTimeline, runDeskAction } from './deskApi';
+import { StagePicker, type StagePickerAnchor } from './StagePicker';
+import { formatStageLabel } from './format';
+import type { DeskMoveResponse, DeskRailOk, DeskRow, DeskUndoResponse } from './types';
 
 // "Now", re-snapshotted periodically so band classification (SLA windows,
 // going-cold thresholds) doesn't silently go stale on a desk left open for
@@ -55,6 +57,14 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
   // lane/going-cold chip filter — set by TodayStrip, consumed by BoardTable.
   const [stripFilter, setStripFilter] = useState<StripFilter | null>(null);
   const [drawer, setDrawer] = useState<{ rowId: string; mode: DrawerMode } | null>(null);
+  const [stagePicker, setStagePicker] = useState<{ rowId: string; anchor: StagePickerAnchor } | null>(null);
+  const [undoMove, setUndoMove] = useState<{
+    rowId: string;
+    previousStage: string;
+    toStage: string;
+    noteId: string | null;
+    sideEffects: string[];
+  } | null>(null);
   const [pendingCall, setPendingCall] = useState<{ rowId: string; startedAtMs: number } | null>(null);
 
   const cancelledRef = useRef(false);
@@ -63,6 +73,12 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
     const id = window.setInterval(() => setNowMs(Date.now()), NOW_TICK_MS);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    if (!undoMove) return;
+    const id = window.setTimeout(() => setUndoMove(null), 6_000);
+    return () => window.clearTimeout(id);
+  }, [undoMove]);
 
   useEffect(() => {
     if (!pendingCall) return;
@@ -200,6 +216,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
                 }
                 setDrawer({ rowId: row.id, mode: action === 'call' ? 'overview' : action });
               }}
+              onStagePick={(row, anchor) => setStagePicker({ rowId: row.id, anchor })}
             />
             <RightRail status={railStatus} rail={rail} error={railError} />
           </div>
@@ -213,8 +230,48 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
                 onClose={() => setDrawer(null)}
                 onStartCall={() => startCall(row)}
                 onRowPatch={(patch) => setBoardRows((current) => current.map((candidate) => candidate.id === row.id ? { ...candidate, ...patch } : candidate))}
+                onMoveStage={(anchor) => setStagePicker({ rowId: row.id, anchor })}
               />
             ) : null;
+          })()}
+          {stagePicker && (() => {
+            const row = boardRows.find((candidate) => candidate.id === stagePicker.rowId);
+            return row ? (
+              <StagePicker
+                row={row}
+                anchor={stagePicker.anchor}
+                host={host}
+                onClose={() => setStagePicker(null)}
+                onMoved={(result: Extract<DeskMoveResponse, { ok: true }>, toStage) => {
+                  setBoardRows((current) => current.map((candidate) => candidate.id === row.id ? {
+                    ...candidate,
+                    stage: toStage,
+                    meta: candidate.meta.replace(/ · [^·]+$/, ` · ${formatStageLabel(toStage)}`),
+                    lastTouchAt: result.touchedAt ?? candidate.lastTouchAt,
+                  } : candidate));
+                  setUndoMove({ rowId: row.id, previousStage: result.previousStage, toStage, noteId: result.noteId, sideEffects: result.sideEffects });
+                }}
+              />
+            ) : null;
+          })()}
+          {undoMove && (() => {
+            const row = boardRows.find((candidate) => candidate.id === undoMove.rowId);
+            if (!row) return null;
+            return (
+              <div style={{ position: 'fixed', right: 24, bottom: 24, zIndex: 5001, display: 'flex', alignItems: 'center', gap: 14, padding: '11px 12px 11px 14px', border: '1px solid var(--p-line)', borderRadius: 'var(--p-radius-sm)', background: 'var(--p-surface-2)', boxShadow: 'var(--p-shadow-pop)', color: 'var(--p-ink)', fontFamily: 'Hanken Grotesk, sans-serif', fontSize: 12.5 }}>
+                <span>Moved to {formatStageLabel(undoMove.toStage)}{undoMove.sideEffects.length ? ` · ${undoMove.sideEffects.join(' · ')}` : ''}</span>
+                <button type="button" onClick={async () => {
+                  const result = await runDeskAction('undoMove', { laneObject: row.laneObject, recordId: row.recordId, previousStage: undoMove.previousStage, expectedStage: undoMove.toStage, noteId: undoMove.noteId }) as DeskUndoResponse | null;
+                  if (!result?.ok) {
+                    host.notify(result?.error === 'STALE_MOVE' ? 'The stage changed again, so Undo was not applied.' : "The stage couldn't be restored. Please try again.", 'error');
+                    return;
+                  }
+                  setBoardRows((current) => current.map((candidate) => candidate.id === row.id ? { ...candidate, stage: undoMove.previousStage, meta: candidate.meta.replace(/ · [^·]+$/, ` · ${formatStageLabel(undoMove.previousStage)}`), lastTouchAt: result.touchedAt } : candidate));
+                  if (result.sideEffectsStay.length) host.notify(`${result.sideEffectsStay.join(' · ')} stays in place.`, 'warning');
+                  setUndoMove(null);
+                }} style={{ all: 'unset', padding: '5px 8px', borderRadius: 6, color: 'var(--p-accent)', fontWeight: 600, cursor: 'pointer' }}>Undo</button>
+              </div>
+            );
           })()}
         </PulseNocturne>
       </PageContainer>

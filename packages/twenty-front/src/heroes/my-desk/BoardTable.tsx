@@ -15,7 +15,7 @@
 
 import { useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import styled from '@emotion/styled';
-import { IconCalendar, IconClock, IconComment, IconExternalLink, IconNotes, IconPhone } from 'twenty-ui/display';
+import { IconCalendar, IconChevronRight, IconClock, IconComment, IconExternalLink, IconNotes, IconPhone } from 'twenty-ui/display';
 
 import { DUR, EASE, SPACE } from '../_pulse/pulse-tokens';
 import { FONT_DISPLAY, FONT_MONO, FONT_UI, P, Seal } from '../_pulse/pulse';
@@ -25,6 +25,7 @@ import type { StripFilter } from './TodayStrip';
 import { formatAedTotal, formatRelative, formatStageLabel, friendlyError } from './format';
 import { SkeletonStack, Text } from './shared';
 import type { DeskLane, DeskRow } from './types';
+import type { StagePickerAnchor } from './StagePicker';
 
 // ── Lane recognition — dot + 3px left-edge bar (mockup's --lane-* vars) ─────
 // The mockup's standalone CSS declares --lane-resale/--lane-offplan/etc., but
@@ -224,6 +225,17 @@ const OverflowItem = styled.button`
   transition: background ${DUR.tooltip}ms ${EASE.out};
   svg { color: var(--p-ink-2); }
   &:hover, &:focus-visible { background: var(--p-surface); }
+  &:disabled { cursor: not-allowed; opacity: .38; background: transparent; }
+`;
+
+const StageSealButton = styled.button`
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  cursor: pointer;
+  &:focus-visible { box-shadow: var(--p-focus-ring); }
 `;
 
 const Ellipsis = styled.div`
@@ -302,6 +314,7 @@ export const BoardTable = ({
   stripFilter,
   onRowClick,
   onRowAction,
+  onStagePick,
 }: {
   status: 'loading' | 'ready' | 'error';
   rows: DeskRow[];
@@ -314,6 +327,7 @@ export const BoardTable = ({
   /** Row click opens the peek drawer; action clicks are kept separate below. */
   onRowClick: (row: DeskRow) => void;
   onRowAction: (action: 'call' | 'whatsapp' | 'note' | 'task' | 'viewing' | 'snooze' | 'open', row: DeskRow) => void;
+  onStagePick: (row: DeskRow, anchor: StagePickerAnchor) => void;
 }) => {
   const [laneFilter, setLaneFilter] = useState<LaneFilter>('all');
   const [actionRowId, setActionRowId] = useState<string | null>(null);
@@ -429,7 +443,7 @@ export const BoardTable = ({
 
   const openOverflow = (event: ReactMouseEvent<HTMLButtonElement>, row: DeskRow) => {
     const rect = event.currentTarget.getBoundingClientRect();
-    const itemCount = 2 + (row.laneObject === 'secondaryOpportunity' ? 1 : 0) + (row.laneObject === 'lead' ? 1 : 0);
+    const itemCount = 5;
     const menuHeight = itemCount * 36 + 12;
     setOverflow({
       row,
@@ -445,6 +459,13 @@ export const BoardTable = ({
     const row = overflow.row;
     setOverflow(null);
     onRowAction(action, row);
+  };
+
+  const chooseStage = () => {
+    if (!overflow || overflow.row.laneObject === 'lead') return;
+    const { row, x, y } = overflow;
+    setOverflow(null);
+    onStagePick(row, { x, y });
   };
 
   return (
@@ -649,7 +670,22 @@ export const BoardTable = ({
                     duplicate/conflict with Task 14's row-treatment work.
                     Label is the raw native enum, humanized (never
                     UPPER_CASE, never a pill). */}
-                <Seal tone="new" label={formatStageLabel(row.stage)} />
+                {row.laneObject === 'lead' ? (
+                  <Seal tone="new" label={formatStageLabel(row.stage)} />
+                ) : (
+                  <StageSealButton
+                    type="button"
+                    aria-label={`Move ${row.name} to another stage`}
+                    title="Move stage"
+                    onMouseDown={() => { actionClickRef.current = true; }}
+                    onClick={(event) => {
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      onStagePick(row, { x: rect.left, y: rect.bottom + 6 });
+                    }}
+                  >
+                    <Seal tone="new" label={formatStageLabel(row.stage)} />
+                  </StageSealButton>
+                )}
               </div>
 
               <div style={{ minWidth: 0, textAlign: 'right' }}>
@@ -748,19 +784,36 @@ export const BoardTable = ({
             aria-label={`More actions for ${overflow.row.name}`}
             style={{ left: overflow.x, top: overflow.y }}
           >
-            {overflow.row.laneObject === 'secondaryOpportunity' && (
-              <OverflowItem type="button" role="menuitem" onClick={() => chooseOverflow('viewing')}>
-                <IconCalendar size={15} /> Log a viewing
-              </OverflowItem>
-            )}
+            <OverflowItem
+              type="button"
+              role="menuitem"
+              disabled={overflow.row.laneObject !== 'secondaryOpportunity'}
+              title={overflow.row.laneObject === 'secondaryOpportunity' ? 'Log a viewing' : 'Viewings are linked to buyer opportunities'}
+              onClick={() => chooseOverflow('viewing')}
+            >
+              <IconCalendar size={15} /> Log a viewing
+            </OverflowItem>
             <OverflowItem type="button" role="menuitem" onClick={() => chooseOverflow('task')}>
               <IconClock size={15} /> Create a task
             </OverflowItem>
-            {overflow.row.laneObject === 'lead' && (
-              <OverflowItem type="button" role="menuitem" onClick={() => chooseOverflow('snooze')}>
-                <IconClock size={15} /> Snooze
-              </OverflowItem>
-            )}
+            <OverflowItem
+              type="button"
+              role="menuitem"
+              disabled={overflow.row.laneObject === 'lead'}
+              title={overflow.row.laneObject === 'lead' ? 'Convert this lead to a pipeline before moving its stage' : 'Move stage'}
+              onClick={chooseStage}
+            >
+              <IconChevronRight size={15} /> Move stage
+            </OverflowItem>
+            <OverflowItem
+              type="button"
+              role="menuitem"
+              disabled={overflow.row.laneObject !== 'lead'}
+              title={overflow.row.laneObject === 'lead' ? 'Snooze' : 'Snooze is only available for unconverted leads'}
+              onClick={() => chooseOverflow('snooze')}
+            >
+              <IconClock size={15} /> Snooze
+            </OverflowItem>
             <OverflowItem type="button" role="menuitem" onClick={() => chooseOverflow('open')}>
               <IconExternalLink size={15} /> Open full record <span aria-hidden style={{ marginLeft: 'auto' }}>→</span>
             </OverflowItem>

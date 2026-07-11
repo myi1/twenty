@@ -136,3 +136,18 @@ export type DeskWaContextResponse =
 export type DeskWriteResponse =
   | ({ ok: true; touchedAt?: string; noteId?: string | null; taskId?: string; viewingId?: string; until?: string; auditWarning?: true })
   | DeskErrorResponse;
+
+export type DeskGate = {
+  type: 'field' | 'document' | 'activity' | 'approval';
+  label: string;
+  fix: string;
+  taskId?: string | null;
+};
+
+export type DeskMoveResponse =
+  | { ok: true; previousStage: string; touchedAt: string | null; noteId: string | null; sideEffects: string[] }
+  | { ok: false; error: string; gate?: DeskGate };
+
+export type DeskUndoResponse =
+  | { ok: true; touchedAt: string; sideEffectsStay: string[] }
+  | DeskErrorResponse;
