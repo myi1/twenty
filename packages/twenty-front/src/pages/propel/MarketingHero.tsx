@@ -20,7 +20,7 @@ import { LeadRoutingTab } from '@/propel/components/marketingHero/LeadRoutingTab
 import { MarketingHomeTab } from '@/propel/components/marketingHero/MarketingHomeTab';
 import { NumbersTab } from '@/propel/components/marketingHero/NumbersTab';
 import { SettingsTab } from '@/propel/components/marketingHero/SettingsTab';
-import { SocialCalendarTab } from '@/propel/components/marketingHero/SocialCalendarTab';
+import { SocialTab } from '@/propel/components/marketingHero/SocialTab';
 import { TemplatesTab } from '@/propel/components/marketingHero/TemplatesTab';
 import { MediaStudioTab } from '@/propel/components/website/MediaStudioTab';
 import { WebsiteTab } from '@/propel/components/website/WebsiteTab';
@@ -45,7 +45,9 @@ import { isManagerRole, useViewerRole } from '@/propel/hooks/useViewerRole';
 //   • Home         — full (the graduated dashboard, formerly MarketingHomePage)
 //   • Campaigns    — list only (detail drill-in deferred; see CampaignsTab)
 //   • Templates    — full catalog + editor modals (merge-tags sub-tab deferred)
-//   • Social       — full (the social calendar, formerly SocialCalendarPage)
+//   • Social       — two sub-surfaces via ?social= (SocialTab): the posting
+//                    calendar (formerly SocialCalendarPage) + the Competitors
+//                    watch (relocated from its old top-level sidebar page)
 //   • Numbers      — full (the telephony number hub)
 //   • Website      — mock-data UI only this wave (5 sub-tabs: Overview, Blog,
 //                    Landing pages, Site leads, SEO and AI — see
@@ -237,7 +239,7 @@ export const MarketingHero = () => {
           ) : null}
         </Tabs.Panel>
         <Tabs.Panel value="social">
-          {activeTab === 'social' ? <SocialCalendarTab /> : null}
+          {activeTab === 'social' ? <SocialTab /> : null}
         </Tabs.Panel>
         <Tabs.Panel value="numbers">
           {activeTab === 'numbers' ? <NumbersTab /> : null}
