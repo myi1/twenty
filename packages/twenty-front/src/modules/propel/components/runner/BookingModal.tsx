@@ -13,6 +13,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { IconCheck, IconClock } from 'twenty-ui/display';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
+import { friendlyError } from '@/propel/lib/friendlyError';
 import {
   currentWeekMonday,
   dayLabel,
@@ -92,7 +93,7 @@ export const BookingModal = ({
       res.error !== undefined ||
       res.meetingId === undefined
     ) {
-      notify(res?.error ?? 'Could not book that slot.', 'error');
+      notify(friendlyError(res?.error ?? 'Could not book that slot.', 'save'), 'error');
       void loadSlots(manager.id); // a race may have taken it
       return;
     }

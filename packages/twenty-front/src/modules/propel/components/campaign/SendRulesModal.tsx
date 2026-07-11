@@ -13,6 +13,7 @@ import {
 import { useMemo, useState } from 'react';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
+import { friendlyError } from '@/propel/lib/friendlyError';
 import {
   type RouteEnvelopeError,
   type SendRulesPayload,
@@ -106,7 +107,10 @@ export const SendRulesModal = ({
     setSaving(false);
     if (res === null || res.error !== undefined || res.ok !== true) {
       notify(
-        res?.operatorAction || res?.error || 'Could not save your send rules.',
+        friendlyError(
+          res?.operatorAction || res?.error || 'Could not save your send rules.',
+          'save',
+        ),
         'error',
       );
       return;

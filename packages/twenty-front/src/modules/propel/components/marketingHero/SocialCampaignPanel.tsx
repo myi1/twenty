@@ -26,6 +26,7 @@ import {
   IconSparkles,
 } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
+import { friendlyError } from '@/propel/lib/friendlyError';
 import {
   AddSourcesControl,
   type SelectedSource,
@@ -398,7 +399,7 @@ export const SocialCampaignPanel = ({
       setFeatureOff(true);
       return;
     }
-    notify(res.error, 'error');
+    notify(friendlyError(res.error, 'generic'), 'error');
   };
 
   return (

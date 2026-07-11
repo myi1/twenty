@@ -7,7 +7,6 @@ import {
   Center,
   Drawer,
   Group,
-  Image,
   Loader,
   Paper,
   Stack,
@@ -23,6 +22,7 @@ import {
   IconPhoto,
 } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
+import { ImageWithFallback } from '@/propel/components/shared/ImageWithFallback';
 import { useCanPublish } from '@/propel/lib/canPublish';
 import { SubmissionBadge } from '@/propel/components/marketingHero/deskShared';
 import { SubmitForApprovalButton } from '@/propel/components/marketingHero/SubmitForApprovalButton';
@@ -174,13 +174,15 @@ const PlanPostCard = ({
       <Group align="flex-start" gap="sm" wrap="nowrap">
         <Box style={{ width: 96, flexShrink: 0 }}>
           {thumb !== null ? (
-            <Image
+            <ImageWithFallback
               src={thumb}
-              radius="sm"
-              h={96}
-              w={96}
-              fit="cover"
               alt="Post image"
+              style={{
+                width: 96,
+                height: 96,
+                borderRadius: 'var(--mantine-radius-sm)',
+                objectFit: 'cover',
+              }}
             />
           ) : (
             <Center

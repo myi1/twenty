@@ -27,6 +27,7 @@ import {
   LEAD_SLA_BEHAVIORS,
   type LeadConfigRow,
 } from '@/propel/types/leadRouting';
+import { friendlyError } from '@/propel/lib/friendlyError';
 import { useLeadRoutingConfig } from '@/propel/hooks/useLeadRoutingConfig';
 
 // Lead Routing tab of the unified Marketing hero (Lead Engine S3) — manager/admin
@@ -203,7 +204,7 @@ export const LeadRoutingTab = () => {
           mb="md"
           variant="light"
         >
-          {error}
+          {friendlyError(error, 'load')}
         </Alert>
       ) : null}
 

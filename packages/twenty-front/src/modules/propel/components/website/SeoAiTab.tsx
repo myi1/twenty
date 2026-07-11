@@ -582,7 +582,7 @@ export const SeoAiTab = () => {
       {phase === 'error' ? (
         <Alert color="red" icon={<IconAlertTriangle size={16} />} variant="light" mb="lg" title="Couldn't run the SEO audit">
           <Stack gap="sm" align="flex-start">
-            <Text size="sm">{error}</Text>
+            <Text size="sm">{friendlyError(error, 'load')}</Text>
             <Button size="compact-sm" variant="light" color="red" leftSection={<IconRefresh size={13} />} onClick={reload}>
               Retry
             </Button>

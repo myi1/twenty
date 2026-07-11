@@ -21,6 +21,7 @@ import {
   IconVideo,
 } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
+import { friendlyError } from '@/propel/lib/friendlyError';
 import {
   type InboxChannel,
   type InboxMediaKind,
@@ -214,8 +215,8 @@ export const InboxComposer = ({
         setMediaKind(stagedMedia.kind);
         setUploadName(stagedMedia.fileName);
       }
-      setSendError(outcome.message);
-      notify(outcome.message, 'error');
+      setSendError(friendlyError(outcome.message, 'generic'));
+      notify(friendlyError(outcome.message, 'generic'), 'error');
       return;
     }
     // Success. Keep the optimistic bubble (as a sent bubble) until the reload

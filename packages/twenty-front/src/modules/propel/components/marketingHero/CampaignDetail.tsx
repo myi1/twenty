@@ -42,6 +42,7 @@ import {
   CONVERT_LANE_OPTIONS,
   type ConvertLane,
 } from '@/propel/lib/campaignConvert';
+import { friendlyError } from '@/propel/lib/friendlyError';
 import { runMarketingRoute } from '@/propel/lib/marketingHubActions';
 import { propelNivoTheme } from '@/propel/lib/nivoTheme';
 import {
@@ -401,7 +402,7 @@ export const CampaignDetail = ({
       setDidMutate(true);
       void fetchDetail();
     } else {
-      notify(outcome.message, 'error');
+      notify(friendlyError(outcome.message, 'retry'), 'error');
     }
   };
 
@@ -433,9 +434,12 @@ export const CampaignDetail = ({
           return true;
         }
         notify(
-          res?.operatorAction ||
-            res?.error ||
-            'Could not convert this lead — try again.',
+          friendlyError(
+            res?.operatorAction ||
+              res?.error ||
+              'Could not convert this lead — try again.',
+            'generic',
+          ),
           'error',
         );
         return false;

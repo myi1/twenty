@@ -33,6 +33,7 @@ import {
   IconUpload,
 } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
+import { ImageWithFallback } from '@/propel/components/shared/ImageWithFallback';
 import {
   deleteAsset,
   listAssets,
@@ -491,7 +492,7 @@ export const WebsiteAssetsTab = () => {
               }}
             >
               {drawerImgSrc !== null ? (
-                <img
+                <ImageWithFallback
                   src={drawerImgSrc}
                   alt={selected.altText || selected.name}
                   style={{ width: '100%', height: '100%', objectFit: 'contain' }}

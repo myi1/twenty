@@ -65,6 +65,9 @@ import {
   type SocialNetwork,
   type SocialPost,
 } from '@/propel/types/socialCalendar';
+import { enumLabel } from '@/propel/lib/enumLabels';
+import { friendlyError } from '@/propel/lib/friendlyError';
+import { ImageWithFallback } from '@/propel/components/shared/ImageWithFallback';
 
 // The post-detail drawer (§4.5 / §5 / §7 / §15). Opens from a calendar pill click;
 // works for ALL statuses, content adapts. The READ surface (S2) is pure; the
@@ -138,12 +141,12 @@ const networkStatusTone = (
 ): { color: string; label: string; ok: boolean | null } => {
   const s = (status ?? '').toLowerCase();
   if (/succ|posted|publish|complete|ok|done/.test(s))
-    return { color: '#2F9E44', label: status ?? 'Posted', ok: true };
+    return { color: '#2F9E44', label: status ? enumLabel(status) : 'Posted', ok: true };
   if (/fail|error|reject|denied/.test(s))
-    return { color: FAILED_FILL, label: status ?? 'Failed', ok: false };
+    return { color: FAILED_FILL, label: status ? enumLabel(status) : 'Failed', ok: false };
   return {
     color: 'var(--mantine-color-dimmed)',
-    label: status ?? 'Pending',
+    label: status ? enumLabel(status) : 'Pending',
     ok: null,
   };
 };
@@ -479,7 +482,9 @@ const DrawerContent = ({
                 Publishing failed
               </Text>
               <Text size="xs" c="dimmed" style={{ wordBreak: 'break-word' }}>
-                {failureMsg ?? 'No further detail was reported.'}
+                {failureMsg
+                  ? friendlyError(failureMsg, 'generic')
+                  : 'No further detail was reported.'}
               </Text>
             </div>
           </motion.div>
@@ -549,7 +554,11 @@ const DrawerContent = ({
                       </span>
                     </>
                   ) : (
-                    <img src={m.url} alt={`Attachment ${i + 1}`} loading="lazy" />
+                    <ImageWithFallback
+                      src={m.url}
+                      alt={`Attachment ${i + 1}`}
+                      loading="lazy"
+                    />
                   )}
                 </div>
               ))}
@@ -747,11 +756,11 @@ const NetworkResultsList = ({
             />
             <div style={{ flex: 1, minWidth: 0 }}>
               <Text size="xs" fw={600}>
-                {net?.label ?? r.network ?? 'Network'}
+                {net?.label ?? (r.network ? enumLabel(r.network) : 'Network')}
               </Text>
               {r.error !== null && r.error !== '' ? (
                 <Text size="xs" c="dimmed" style={{ wordBreak: 'break-word' }}>
-                  {r.error}
+                  {friendlyError(r.error, 'generic')}
                 </Text>
               ) : null}
             </div>

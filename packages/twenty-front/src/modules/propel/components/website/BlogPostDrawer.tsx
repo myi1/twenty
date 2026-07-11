@@ -11,6 +11,7 @@ import {
   Paper,
   ScrollArea,
   Stack,
+  Switch,
   Text,
   Textarea,
   TextInput,
@@ -37,6 +38,7 @@ import {
 } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { friendlyError } from '@/propel/lib/friendlyError';
+import { humanizeEnum } from '@/propel/lib/enumLabels';
 import { useCanPublish } from '@/propel/lib/canPublish';
 import { SubmissionBadge } from '@/propel/components/marketingHero/deskShared';
 import { SubmitForApprovalButton } from '@/propel/components/marketingHero/SubmitForApprovalButton';
@@ -49,6 +51,7 @@ import {
   sanitizeBlogHtml,
   cadenceLabel,
   isRecurring,
+  type BlogCadence,
   type BlogPost,
   type BlogPostDetail,
   type BlogReviseChatEntry,
@@ -85,6 +88,55 @@ const formatWhen = (iso: string | null): string => {
     hour: 'numeric',
     minute: '2-digit',
   });
+};
+
+// The pipeline stamps lowercase stage keys ('ideate', 'ground', 'critic', …) on
+// each timeline step. Map them to plain step names for the Progress timeline;
+// anything new falls back to a humanized label rather than leaking the raw key.
+const STAGE_TITLE: Record<string, string> = {
+  ideate: 'Idea created',
+  ground: 'Gathered live data',
+  grounding: 'Gathered live data',
+  write: 'Draft written',
+  writing: 'Draft written',
+  draft: 'Draft written',
+  drafting: 'Draft written',
+  seo: 'SEO pass',
+  critic: 'Editor review',
+  review: 'Editor review',
+  translate: 'Translated',
+  translating: 'Translated',
+  publish: 'Published',
+};
+
+const stageTitle = (stage: string | null | undefined): string => {
+  const s = (stage ?? '').trim();
+  if (s === '') return 'Step';
+  return STAGE_TITLE[s.toLowerCase()] ?? humanizeEnum(s);
+};
+
+// A manual-seed post gets a machine note on its 'ideate' step:
+//   "manual seed by <workspaceMemberId> · cadence MONTHLY · target <ISO>"
+// Rewrite it to plain language — never surface the raw member id, the cadence
+// enum, or the ISO date. (Showing the actual member NAME would need the backend
+// to project it onto the note; until then this reads "Created manually".) Every
+// other note falls through friendlyError unchanged.
+const humanizePipelineNote = (note: string | null | undefined): string => {
+  const raw = (note ?? '').trim();
+  if (raw === '') return '';
+  if (/^manual seed by\s+\S+/i.test(raw)) {
+    const parts: string[] = ['Created manually'];
+    const cadence = /cadence\s+([A-Za-z_]+)/i.exec(raw);
+    if (cadence) parts.push(`Repeats: ${cadenceLabel(cadence[1].toUpperCase() as BlogCadence)}`);
+    const target = /target\s+(\S+)/i.exec(raw);
+    if (target) {
+      const when = formatWhen(target[1]);
+      if (when) parts.push(`Scheduled for ${when}`);
+    }
+    return parts.join(' · ');
+  }
+  if (/^auto-proposed/i.test(raw)) return 'Auto-proposed from live data';
+  return friendlyError(raw, 'pipeline');
 };
 
 const MetaRow = ({ label, value }: { label: string; value: React.ReactNode }) => (
@@ -128,6 +180,10 @@ export const BlogPostDrawer = ({
   const [draftExcerpt, setDraftExcerpt] = useState('');
   const [draftBody, setDraftBody] = useState('');
   const [saving, setSaving] = useState(false);
+  // Body editing defaults to a read-only rendered preview; the raw HTML textarea
+  // is hidden behind an "Edit HTML (advanced)" toggle so a non-technical reviewer
+  // never faces a wall of monospace markup.
+  const [editHtml, setEditHtml] = useState(false);
   const [instruction, setInstruction] = useState('');
   const [revising, setRevising] = useState(false);
   const [pendingInstruction, setPendingInstruction] = useState<string | null>(null);
@@ -197,6 +253,7 @@ export const BlogPostDrawer = ({
     setDraftTitle(post.title ?? '');
     setDraftExcerpt(post.excerpt ?? '');
     setDraftBody(bodyHtml);
+    setEditHtml(false); // default to the rendered preview, not raw HTML
     setEditing(true);
   };
 
@@ -387,7 +444,7 @@ export const BlogPostDrawer = ({
             <Stack gap="sm">
               {post.topicSeed ? (
                 <MetaRow
-                  label="Topic seed"
+                  label="Topic"
                   value={<Text size="sm">{post.topicSeed}</Text>}
                 />
               ) : null}
@@ -396,7 +453,7 @@ export const BlogPostDrawer = ({
               ) : null}
               {typeof post.criticScore === 'number' ? (
                 <MetaRow
-                  label="Critic score"
+                  label="Quality score"
                   value={
                     <Group gap={6}>
                       <Badge
@@ -479,16 +536,49 @@ export const BlogPostDrawer = ({
                   maxRows={4}
                   disabled={saving}
                 />
-                <Textarea
-                  label="Body (HTML)"
-                  value={draftBody}
-                  onChange={(e) => setDraftBody(e.currentTarget.value)}
-                  autosize
-                  minRows={10}
-                  maxRows={24}
-                  disabled={saving}
-                  styles={{ input: { fontFamily: 'var(--font-mono, monospace)', fontSize: 12 } }}
-                />
+                <Box>
+                  <Group justify="space-between" align="center" mb={6} wrap="nowrap">
+                    <Text size="sm" fw={500}>
+                      Body
+                    </Text>
+                    <Switch
+                      size="xs"
+                      label="Edit HTML (advanced)"
+                      checked={editHtml}
+                      onChange={(e) => setEditHtml(e.currentTarget.checked)}
+                      disabled={saving}
+                    />
+                  </Group>
+                  {editHtml ? (
+                    <Textarea
+                      value={draftBody}
+                      onChange={(e) => setDraftBody(e.currentTarget.value)}
+                      autosize
+                      minRows={10}
+                      maxRows={24}
+                      disabled={saving}
+                      styles={{ input: { fontFamily: 'var(--font-mono, monospace)', fontSize: 12 } }}
+                    />
+                  ) : draftBody.trim() ? (
+                    <Paper withBorder radius="md" p="md" bg="var(--mantine-color-default)">
+                      <Box
+                        className="propel-blog-body"
+                        style={{ fontSize: 14, lineHeight: 1.6, wordBreak: 'break-word' }}
+                        // Sanitized in the data layer (script/style/iframe/on*-handlers
+                        // /javascript: stripped) before render — same as the read view.
+                        dangerouslySetInnerHTML={{ __html: sanitizeBlogHtml(draftBody) }}
+                      />
+                    </Paper>
+                  ) : (
+                    <Text size="sm" c="dimmed">
+                      No body content yet.
+                    </Text>
+                  )}
+                  <Text size="xs" c="dimmed" mt={6}>
+                    Prefer plain-language changes? Ask the agent below — it revises the
+                    draft for you, no HTML needed.
+                  </Text>
+                </Box>
                 <Group justify="flex-end" gap="xs">
                   <Button
                     size="compact-sm"
@@ -525,7 +615,7 @@ export const BlogPostDrawer = ({
           {pipelineLog.length > 0 ? (
             <Box>
               <Text size="xs" c="dimmed" fw={600} mb="xs">
-                PIPELINE HISTORY
+                PROGRESS
               </Text>
               <Timeline
                 active={pipelineLog.length - 1}
@@ -533,20 +623,20 @@ export const BlogPostDrawer = ({
                 lineWidth={2}
                 color="red"
               >
-                {pipelineLog.map((entry, i) => (
+                {pipelineLog.map((entry, i) => {
+                  const noteText = humanizePipelineNote(entry.note);
+                  return (
                   <Timeline.Item
                     key={`${entry.stage}-${i}`}
                     title={
                       <Text size="sm" fw={600}>
-                        {STATUS_META[entry.stage as BlogStatus]?.label ??
-                          entry.stage ??
-                          'Step'}
+                        {stageTitle(entry.stage)}
                       </Text>
                     }
                   >
-                    {entry.note ? (
+                    {noteText ? (
                       <Text size="xs" c="dimmed">
-                        {friendlyError(entry.note, 'pipeline')}
+                        {noteText}
                       </Text>
                     ) : null}
                     {entry.at ? (
@@ -555,7 +645,8 @@ export const BlogPostDrawer = ({
                       </Text>
                     ) : null}
                   </Timeline.Item>
-                ))}
+                  );
+                })}
               </Timeline>
             </Box>
           ) : null}
@@ -564,7 +655,7 @@ export const BlogPostDrawer = ({
           {criticNotes.length > 0 ? (
             <Box>
               <Text size="xs" c="dimmed" fw={600} mb="xs">
-                CRITIC NOTES
+                EDITOR NOTES
               </Text>
               <Stack gap={6}>
                 {criticNotes.map((note, i) => (
@@ -585,7 +676,7 @@ export const BlogPostDrawer = ({
           {grounding.length > 0 ? (
             <Box>
               <Text size="xs" c="dimmed" fw={600} mb="xs">
-                GROUNDING SOURCES
+                SOURCES / DATA USED
               </Text>
               <Stack gap={4}>
                 {grounding.map((src, i) => (

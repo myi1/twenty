@@ -27,6 +27,7 @@ import {
   type RelationshipState,
   type SiteLead,
 } from '@/propel/lib/websiteCrm';
+import { enumLabel } from '@/propel/lib/enumLabels';
 import { SlaAgeChip } from '@/propel/components/website/SlaAgeChip';
 
 // Right-side detail drawer for one site lead (Website → Site leads). Opens on a
@@ -247,7 +248,7 @@ export const SiteLeadDrawer = ({
               <Field label="Campaign" value={lead.utmCampaign} />
               <Field label="UTM source" value={lead.utmSource} />
               <Field label="UTM medium" value={lead.utmMedium} />
-              <Field label="Lead intent" value={lead.leadIntent} />
+              <Field label="Lead intent" value={enumLabel(lead.leadIntent)} />
             </Stack>
           </Paper>
 

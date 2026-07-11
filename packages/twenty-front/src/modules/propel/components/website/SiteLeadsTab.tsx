@@ -37,6 +37,7 @@ import {
 } from '@/propel/lib/websiteCrm';
 import { SlaAgeChip } from '@/propel/components/website/SlaAgeChip';
 import { SiteLeadDrawer } from '@/propel/components/website/SiteLeadDrawer';
+import { enumLabel } from '@/propel/lib/enumLabels';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 
 // Site leads sub-tab (Website tab, spec §6): the working QUEUE of every lead the
@@ -522,7 +523,7 @@ export const SiteLeadsTab = () => {
                         label={
                           r.leadIntent === 'BROWSER'
                             ? 'Nurture-only — content download, not agent-routed'
-                            : r.leadIntent
+                            : enumLabel(r.leadIntent)
                         }
                         withArrow
                       >
@@ -532,7 +533,9 @@ export const SiteLeadsTab = () => {
                           radius="sm"
                           size="xs"
                         >
-                          {r.leadIntent === 'BROWSER' ? 'Nurture' : r.leadIntent}
+                          {r.leadIntent === 'BROWSER'
+                            ? 'Nurture'
+                            : enumLabel(r.leadIntent)}
                         </Badge>
                       </Tooltip>
                     ) : null}

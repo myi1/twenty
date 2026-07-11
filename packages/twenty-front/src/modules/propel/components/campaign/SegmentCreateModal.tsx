@@ -32,6 +32,7 @@ import {
   IconUsers,
 } from 'twenty-ui/display';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
+import { friendlyError } from '@/propel/lib/friendlyError';
 import {
   buildCriteriaV2,
   envelopeMessage,
@@ -241,7 +242,10 @@ export const SegmentCreateModal = ({
       } else {
         setPoolResolve(null);
         setPoolErr(
-          envelopeMessage(res, 'Could not resolve this pool — try another.'),
+          friendlyError(
+            envelopeMessage(res, 'Could not resolve this pool — try another.'),
+            'load',
+          ),
         );
       }
     });
@@ -308,7 +312,10 @@ export const SegmentCreateModal = ({
         onClose();
       } else {
         setPoolErr(
-          envelopeMessage(res, 'Could not save this audience — try again.'),
+          friendlyError(
+            envelopeMessage(res, 'Could not save this audience — try again.'),
+            'save',
+          ),
         );
       }
     } catch {

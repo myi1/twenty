@@ -2,6 +2,7 @@ import { Box } from '@mantine/core';
 import { useContext } from 'react';
 import { EmbedSignDocument } from '@documenso/embed-react';
 import { ThemeContext } from 'twenty-ui/theme-constants';
+import { friendlyError } from '@/propel/lib/friendlyError';
 
 // Wraps Documenso's `@documenso/embed-react` signing view (verified API, v0.6.2:
 // `EmbedSignDocument` takes a recipient `token` + optional `host`, and fires
@@ -73,7 +74,7 @@ export const DocumensoEmbed = ({
         darkModeDisabled={colorScheme !== 'dark'}
         onDocumentReady={onReady}
         onDocumentCompleted={() => onCompleted()}
-        onDocumentError={(error) => onError?.(error)}
+        onDocumentError={(error) => onError?.(friendlyError(error, 'generic'))}
       />
     </Box>
   );

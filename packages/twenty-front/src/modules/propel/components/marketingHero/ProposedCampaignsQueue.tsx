@@ -2,6 +2,7 @@ import { Badge, Box, Button, Group, Modal, Paper, Stack, Text, ThemeIcon } from 
 import { useEffect, useState } from 'react';
 import { IconSparkles } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
+import { enumLabel } from '@/propel/lib/enumLabels';
 import {
   type CampaignListItem,
   type CampaignSourceKind,
@@ -109,7 +110,7 @@ export const ProposedCampaignsQueue = ({
                       </Badge>
                     ) : null}
                     <Badge size="xs" variant="outline" color="gray">
-                      {c.status}
+                      {enumLabel(c.status)}
                     </Badge>
                   </Group>
                   {c.brief ? (

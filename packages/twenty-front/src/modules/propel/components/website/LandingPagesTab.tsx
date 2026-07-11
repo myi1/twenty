@@ -17,6 +17,7 @@ import {
   Select,
   SimpleGrid,
   Stack,
+  Table,
   Text,
   Textarea,
   TextInput,
@@ -78,6 +79,7 @@ import {
   type LandingSectionType,
 } from '@/propel/lib/landingSectionDefs';
 import { type SectionActionKind } from '@/propel/lib/landingPreviewBridge';
+import { enumLabel } from '@/propel/lib/enumLabels';
 import { useCanPublish } from '@/propel/lib/canPublish';
 import {
   InvitingEmpty,
@@ -126,6 +128,8 @@ interface Draft {
 // {type,props}[] on the site dev server (a different host) — swap this only if the
 // public LP host changes; the slug/path shape is stable.
 const LIVE_LP_BASE = 'https://remaxhub.ae/lp';
+// The public site origin (external pages live directly under it, not under /lp).
+const SITE_ORIGIN = LIVE_LP_BASE.replace(/\/lp$/, '');
 
 const slugify = (input: string): string =>
   input
@@ -231,6 +235,45 @@ const statusColor = (s: string): string =>
 
 const convPct = (visits: number, leads: number): number =>
   visits > 0 ? Math.round((leads / visits) * 100) : 0;
+
+// ── External-page detection (kills the "live external pages show Draft" bug) ──
+// An external page is registered/live on the marketing site directly (residency,
+// /areas, /developers) with NO builder sections. The list projection carries no
+// sections, so we rely on the backend: an explicit `isExternal`, OR the accepted
+// "zero builder sections + a real live URL" heuristic. Both fields are projected
+// tolerantly — until the route ships them this is always false, so nothing
+// regresses (see the backend-change note in the ship report).
+const isExternalPage = (p: LandingPageSummary): boolean =>
+  p.isExternal === true ||
+  (typeof p.sectionCount === 'number' &&
+    p.sectionCount === 0 &&
+    typeof p.externalUrl === 'string' &&
+    p.externalUrl !== '');
+
+// The real live URL for an external page: the projected externalUrl, else derived
+// from the slug against the site origin (external pages live at /<slug>, not /lp/…).
+const externalLiveUrl = (p: LandingPageSummary, siteOrigin: string): string => {
+  if (typeof p.externalUrl === 'string' && p.externalUrl !== '') return p.externalUrl;
+  const base = (siteOrigin || 'https://remaxhub.ae').replace(/\/+$/, '');
+  return `${base}/${p.slug}`;
+};
+
+// "Source" column — how the page was created. SCOUT = the suggestion helper; else
+// a person built it manually.
+const sourceLabel = (p: LandingPageSummary): string =>
+  (p.source ?? '') === 'SCOUT' ? 'Suggested' : 'Manual';
+
+// Human date for the "Updated" column ("Jul 3, 2026"). Empty when unset/unparseable.
+const formatDate = (iso: string | null | undefined): string => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+};
 
 // ── Stage 3C — publish pre-flight gate ───────────────────────────────────────
 // Humanize a check key ("leadForm" → "Lead form") — the row labels stay tolerant
@@ -539,9 +582,15 @@ const PageCard = ({
           sentBackNote={page.sentBackNote}
         />
         <PreflightChip page={page} />
-        <Badge color={statusColor(page.status)} variant="light" size="sm">
-          {page.status}
-        </Badge>
+        {isExternalPage(page) ? (
+          <Badge color="blue" variant="light" size="sm">
+            Live · External
+          </Badge>
+        ) : (
+          <Badge color={statusColor(page.status)} variant="light" size="sm">
+            {enumLabel(page.status)}
+          </Badge>
+        )}
         <Badge color="gray" variant="outline" size="sm">
           {THEME_LABEL[page.theme] ?? page.theme}
         </Badge>
@@ -653,6 +702,13 @@ export const LandingPagesTab = () => {
   const consumedEditRef = useRef(false);
 
   const [mode, setMode] = useState<'list' | 'editor'>('list');
+  // The list defaults to a sortable PERFORMANCE TABLE (the founder's ask); the
+  // stage-lane kanban is demoted to an optional "Board" toggle.
+  const [listView, setListView] = useState<'table' | 'board'>('table');
+  const [sortCol, setSortCol] = useState<
+    'title' | 'status' | 'visits' | 'leads' | 'conv' | 'source' | 'updated'
+  >('updated');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [slugTouched, setSlugTouched] = useState(false);
   const [prompt, setPrompt] = useState('');
@@ -804,6 +860,78 @@ export const LandingPagesTab = () => {
     for (const p of parentPages) lanes[laneOf(p)].push(p);
     return lanes;
   }, [parentPages]);
+
+  // Sorted rows for the performance table. Sorts the EN parents (locale siblings
+  // stay tucked under their parent — the table shows a translations count instead
+  // of one row per language, to keep it a performance view, not a page dump).
+  const sortedParents = useMemo(() => {
+    const laneRank: Record<LandingLane, number> = {
+      fixes: 0,
+      draft: 1,
+      review: 2,
+      live: 3,
+      archived: 4,
+    };
+    const dir = sortDir === 'asc' ? 1 : -1;
+    const rows = [...parentPages];
+    rows.sort((a, b) => {
+      let cmp = 0;
+      switch (sortCol) {
+        case 'title':
+          cmp = (a.title || '').localeCompare(b.title || '');
+          break;
+        case 'status':
+          cmp = laneRank[laneOf(a)] - laneRank[laneOf(b)];
+          break;
+        case 'visits':
+          cmp = a.visits - b.visits;
+          break;
+        case 'leads':
+          cmp = a.leads - b.leads;
+          break;
+        case 'conv':
+          cmp = convPct(a.visits, a.leads) - convPct(b.visits, b.leads);
+          break;
+        case 'source':
+          cmp = sourceLabel(a).localeCompare(sourceLabel(b));
+          break;
+        case 'updated':
+          cmp = (Date.parse(a.updatedAt ?? '') || 0) - (Date.parse(b.updatedAt ?? '') || 0);
+          break;
+      }
+      return cmp * dir;
+    });
+    return rows;
+  }, [parentPages, sortCol, sortDir]);
+
+  // Click a column header to sort by it; click again to flip direction.
+  const toggleSort = (col: typeof sortCol) => {
+    if (sortCol === col) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortCol(col);
+      setSortDir(col === 'title' || col === 'source' ? 'asc' : 'desc');
+    }
+  };
+
+  // A sortable table header cell — shows a caret on the active column.
+  const sortTh = (col: typeof sortCol, label: string, numeric = false) => (
+    <Table.Th style={{ textAlign: numeric ? 'right' : 'left', whiteSpace: 'nowrap' }}>
+      <UnstyledButton
+        onClick={() => toggleSort(col)}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+      >
+        <Text component="span" size="sm" fw={600}>
+          {label}
+        </Text>
+        {sortCol === col ? (
+          <Text component="span" size="xs" c="dimmed">
+            {sortDir === 'asc' ? '▲' : '▼'}
+          </Text>
+        ) : null}
+      </UnstyledButton>
+    </Table.Th>
+  );
 
   // ── Stage 3E — the two pinned queues (SC4). Both derive tolerantly off the
   // list projection: pre-3E routes omit source/scoutReason/refresherJson, so
@@ -1138,7 +1266,7 @@ export const LandingPagesTab = () => {
     setScoutDismissBusy(false);
     setScoutDismissTarget(null);
     if (res.ok) {
-      notify('Scout proposal dismissed.', 'success');
+      notify('Suggestion dismissed.', 'success');
       reload();
       return;
     }
@@ -1172,7 +1300,7 @@ export const LandingPagesTab = () => {
     }
     if (res.unavailable) {
       setRefresherUnavailable(true);
-      notify('The Refresher isn’t available on this workspace yet.', 'info');
+      notify('Auto-refresh isn’t available on this workspace yet.', 'info');
       return;
     }
     notify(res.error, 'error');
@@ -1912,7 +2040,8 @@ export const LandingPagesTab = () => {
             />
           </Box>
           <TextInput
-            label="Headline (OG)"
+            label="Social preview headline"
+            description="Shown when the page is shared on WhatsApp, LinkedIn, or search."
             value={draft.headline}
             onChange={(e) => setDraft((d) => ({ ...d, headline: e.currentTarget.value }))}
           />
@@ -1924,7 +2053,7 @@ export const LandingPagesTab = () => {
             onChange={(e) => setDraft((d) => ({ ...d, metaDescription: e.currentTarget.value }))}
           />
           <ImageField
-            label="OG image"
+            label="Social share image"
             value={draft.ogImageUrl}
             sitePublicUrl={sitePublicUrl}
             projectName={draft.title}
@@ -2247,8 +2376,8 @@ export const LandingPagesTab = () => {
           ) : (
             <>
               <Alert color="gray" variant="light" icon={<IconWorld size={16} />} mb="md">
-                Live preview is available once SITE_PUBLIC_URL is configured for this workspace.
-                You can still assemble and save the page below.
+                Live preview is available once your site address is set for this workspace
+                (ask an admin). You can still assemble and save the page below.
               </Alert>
               <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
                 <Stack gap="sm">
@@ -2276,7 +2405,7 @@ export const LandingPagesTab = () => {
           <ThemeIcon size="sm" variant="light" color="grape">
             <IconSparkles size={14} />
           </ThemeIcon>
-          <Text fw={600}>Proposed by Scout</Text>
+          <Text fw={600}>Suggested pages</Text>
           <Badge size="xs" variant="light" color="grape">
             {scoutPages.length}
           </Badge>
@@ -2340,7 +2469,7 @@ export const LandingPagesTab = () => {
           <ThemeIcon size="sm" variant="light" color="orange">
             <IconRefresh size={14} />
           </ThemeIcon>
-          <Text fw={600}>Refresher</Text>
+          <Text fw={600}>Needs refreshing</Text>
           <Badge size="xs" variant="light" color="orange">
             {refresherPages.reduce((n, entry) => n + entry.diffs.length, 0)}
           </Badge>
@@ -2446,7 +2575,7 @@ export const LandingPagesTab = () => {
         </Stack>
         {refresherUnavailable ? (
           <Text size="xs" c="dimmed" mt="xs">
-            The Refresher isn’t available on this workspace yet.
+            Auto-refresh isn’t available on this workspace yet.
           </Text>
         ) : null}
       </Paper>
@@ -2456,7 +2585,7 @@ export const LandingPagesTab = () => {
     <Modal
       opened={scoutDismissTarget !== null}
       onClose={() => (scoutDismissBusy ? undefined : setScoutDismissTarget(null))}
-      title="Dismiss this Scout proposal?"
+      title="Dismiss this suggested page?"
       centered
       zIndex={6000}
     >
@@ -2491,7 +2620,7 @@ export const LandingPagesTab = () => {
       {scoutDismissModal}
       <SurfaceIntro
         eyebrow="The page studio"
-        title="Every campaign page, benched by stage — drafted, checked, live."
+        title="Every campaign page — drafted, checked, and live."
         icon={<IconLayoutGrid size={20} />}
         actions={
           <Button
@@ -2525,7 +2654,7 @@ export const LandingPagesTab = () => {
           <IconSparkles size={16} />
           <Text fw={600}>Start from a prompt</Text>
           <Badge size="xs" variant="light" color="grape">
-            AI bench
+            AI
           </Badge>
         </Group>
         <Group gap="xs" wrap="nowrap" align="flex-end">
@@ -2577,6 +2706,20 @@ export const LandingPagesTab = () => {
       {scoutQueue}
       {refresherQueue}
 
+      {!busy && data.length > 0 ? (
+        <Group justify="flex-end" mb="sm">
+          <SegmentedControl
+            size="xs"
+            value={listView}
+            onChange={(v) => setListView(v as 'table' | 'board')}
+            data={[
+              { value: 'table', label: 'Table' },
+              { value: 'board', label: 'Board' },
+            ]}
+          />
+        </Group>
+      ) : null}
+
       {busy ? (
         <Center h={200}>
           <Loader color="red" />
@@ -2593,7 +2736,7 @@ export const LandingPagesTab = () => {
             </Button>
           </Stack>
         </Paper>
-      ) : (
+      ) : listView === 'board' ? (
         <KanbanBoard cols={{ base: 1, sm: 2, lg: 5 }}>
           {LANDING_LANES.map((lane) => {
             const laneParents = parentsByLane[lane.id];
@@ -2685,7 +2828,7 @@ export const LandingPagesTab = () => {
                               {s.locale ?? '—'}
                             </Badge>
                             <Badge size="xs" variant="light" color={statusColor(s.status)}>
-                              {s.status}
+                              {enumLabel(s.status)}
                             </Badge>
                             <Text size="xs" c="dimmed" truncate>
                               {s.title || 'Untitled'}
@@ -2728,12 +2871,174 @@ export const LandingPagesTab = () => {
             );
           })}
         </KanbanBoard>
+      ) : (
+        <Table.ScrollContainer minWidth={780}>
+          <Table highlightOnHover verticalSpacing="sm">
+            <Table.Thead>
+              <Table.Tr>
+                {sortTh('title', 'Name')}
+                {sortTh('status', 'Status')}
+                {sortTh('visits', 'Visits', true)}
+                {sortTh('leads', 'Leads', true)}
+                {sortTh('conv', 'Conversion %', true)}
+                {sortTh('source', 'Source')}
+                {sortTh('updated', 'Updated')}
+                <Table.Th style={{ textAlign: 'right' }}>Actions</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {sortedParents.map((page) => {
+                const external = isExternalPage(page);
+                const sibs = siblingsByParent.get(page.id) ?? [];
+                const failing = hasFailingPreflight(page);
+                return (
+                  <Table.Tr key={page.id}>
+                    <Table.Td style={{ maxWidth: 280 }}>
+                      <Text fw={600} size="sm" truncate>
+                        {page.title || 'Untitled'}
+                      </Text>
+                      <Group gap={6} wrap="nowrap">
+                        <Text size="xs" c="dimmed" truncate>
+                          /{external ? page.slug : `lp/${page.slug}`}
+                        </Text>
+                        {sibs.length > 0 ? (
+                          <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>
+                            · {sibs.length} language{sibs.length === 1 ? '' : 's'}
+                          </Text>
+                        ) : null}
+                      </Group>
+                    </Table.Td>
+                    <Table.Td>
+                      {external ? (
+                        <Badge color="blue" variant="light" size="sm">
+                          Live · External
+                        </Badge>
+                      ) : (
+                        <Group gap={6} wrap="nowrap">
+                          <Badge color={statusColor(page.status)} variant="light" size="sm">
+                            {enumLabel(page.status)}
+                          </Badge>
+                          {failing ? <PreflightChip page={page} /> : null}
+                          <SubmissionBadge
+                            size="sm"
+                            submittedForApprovalAt={page.submittedForApprovalAt}
+                            sentBackAt={page.sentBackAt}
+                            sentBackNote={page.sentBackNote}
+                          />
+                        </Group>
+                      )}
+                    </Table.Td>
+                    <Table.Td style={{ textAlign: 'right' }}>
+                      <Text size="sm">{page.visits}</Text>
+                    </Table.Td>
+                    <Table.Td style={{ textAlign: 'right' }}>
+                      <Text size="sm">{page.leads}</Text>
+                    </Table.Td>
+                    <Table.Td style={{ textAlign: 'right' }}>
+                      <Text size="sm">{convPct(page.visits, page.leads)}%</Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm">{sourceLabel(page)}</Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm" c="dimmed">
+                        {formatDate(page.updatedAt) || '—'}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Group gap={6} justify="flex-end" wrap="nowrap">
+                        {external ? (
+                          // External pages skip the builder editor + pre-flight —
+                          // they just open the real live page on the site.
+                          <Button
+                            component="a"
+                            href={externalLiveUrl(page, SITE_ORIGIN)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            size="compact-xs"
+                            variant="light"
+                            color="blue"
+                            rightSection={<IconExternalLink size={13} />}
+                          >
+                            Open
+                          </Button>
+                        ) : (
+                          <>
+                            <Button
+                              size="compact-xs"
+                              variant="light"
+                              color="red"
+                              leftSection={<IconPencil size={13} />}
+                              onClick={() => openEdit(page.id)}
+                            >
+                              Edit
+                            </Button>
+                            {failing ? (
+                              <Button
+                                size="compact-xs"
+                                variant="light"
+                                color="orange"
+                                leftSection={<IconAlertTriangle size={13} />}
+                                onClick={() => void openIssuesReview(page.id)}
+                              >
+                                Fix
+                              </Button>
+                            ) : null}
+                            {page.status === 'LIVE' ? (
+                              <Button
+                                component="a"
+                                href={`${LIVE_LP_BASE}/${page.slug}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                size="compact-xs"
+                                variant="subtle"
+                                color="blue"
+                                rightSection={<IconExternalLink size={13} />}
+                              >
+                                Open
+                              </Button>
+                            ) : publishLoading ? (
+                              <Button size="compact-xs" variant="subtle" color="teal" disabled>
+                                Set live
+                              </Button>
+                            ) : canPublish ? (
+                              <Button
+                                size="compact-xs"
+                                variant="subtle"
+                                color="teal"
+                                leftSection={<IconWorld size={13} />}
+                                onClick={() => toggleStatus(page)}
+                              >
+                                Set live
+                              </Button>
+                            ) : (
+                              <SubmitForApprovalButton
+                                kind="LANDING_PAGE"
+                                id={page.id}
+                                alreadySubmitted={
+                                  page.submittedForApprovalAt != null &&
+                                  page.submittedForApprovalAt !== ''
+                                }
+                                onSubmitted={reload}
+                                size="compact-xs"
+                              />
+                            )}
+                          </>
+                        )}
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                );
+              })}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       )}
 
       <Group justify="center" mt="lg">
         <Text size="xs" c="dimmed">
-          <IconExternalLink size={12} style={{ verticalAlign: 'middle' }} /> Pages render on the site at
-          /lp/&lt;slug&gt; with the CRM web-lead pipeline wired in.
+          <IconExternalLink size={12} style={{ verticalAlign: 'middle' }} /> Pages go live on your
+          site at /lp/&lt;slug&gt;, and every lead flows straight into the CRM.
         </Text>
       </Group>
     </Box>

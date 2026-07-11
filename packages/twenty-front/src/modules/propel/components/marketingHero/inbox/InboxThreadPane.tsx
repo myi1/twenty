@@ -251,9 +251,11 @@ export const InboxThreadPane = ({
             setLocalReload((v) => v + 1); // reload → row flips to "Saved"
             return;
           }
-          const reason =
+          const reason = friendlyError(
             (res && (res.operatorAction || res.error)) ||
-            'Couldn’t save this image. Try again.';
+              'Couldn’t save this image. Try again.',
+            'save',
+          );
           setSaveErrors((prev) => ({ ...prev, [messageId]: reason }));
           notify(reason, 'error');
         })

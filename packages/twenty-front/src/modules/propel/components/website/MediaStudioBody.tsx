@@ -50,6 +50,7 @@ import {
   IconWand,
 } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
+import { ImageWithFallback } from '@/propel/components/shared/ImageWithFallback';
 import {
   enhanceImage,
   generateImage,
@@ -639,7 +640,7 @@ export const MediaStudioBody = ({
   ) => {
     const tileInner = (a: WebsiteAsset) => (
       <Box style={{ ...dashedTile, position: 'relative' }}>
-        <img
+        <ImageWithFallback
           src={`${sitePublicUrl}${a.gatewayPath}`}
           alt={a.altText || a.name}
           loading="lazy"
@@ -740,7 +741,7 @@ export const MediaStudioBody = ({
       }}
     >
       {gatewayPath ? (
-        <img
+        <ImageWithFallback
           src={`${sitePublicUrl}${gatewayPath}`}
           alt=""
           style={{ width: '100%', height: '100%', objectFit: 'contain' }}
@@ -989,7 +990,7 @@ export const MediaStudioBody = ({
                 }}
               >
                 {enhSourceUrl !== '' ? (
-                  <img
+                  <ImageWithFallback
                     src={enhSourceUrl}
                     alt=""
                     style={{ width: '100%', height: '100%', objectFit: 'contain' }}
@@ -1107,7 +1108,7 @@ export const MediaStudioBody = ({
                     return (
                       <Box key={img.id} style={{ position: 'relative' }}>
                         <Box style={dashedTile}>
-                          <img
+                          <ImageWithFallback
                             src={`${sitePublicUrl}${img.gatewayPath}`}
                             alt=""
                             loading="lazy"

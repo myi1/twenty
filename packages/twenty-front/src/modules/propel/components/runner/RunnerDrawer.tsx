@@ -36,6 +36,8 @@ import {
   type RunnerGroups,
 } from '@/propel/hooks/useOneOnOneRunner';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
+import { enumLabel } from '@/propel/lib/enumLabels';
+import { friendlyError } from '@/propel/lib/friendlyError';
 import { PipelinePill } from '@/propel/components/runner/PipelinePill';
 import { type ReviewLine, type ReviewStatus } from '@/propel/types/oneOnOne';
 
@@ -179,7 +181,10 @@ const RunnerBody = ({
                       onClose(true);
                     } else {
                       notify(
-                        res?.error ?? 'Could not complete the meeting.',
+                        friendlyError(
+                          res?.error ?? 'Could not complete the meeting.',
+                          'save',
+                        ),
                         'error',
                       );
                     }
@@ -455,7 +460,7 @@ const LeadDetail = ({
           }}
         >
           <Group align="flex-start" gap="xl" wrap="wrap">
-            <SnapshotCell k="Stage" v={line.stageSnapshot} />
+            <SnapshotCell k="Stage" v={enumLabel(line.stageSnapshot)} />
             {hasValue ? (
               <SnapshotCell
                 k="Value"

@@ -19,6 +19,8 @@ import {
   IconSend,
 } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
+import { enumLabel } from '@/propel/lib/enumLabels';
+import { friendlyError } from '@/propel/lib/friendlyError';
 import { EnrollmentList } from '@/propel/components/sequence/EnrollmentList';
 import { SequenceFlowMap } from '@/propel/components/sequence/SequenceFlowMap';
 import { StepEditorCard } from '@/propel/components/sequence/StepEditorCard';
@@ -167,7 +169,10 @@ export const SequenceEditor = ({
     setSaving(false);
     if (!res || res.error || !res.sequenceId) {
       notify(
-        res?.operatorAction || res?.error || 'Could not save the sequence.',
+        friendlyError(
+          res?.operatorAction || res?.error || 'Could not save the sequence.',
+          'save',
+        ),
         'error',
       );
       return;
@@ -199,10 +204,13 @@ export const SequenceEditor = ({
     setTesting(false);
     if (!res || res.ok !== true) {
       notify(
-        res?.operatorAction ||
-          res?.error ||
-          res?.testSend?.espError ||
-          'Test send failed.',
+        friendlyError(
+          res?.operatorAction ||
+            res?.error ||
+            res?.testSend?.espError ||
+            'Test send failed.',
+          'generic',
+        ),
         'error',
       );
       return;
@@ -256,7 +264,7 @@ export const SequenceEditor = ({
             </Button>
           ) : (
             <Badge variant="light" color="gray" size="lg">
-              {initial?.status} — read only
+              {enumLabel(initial?.status)} — read only
             </Badge>
           )}
         </Group>

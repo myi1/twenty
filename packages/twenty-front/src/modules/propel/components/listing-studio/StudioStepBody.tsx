@@ -16,6 +16,7 @@ import {
   IconRocket,
 } from 'twenty-ui/display';
 import { type StudioFacts, type StudioStep } from '@/propel/types/listingStudio';
+import { enumSelectData } from '@/propel/lib/enumLabels';
 
 // The per-step body. In S2 the SHELL is the deliverable, so most steps are honest
 // stubs that state what lands in their slice (S3+). The exception is Details &
@@ -98,14 +99,14 @@ const DetailsForm = ({
       <Group grow>
         <Select
           label="Asset class"
-          data={ASSET_CLASS}
+          data={enumSelectData(ASSET_CLASS)}
           value={facts.assetClass ?? null}
           onChange={(v) => onPatch({ assetClass: v ?? undefined })}
           comboboxProps={{ withinPortal: true }}
         />
         <Select
           label="Property type"
-          data={PROPERTY_TYPE}
+          data={enumSelectData(PROPERTY_TYPE)}
           value={facts.propertyType ?? null}
           onChange={(v) => onPatch({ propertyType: v ?? undefined })}
           comboboxProps={{ withinPortal: true }}
@@ -150,14 +151,14 @@ const DetailsForm = ({
       <Group grow>
         <Select
           label="Furnishing"
-          data={FURNISHING}
+          data={enumSelectData(FURNISHING)}
           value={facts.furnishing ?? null}
           onChange={(v) => onPatch({ furnishing: v ?? undefined })}
           comboboxProps={{ withinPortal: true }}
         />
         <Select
           label="Completion"
-          data={COMPLETION}
+          data={enumSelectData(COMPLETION)}
           value={facts.completionStatus ?? null}
           onChange={(v) => onPatch({ completionStatus: v ?? undefined })}
           comboboxProps={{ withinPortal: true }}

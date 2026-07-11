@@ -26,6 +26,7 @@ import {
   IconUsers,
 } from 'twenty-ui/display';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
+import { friendlyError } from '@/propel/lib/friendlyError';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { useCanPublish } from '@/propel/lib/canPublish';
 import { SubmitForApprovalButton } from '@/propel/components/marketingHero/SubmitForApprovalButton';
@@ -564,7 +565,13 @@ export const ManualWizard = ({
         },
       );
       if (!res || res.error || !res.campaignId) {
-        notify(envelopeMessage(res, 'Could not save the campaign.'), 'error');
+        notify(
+          friendlyError(
+            envelopeMessage(res, 'Could not save the campaign.'),
+            'save',
+          ),
+          'error',
+        );
         return;
       }
       setCampaignId(res.campaignId);
@@ -614,7 +621,13 @@ export const ManualWizard = ({
         },
       );
       if (!res || res.error || !res.campaignId) {
-        notify(envelopeMessage(res, 'Could not save the draft.'), 'error');
+        notify(
+          friendlyError(
+            envelopeMessage(res, 'Could not save the draft.'),
+            'save',
+          ),
+          'error',
+        );
         return;
       }
       notify('Draft saved — find it on the Campaigns board.', 'success');
@@ -652,7 +665,10 @@ export const ManualWizard = ({
         },
       );
       if (!res || res.error) {
-        notify(envelopeMessage(res, 'Test send failed.'), 'error');
+        notify(
+          friendlyError(envelopeMessage(res, 'Test send failed.'), 'generic'),
+          'error',
+        );
         setTestState('idle');
         return;
       }
@@ -673,7 +689,13 @@ export const ManualWizard = ({
         { campaignId },
       );
       if (!res || res.error) {
-        notify(envelopeMessage(res, 'Could not request the send.'), 'error');
+        notify(
+          friendlyError(
+            envelopeMessage(res, 'Could not request the send.'),
+            'publish',
+          ),
+          'error',
+        );
         return;
       }
       notify('Send requested — materializing shortly.', 'success');

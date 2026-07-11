@@ -498,7 +498,7 @@ export const OverviewTab = ({
           variant="light"
           mb="md"
         >
-          Couldn&apos;t load website metrics: {error}
+          Couldn&apos;t load website metrics: {friendlyError(error, 'load')}
         </Alert>
       ) : null}
 

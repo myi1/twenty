@@ -71,6 +71,21 @@ export interface LandingPageSummary {
   submittedForApprovalAt?: string | null;
   sentBackAt?: string | null;
   sentBackNote?: string | null;
+  // External-page handling (kills the "live external pages show Draft" bug). An
+  // "external" page is one that's registered/live on the marketing site directly
+  // (residency, /areas, /developers …) with NO builder sections — it isn't a real
+  // builder draft, so it must read "Live · External", preview the REAL live page,
+  // and skip the builder pre-flight. The list projection does NOT carry sections,
+  // so the client cannot tell an external page from an empty draft on its own —
+  // these three are read TOLERANTLY off the route and the badge only lights up once
+  // the backend projects them (see report: the landing `list` route must add a
+  // `sectionCount` — cheapest — or an explicit `isExternal` + `externalUrl`):
+  //   • `isExternal`   — explicit flag (preferred), OR
+  //   • `sectionCount` — 0 sections on a registered page ⇒ external, AND
+  //   • `externalUrl`  — the real live path to preview/open (else derived from slug).
+  isExternal?: boolean;
+  sectionCount?: number;
+  externalUrl?: string | null;
 }
 
 // Full page (editor). Adds the section list + the bench audit log (Stage 3B —

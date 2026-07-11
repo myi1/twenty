@@ -18,6 +18,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { IconPencil, IconPhone, IconSearch } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
+import { enumLabel } from '@/propel/lib/enumLabels';
 import { friendlyError } from '@/propel/lib/friendlyError';
 import { fetchOwnedNumbers, type OwnedNumber } from '@/propel/lib/numbersCrm';
 import { DetailDrawer, Seal, statusSeal } from '@/propel/components/desk';
@@ -410,7 +411,7 @@ export const NumbersTab = () => {
                   <Table.Td>
                     <Group gap={6} wrap="nowrap">
                       <Seal kind={statusSeal(o.status)} />
-                      <Text size="sm">{o.status || 'ACTIVE'}</Text>
+                      <Text size="sm">{enumLabel(o.status || 'ACTIVE')}</Text>
                     </Group>
                   </Table.Td>
                   <Table.Td>

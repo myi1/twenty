@@ -22,6 +22,7 @@ import {
   type CounterpartyPerson,
   type A2AVariant,
 } from '@/propel/types/a2a';
+import { friendlyError } from '@/propel/lib/friendlyError';
 
 // The "prepare" step (design §5 A2APrepareForm): CRM-prefilled required + optional
 // fields. Most fields are optional — the agent fills the rest inside the embedded
@@ -91,7 +92,7 @@ export const A2APrepareForm = ({
           variant="light"
           icon={<IconAlertTriangle size={16} />}
         >
-          {errorMessage}
+          {friendlyError(errorMessage, 'generic')}
         </Alert>
       ) : null}
 

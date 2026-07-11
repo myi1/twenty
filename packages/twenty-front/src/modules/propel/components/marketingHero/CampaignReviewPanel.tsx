@@ -33,6 +33,7 @@ import {
 } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { useCanPublish } from '@/propel/lib/canPublish';
+import { enumLabel } from '@/propel/lib/enumLabels';
 import { PlanReviewPanel } from '@/propel/components/marketingHero/PlanReviewPanel';
 import { SubmissionBadge } from '@/propel/components/marketingHero/deskShared';
 import { SubmitForApprovalButton } from '@/propel/components/marketingHero/SubmitForApprovalButton';
@@ -494,7 +495,7 @@ export const CampaignReviewPanel = ({
         </Group>
         {lpArm !== null ? (
           <Badge size="sm" variant="light" color={statusColor(lpArm.status)}>
-            {lpArm.status || '—'}
+            {lpArm.status ? enumLabel(lpArm.status) : '—'}
           </Badge>
         ) : null}
       </Group>
@@ -579,7 +580,7 @@ export const CampaignReviewPanel = ({
         </Group>
         {socialArm !== null ? (
           <Badge size="sm" variant="light" color={statusColor(socialArm.status)}>
-            {socialArm.status || '—'}
+            {socialArm.status ? enumLabel(socialArm.status) : '—'}
           </Badge>
         ) : null}
       </Group>
@@ -665,7 +666,7 @@ export const CampaignReviewPanel = ({
         </Group>
         {emailArm !== null ? (
           <Badge size="sm" variant="light" color={statusColor(emailArm.status)}>
-            {emailArm.status || '—'}
+            {emailArm.status ? enumLabel(emailArm.status) : '—'}
           </Badge>
         ) : null}
       </Group>
@@ -750,7 +751,7 @@ export const CampaignReviewPanel = ({
         </Group>
         {blogArm !== null ? (
           <Badge size="sm" variant="light" color={statusColor(blogArm.status)}>
-            {blogArm.status || '—'}
+            {blogArm.status ? enumLabel(blogArm.status) : '—'}
           </Badge>
         ) : null}
       </Group>
@@ -889,7 +890,7 @@ export const CampaignReviewPanel = ({
                     variant="light"
                     color={statusColor(campaign.status)}
                   >
-                    {campaign.status}
+                    {enumLabel(campaign.status)}
                   </Badge>
                 ) : null}
                 <SubmissionBadge
