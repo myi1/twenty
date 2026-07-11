@@ -35,6 +35,7 @@ import {
 } from '@/propel/types/inbox';
 import {
   assignLead,
+  convertCommentThread,
   createLeadOpportunity,
   fetchInboxAi,
   fetchLeadEvents,
@@ -218,9 +219,16 @@ const TriageActions = ({
   const [agentsLoaded, setAgentsLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pinging, setPinging] = useState(false);
+  const [converting, setConverting] = useState(false);
 
   const isManager = viewerRole === 'MANAGER' || viewerRole === 'ADMIN';
   const personId = thread.personId;
+  // Comment-inbox-gate (2026-07-11): FB/IG comment ingestion creates Inbox items
+  // ONLY — no Person/Opportunity/Task. A no-contact FB/IG thread therefore offers
+  // "Convert to lead" (the ONLY birth path for comment leads); junk threads get
+  // resolved and leave no CRM residue.
+  const isSocialComment =
+    thread.channel === 'FACEBOOK' || thread.channel === 'INSTAGRAM';
 
   const ensureAgents = useCallback(() => {
     if (agentsLoaded) return;
@@ -299,8 +307,49 @@ const TriageActions = ({
     }
   };
 
-  // No matched contact → assign/create-opp can't key off a Person. Show a hint, not
-  // dead buttons. (Follow-up ping still needs canReply, handled below.)
+  const doConvert = async () => {
+    if (converting) return;
+    setConverting(true);
+    const res = await convertCommentThread({ conversationId: thread.id });
+    setConverting(false);
+    if (res?.ok) {
+      notify(
+        res.alreadyConverted
+          ? 'Already converted — this comment is linked to its existing lead.'
+          : 'Lead created — contact, opportunity and follow-up task are in the pipeline.',
+        'success',
+      );
+      onActed();
+    } else {
+      notify(
+        res?.operatorAction || res?.error || 'Couldn’t convert this thread.',
+        'error',
+      );
+    }
+  };
+
+  // The Convert-to-lead affordance: only for an FB/IG thread with NO matched
+  // contact (once converted, personId is set and the normal assign/create-opp
+  // actions take over).
+  const convertButton =
+    !personId && isSocialComment ? (
+      <Button
+        size="xs"
+        variant="light"
+        color="red"
+        fullWidth
+        leftSection={<IconUserPlus size={14} />}
+        loading={converting}
+        onClick={() => void doConvert()}
+      >
+        Convert to lead
+      </Button>
+    ) : null;
+
+  // No matched contact → assign/create-opp can't key off a Person. FB/IG comment
+  // threads offer Convert (which creates the Person + opportunity + task); other
+  // channels show a hint, not dead buttons. (Follow-up ping still needs canReply,
+  // handled below.)
   if (!personId && !thread.canReply) {
     return (
       <Box
@@ -309,9 +358,20 @@ const TriageActions = ({
           borderBottom: '1px solid var(--mantine-color-default-border)',
         }}
       >
-        <Text size="xs" c="dimmed">
-          Attach this thread to a contact to assign it or create an opportunity.
-        </Text>
+        {convertButton ? (
+          <Stack gap={8}>
+            {convertButton}
+            <Text size="xs" c="dimmed">
+              Comments never create CRM records on their own — convert only
+              real interest. Junk? Resolve the thread; there’s nothing to
+              clean up.
+            </Text>
+          </Stack>
+        ) : (
+          <Text size="xs" c="dimmed">
+            Attach this thread to a contact to assign it or create an opportunity.
+          </Text>
+        )}
       </Box>
     );
   }
@@ -322,6 +382,7 @@ const TriageActions = ({
       style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}
     >
       <Stack gap={8}>
+        {convertButton}
         {isManager && personId ? (
           <>
             <Button

@@ -19,6 +19,7 @@ import {
   type InboxAiResponse,
   type LeadAssignResponse,
   type LeadCreateOpportunityResponse,
+  type InboxConvertLeadResponse,
   type LeadEventsResponse,
   type OutboundMediaKind,
   type QuickRepliesPayload,
@@ -188,6 +189,19 @@ export const createLeadOpportunity = (args: {
     lane: args.lane,
     contactId: args.contactId,
     name: args.name,
+  });
+
+// POST /marketing/inbox/convert-lead — comment-inbox-gate (founder decision
+// 2026-07-11): comments create Inbox triage items only; a lead (Person via
+// metaUserId dedup + Secondary Opportunity + FOLLOW_UP Task) is born ONLY when a
+// human clicks Convert on an FB/IG thread. Idempotent server-side: converting the
+// same person from the same post again returns the existing opportunity
+// (alreadyConverted=true). Flat body, same convention as the other inbox routes.
+export const convertCommentThread = (args: {
+  conversationId: string;
+}): Promise<InboxConvertLeadResponse | null> =>
+  callPropelRoute<InboxConvertLeadResponse>('/marketing/inbox/convert-lead', {
+    conversationId: args.conversationId,
   });
 
 // POST /lead/events — Manager/Admin-gated read of the leadEvent timeline for ONE

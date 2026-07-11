@@ -107,6 +107,20 @@ export interface LeadCreateOpportunityResponse {
   operatorAction?: string;
 }
 
+// POST /marketing/inbox/convert-lead (comment-inbox-gate, 2026-07-11): the human
+// "Convert to lead" on an FB/IG comment thread with no matched contact. The ONLY
+// birth path for comment leads — ingest creates Inbox items only.
+export interface InboxConvertLeadResponse {
+  ok?: boolean;
+  personId?: string;
+  personIsNew?: boolean;
+  opportunityId?: string;
+  taskId?: string | null;
+  alreadyConverted?: boolean;
+  error?: string;
+  operatorAction?: string;
+}
+
 // An agent option for the assign picker (from the workspaceMembers directory).
 export interface InboxAgentOption {
   id: string;
