@@ -49,6 +49,12 @@ type FeedResponse =
   | {
       blocked: false;
       rows: FeedRow[];
+      // Paging meta: the route slices its response under the fork engine's
+      // ~64KB executor cliff (a bigger body silently arrives as 0 bytes), so
+      // the tab follows nextOffset until hasMore is false.
+      total?: number;
+      nextOffset?: number | null;
+      hasMore?: boolean;
       filters: {
         competitors: { id: string; handle: string }[];
         mediaTypes: string[];
@@ -65,6 +71,12 @@ type FeedResponse =
       } | null;
       error?: string;
     };
+
+// Page size the route defaults to; requested explicitly so the loop below and
+// the server agree. 80 rows ≈ 45KB — safely under the 64KB cliff.
+const PAGE_LIMIT = 80;
+// Hard stop so a confused server can never loop us forever (~15×120 rows).
+const MAX_PAGES = 15;
 
 // Format badge: REELS/VIDEO/CAROUSEL/PHOTO in plain words with stable colors
 // (mirrors the retired sandbox panel so the founder sees the same vocabulary).
@@ -108,12 +120,33 @@ export const CompetitorsTab = () => {
 
   const load = useCallback(async () => {
     setIsLoading(true);
-    const res = await callPropelRoute<FeedResponse>(
+    const first = await callPropelRoute<FeedResponse>(
       '/marketing/competitor-feed',
-      {},
+      { offset: 0, limit: PAGE_LIMIT },
     );
-    setData(res);
-    setFailed(res === null);
+    if (first === null || first.blocked) {
+      setData(first);
+      setFailed(first === null);
+      setIsLoading(false);
+      return;
+    }
+    // Follow the pages (see FeedResponse paging note). A mid-loop failure
+    // keeps what we have rather than discarding the loaded rows.
+    let rows = [...first.rows];
+    let next = first.nextOffset ?? null;
+    let pages = 1;
+    while (next !== null && pages < MAX_PAGES) {
+      const page = await callPropelRoute<FeedResponse>(
+        '/marketing/competitor-feed',
+        { offset: next, limit: PAGE_LIMIT },
+      );
+      if (page === null || page.blocked) break;
+      rows = rows.concat(page.rows);
+      next = page.nextOffset ?? null;
+      pages += 1;
+    }
+    setData({ ...first, rows });
+    setFailed(false);
     setIsLoading(false);
   }, []);
 
