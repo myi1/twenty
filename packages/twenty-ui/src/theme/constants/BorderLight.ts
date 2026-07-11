@@ -10,7 +10,8 @@ export const BORDER_LIGHT = {
     light: GRAY_SCALE_LIGHT.gray4,
     secondaryInverted: GRAY_SCALE_LIGHT.gray11,
     inverted: GRAY_SCALE_LIGHT.gray12,
-    danger: COLOR_LIGHT.red5,
+    // Terracotta --p-bad #B23A2A tinted onto the Riviera paper (border tint).
+    danger: 'color(display-p3 0.929 0.824 0.784)',
     blue: COLOR_LIGHT.blue7,
     transparentStrong: TRANSPARENT_COLORS_LIGHT.gray4,
   },

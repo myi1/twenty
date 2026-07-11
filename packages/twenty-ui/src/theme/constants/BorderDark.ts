@@ -10,7 +10,8 @@ export const BORDER_DARK = {
     light: GRAY_SCALE_DARK.gray4,
     secondaryInverted: GRAY_SCALE_DARK.gray11,
     inverted: GRAY_SCALE_DARK.gray12,
-    danger: COLOR_DARK.red5,
+    // Terracotta --p-bad #C7513B blended toward the warm canvas (border tint).
+    danger: 'color(display-p3 0.443 0.192 0.141)',
     blue: COLOR_DARK.blue7,
     transparentStrong: TRANSPARENT_COLORS_DARK.gray4,
   },

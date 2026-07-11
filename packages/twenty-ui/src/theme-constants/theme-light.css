@@ -97,8 +97,10 @@
   --t-background-inverted-primary: color(display-p3 0.165 0.149 0.125);
   --t-background-inverted-secondary: color(display-p3 0.431 0.4 0.337);
   --t-background-danger: color(display-p3 0.985 0.925 0.925);
-  --t-background-transparent-primary: color(display-p3 1 1 1 / 0.5);
-  --t-background-transparent-secondary: color(display-p3 1 1 1 / 0.4);
+  --t-background-transparent-primary: color(display-p3 0.988 0.973 0.941 / 0.5);
+  --t-background-transparent-secondary: color(
+    display-p3 0.988 0.973 0.941 / 0.4
+  );
   --t-background-transparent-strong: color(
     display-p3 0.039 0.035 0.024 / 0.161
   );
@@ -136,7 +138,7 @@
   --t-border-color-light: color(display-p3 0.937 0.91 0.851);
   --t-border-color-secondary-inverted: color(display-p3 0.431 0.4 0.337);
   --t-border-color-inverted: color(display-p3 0.165 0.149 0.125);
-  --t-border-color-danger: color(display-p3 0.984 0.812 0.811);
+  --t-border-color-danger: color(display-p3 0.929 0.824 0.784);
   --t-border-color-blue: color(display-p3 0.685 0.74 0.957);
   --t-border-color-transparent-strong: color(
     display-p3 0.039 0.035 0.024 / 0.071
@@ -144,23 +146,19 @@
   --t-border-radius-xs: 2px;
   --t-border-radius-sm: 4px;
   --t-border-radius-md: 8px;
-  --t-border-radius-xl: 20px;
+  --t-border-radius-xl: 16px;
   --t-border-radius-xxl: 40px;
   --t-border-radius-pill: 999px;
   --t-border-radius-rounded: 100%;
   --t-box-shadow-color: color(display-p3 0.039 0.035 0.024 / 0.039);
-  --t-box-shadow-light:
-    0px 2px 4px 0px color(display-p3 0.039 0.035 0.024 / 0.039),
-    0px 0px 4px 0px color(display-p3 0.039 0.035 0.024 / 0.078);
-  --t-box-shadow-strong:
-    2px 4px 16px 0px color(display-p3 0.039 0.035 0.024 / 0.161),
-    0px 2px 4px 0px color(display-p3 0.039 0.035 0.024 / 0.078);
+  --t-box-shadow-light: 0px 1px 2px 0px
+    color(display-p3 0.039 0.035 0.024 / 0.078);
+  --t-box-shadow-strong: 0px 8px 28px 0px
+    color(display-p3 0.039 0.035 0.024 / 0.161);
   --t-box-shadow-underline: 0px 1px 0px 0px
     color(display-p3 0.039 0.035 0.024 / 0.361);
-  --t-box-shadow-super-heavy:
-    0px 0px 8px 0px color(display-p3 0.039 0.035 0.024 / 0.161),
-    0px 8px 64px -16px color(display-p3 0.039 0.035 0.024 / 0.478),
-    0px 24px 56px -16px color(display-p3 0.039 0.035 0.024 / 0.078);
+  --t-box-shadow-super-heavy: 0px 16px 48px 0px
+    color(display-p3 0.039 0.035 0.024 / 0.478);
   --t-font-color-primary: color(display-p3 0.165 0.149 0.125);
   --t-font-color-secondary: color(display-p3 0.431 0.4 0.337);
   --t-font-color-tertiary: color(display-p3 0.588 0.549 0.467);

@@ -97,8 +97,10 @@
   --t-background-inverted-primary: color(display-p3 0.957 0.933 0.878);
   --t-background-inverted-secondary: color(display-p3 0.765 0.733 0.663);
   --t-background-danger: color(display-p3 0.211 0.081 0.099);
-  --t-background-transparent-primary: color(display-p3 0 0 0 / 0.5);
-  --t-background-transparent-secondary: color(display-p3 0 0 0 / 0.4);
+  --t-background-transparent-primary: color(display-p3 0.039 0.035 0.024 / 0.5);
+  --t-background-transparent-secondary: color(
+    display-p3 0.039 0.035 0.024 / 0.4
+  );
   --t-background-transparent-strong: color(
     display-p3 0.957 0.933 0.878 / 0.141
   );
@@ -113,9 +115,9 @@
   --t-background-transparent-blue: #3566ff57;
   --t-background-transparent-orange: #ff590039;
   --t-background-transparent-success: #11ff992d;
-  --t-background-overlay-primary: #000000b8;
-  --t-background-overlay-secondary: #0000005c;
-  --t-background-overlay-tertiary: #0000005c;
+  --t-background-overlay-primary: #0a0906b8;
+  --t-background-overlay-secondary: #0a09065c;
+  --t-background-overlay-tertiary: #0a09065c;
   --t-background-radial-gradient: radial-gradient(
     50% 62.62% at 50% 0%,
     color(display-p3 0.541 0.506 0.447) 0%,
@@ -136,7 +138,7 @@
   --t-border-color-light: color(display-p3 0.129 0.118 0.082);
   --t-border-color-secondary-inverted: color(display-p3 0.765 0.733 0.663);
   --t-border-color-inverted: color(display-p3 0.957 0.933 0.878);
-  --t-border-color-danger: color(display-p3 0.348 0.11 0.142);
+  --t-border-color-danger: color(display-p3 0.443 0.192 0.141);
   --t-border-color-blue: color(display-p3 0.245 0.309 0.575);
   --t-border-color-transparent-strong: color(
     display-p3 0.957 0.933 0.878 / 0.071
@@ -144,18 +146,15 @@
   --t-border-radius-xs: 2px;
   --t-border-radius-sm: 4px;
   --t-border-radius-md: 8px;
-  --t-border-radius-xl: 20px;
+  --t-border-radius-xl: 16px;
   --t-border-radius-xxl: 40px;
   --t-border-radius-pill: 999px;
   --t-border-radius-rounded: 100%;
-  --t-box-shadow-color: rgba(0, 0, 0, 0.6);
-  --t-box-shadow-light:
-    0px 2px 4px 0px rgba(0, 0, 0, 0.04), 0px 0px 4px 0px rgba(0, 0, 0, 0.08);
-  --t-box-shadow-strong:
-    2px 4px 16px 0px rgba(0, 0, 0, 0.16), 0px 2px 4px 0px rgba(0, 0, 0, 0.08);
-  --t-box-shadow-underline: 0px 1px 0px 0px rgba(0, 0, 0, 0.32);
-  --t-box-shadow-super-heavy:
-    2px 4px 16px 0px rgba(0, 0, 0, 0.12), 0px 2px 4px 0px rgba(0, 0, 0, 0.04);
+  --t-box-shadow-color: rgba(10, 9, 6, 0.6);
+  --t-box-shadow-light: 0px 1px 2px 0px rgba(10, 9, 6, 0.3);
+  --t-box-shadow-strong: 0px 8px 28px 0px rgba(10, 9, 6, 0.45);
+  --t-box-shadow-underline: 0px 1px 0px 0px rgba(10, 9, 6, 0.32);
+  --t-box-shadow-super-heavy: 0px 16px 48px 0px rgba(10, 9, 6, 0.55);
   --t-font-color-primary: color(display-p3 0.957 0.933 0.878);
   --t-font-color-secondary: color(display-p3 0.765 0.733 0.663);
   --t-font-color-tertiary: color(display-p3 0.541 0.506 0.447);
