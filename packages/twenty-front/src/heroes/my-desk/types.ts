@@ -27,11 +27,15 @@ export type DeskRow = {
   id: string;                    // `${laneObject}:${recordId}` — stable row key
   laneObject: DeskLane;
   recordId: string;
+  personId: string | null;
+  phoneE164: string | null;
+  hasWhatsApp: boolean;
   name: string;
   meta: string;                  // one-line context ("Downtown 1BR · Meta lead")
   stage: string;                 // the lane's NATIVE stage enum value
   valueAed: number | null;
   nextAction: string | null;
+  nextActionTaskId: string | null;
   nextActionDueAt: string | null;
   nextActionSource: 'task' | 'stageMap' | 'ai';
   lastTouchAt: string | null;
@@ -103,6 +107,8 @@ export type DeskTimelineEvent = {
   occurredAt: string;
   title: string;
   by: string;
+  callStatus?: string | null;
+  durationSeconds?: number | null;
 };
 
 export type DeskTimelineResponse =
@@ -125,4 +131,8 @@ export type DeskWaContextResponse =
       lastInbound: string | null;
       templates: DeskWaTemplate[];
     }
+  | DeskErrorResponse;
+
+export type DeskWriteResponse =
+  | ({ ok: true; touchedAt?: string; noteId?: string | null; taskId?: string; viewingId?: string; until?: string; auditWarning?: true })
   | DeskErrorResponse;

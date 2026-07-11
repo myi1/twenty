@@ -15,6 +15,7 @@
 
 import { useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import styled from '@emotion/styled';
+import { IconComment, IconDotsVertical, IconNotes, IconPhone } from 'twenty-ui/display';
 
 import { DUR, EASE, SPACE } from '../_pulse/pulse-tokens';
 import { FONT_DISPLAY, FONT_MONO, FONT_UI, P, Seal } from '../_pulse/pulse';
@@ -161,6 +162,46 @@ const RowEl = styled.div`
   }
 `;
 
+const LastTouch = styled.span`
+  transition: opacity ${DUR.tooltip}ms ${EASE.out};
+`;
+
+const ActionTray = styled.div`
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  background: var(--p-surface);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(4px, 0, 0);
+  transition: opacity ${DUR.dropdown}ms ${EASE.out}, transform ${DUR.dropdown}ms ${EASE.out};
+  ${RowEl}:hover &,
+  ${RowEl}:focus-within & {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translate3d(0, 0, 0);
+  }
+`;
+
+const RowAction = styled.button`
+  all: unset;
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--p-ink-2);
+  border: 1px solid var(--p-line);
+  background: var(--p-surface-2);
+  cursor: pointer;
+  &:hover { color: var(--p-ink); border-color: var(--p-accent); }
+  &:disabled { cursor: not-allowed; opacity: .35; }
+`;
+
 const Ellipsis = styled.div`
   white-space: nowrap;
   overflow: hidden;
@@ -235,6 +276,7 @@ export const BoardTable = ({
   nowMs,
   stripFilter,
   onRowClick,
+  onRowAction,
 }: {
   status: 'loading' | 'ready' | 'error';
   rows: DeskRow[];
@@ -244,9 +286,9 @@ export const BoardTable = ({
   nowMs: number;
   /** Active Today Strip tile, if any — ANDed with the lane/cold chip below. */
   stripFilter: StripFilter | null;
-  /** Row click will open the peek drawer (a later task) — Task 12 wires the
-   *  prop and calls it, but index.tsx stubs it as a no-op for now. */
+  /** Row click opens the peek drawer; action clicks are kept separate below. */
   onRowClick: (row: DeskRow) => void;
+  onRowAction: (action: 'call' | 'whatsapp' | 'note' | 'more', row: DeskRow) => void;
 }) => {
   const [laneFilter, setLaneFilter] = useState<LaneFilter>('all');
   const [colWidths, setColWidths] = useState<(string | null)[]>(() => COL_DEFAULTS.map(() => null));
@@ -255,15 +297,12 @@ export const BoardTable = ({
   const dragRef = useRef<{ i: number; startX: number; startWidth: number } | null>(null);
   const tooltipTimerRef = useRef<number | undefined>(undefined);
 
-  // Reserved for the row's inline action icons (Call/WhatsApp/Note/Open —
-  // mockup L951–954), which land in a later task. WIRING NOTE for whoever
-  // adds them: this stack's e.stopPropagation() is broken inside the sandbox
+  // This stack's e.stopPropagation() is broken inside the sandbox
   // (twenty-sandbox-stopPropagation-broken gotcha) — use the useRef-flag
   // pattern instead. Each action icon's onMouseDown should set
   // `actionClickRef.current = true`; the row's onClick below checks and
   // clears that flag BEFORE calling onRowClick, so a click on an action icon
-  // never also opens the drawer. The flag is wired now (see handleRowClick)
-  // even though nothing sets it yet.
+  // never also opens the drawer.
   const actionClickRef = useRef(false);
 
   const colsTemplate = colWidths.map((w, i) => w ?? COL_DEFAULTS[i]).join(' ');
@@ -582,15 +621,10 @@ export const BoardTable = ({
                 {row.nextAction ?? '—'}
               </Ellipsis>
 
-              {/* Last column, fixed 132px — reserved for the 4 inline row
-                  actions (Call/WhatsApp/Note/Open), which cross-fade in on
-                  hover over this same cell in the mockup. None render yet
-                  (Task 12 is read-only); when they land, wire each icon's
-                  onMouseDown to set actionClickRef.current = true (see the
-                  ref's declaration above) — NOT e.stopPropagation(), which
-                  is broken in this sandbox. */}
-              <div style={{ textAlign: 'right', minWidth: 0 }}>
-                <span
+              {/* Last column stays fixed at 132px so the four hover actions
+                  never bleed into the next-action copy. */}
+              <div style={{ textAlign: 'right', minWidth: 0, position: 'relative', height: 28, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                <LastTouch
                   style={{
                     fontFamily: FONT_MONO,
                     fontSize: 11.5,
@@ -599,7 +633,39 @@ export const BoardTable = ({
                   }}
                 >
                   {formatRelative(row.lastTouchAt) ?? 'no touch yet'}
-                </span>
+                </LastTouch>
+                <ActionTray>
+                  <RowAction
+                    type="button"
+                    aria-label={`Call ${row.name}`}
+                    title={row.phoneE164 ? 'Call' : 'No phone number'}
+                    disabled={!row.phoneE164}
+                    onMouseDown={() => { actionClickRef.current = true; }}
+                    onClick={() => onRowAction('call', row)}
+                  ><IconPhone size={13} /></RowAction>
+                  <RowAction
+                    type="button"
+                    aria-label={`WhatsApp ${row.name}`}
+                    title={!row.phoneE164 ? 'No phone number yet' : row.hasWhatsApp ? 'WhatsApp' : 'Not on WhatsApp yet'}
+                    disabled={!row.phoneE164 || !row.hasWhatsApp}
+                    onMouseDown={() => { actionClickRef.current = true; }}
+                    onClick={() => onRowAction('whatsapp', row)}
+                  ><IconComment size={13} /></RowAction>
+                  <RowAction
+                    type="button"
+                    aria-label={`Add note for ${row.name}`}
+                    title="Add note"
+                    onMouseDown={() => { actionClickRef.current = true; }}
+                    onClick={() => onRowAction('note', row)}
+                  ><IconNotes size={13} /></RowAction>
+                  <RowAction
+                    type="button"
+                    aria-label={`More actions for ${row.name}`}
+                    title="More actions"
+                    onMouseDown={() => { actionClickRef.current = true; }}
+                    onClick={() => onRowAction('more', row)}
+                  ><IconDotsVertical size={13} /></RowAction>
+                </ActionTray>
               </div>
             </RowEl>
           ))}

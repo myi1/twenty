@@ -1,7 +1,7 @@
 /* eslint-disable @nx/enforce-module-boundaries */
 // ─────────────────────────────────────────────────────────────────────────────
-// My Desk — runtime-loaded HERO ENTRY (Task 12 slice: today strip + read-only
-// triage table + read-only right rail)
+// My Desk — runtime-loaded HERO ENTRY: live triage table, inline actions and
+// record peek drawer.
 // ─────────────────────────────────────────────────────────────────────────────
 // Rides Twenty's own chrome (PropelMantineProvider + PageContainer + PageHeader —
 // same convention as ListingStudioPage/OffplanStudioPage): the sidebar/topbar in
@@ -10,14 +10,10 @@
 // re-skin effort re-themes those. This hero owns everything below the topbar: the
 // Today Strip + the desk grid (board + rail), in the Nocturne register (PulseNocturne).
 //
-// Task 12 deliverable: TodayStrip.tsx / BoardTable.tsx / RightRail.tsx, lifted
-// out of the S1 scaffold's inline sections, now with real filtering (strip
-// tiles + board chips) and the shared `banding.ts` mirror. Still read-only —
-// no row/panel actions yet, no drawer (onRowClick is wired but stubbed here
-// as a no-op; a later task opens the peek drawer from it).
+// TodayStrip / BoardTable / RightRail remain independently failing surfaces;
+// PeekDrawer owns the action bloom without replacing the agent's table context.
 //
-// This hero self-serves auth/data via the shimmed callPropelRoute (ignores `host`),
-// matching every other runtime-loaded hero in this fork.
+// Reads use the shared route wrapper; host supplies navigation, dialer and toasts.
 
 import { useEffect, useRef, useState } from 'react';
 import { IconLayoutDashboard } from 'twenty-ui/display';
@@ -29,9 +25,10 @@ import { type PropelHeroHost } from '@/propel/runtime/heroHost';
 import { FONT_DISPLAY, PulseFonts, PulseNocturne } from '../_pulse/pulse';
 
 import { BoardTable } from './BoardTable';
+import { PeekDrawer, type DrawerMode } from './PeekDrawer';
 import { RightRail } from './RightRail';
 import { TodayStrip, type StripFilter } from './TodayStrip';
-import { fetchBoard, fetchRail } from './deskApi';
+import { fetchBoard, fetchRail, fetchTimeline } from './deskApi';
 import type { DeskRailOk, DeskRow } from './types';
 
 // "Now", re-snapshotted periodically so band classification (SLA windows,
@@ -40,7 +37,7 @@ import type { DeskRailOk, DeskRow } from './types';
 // SLA countdown itself is SlaRing's job (Task 14), not this clock's.
 const NOW_TICK_MS = 30_000;
 
-export default function MyDeskHero(_props: { host: PropelHeroHost }) {
+export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
   const [boardStatus, setBoardStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [boardRows, setBoardRows] = useState<DeskRow[]>([]);
   const [boardError, setBoardError] = useState<string | null>(null);
@@ -57,6 +54,8 @@ export default function MyDeskHero(_props: { host: PropelHeroHost }) {
   // The Today Strip's active filter tile, ANDed against BoardTable's own
   // lane/going-cold chip filter — set by TodayStrip, consumed by BoardTable.
   const [stripFilter, setStripFilter] = useState<StripFilter | null>(null);
+  const [drawer, setDrawer] = useState<{ rowId: string; mode: DrawerMode } | null>(null);
+  const [pendingCall, setPendingCall] = useState<{ rowId: string; startedAtMs: number } | null>(null);
 
   const cancelledRef = useRef(false);
 
@@ -64,6 +63,43 @@ export default function MyDeskHero(_props: { host: PropelHeroHost }) {
     const id = window.setInterval(() => setNowMs(Date.now()), NOW_TICK_MS);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    if (!pendingCall) return;
+    const check = async () => {
+      if (Date.now() - pendingCall.startedAtMs > 30 * 60_000) {
+        setPendingCall(null);
+        return;
+      }
+      const row = boardRows.find((candidate) => candidate.id === pendingCall.rowId);
+      if (!row) return;
+      const result = await fetchTimeline(row.laneObject, row.recordId);
+      if (!result?.ok) return;
+      const terminal = new Set(['COMPLETED', 'MISSED', 'NO_ANSWER', 'BUSY', 'FAILED', 'CANCELED']);
+      const call = result.events.find((event) =>
+        event.type === 'CALL' &&
+        Date.parse(event.occurredAt) >= pendingCall.startedAtMs &&
+        (!event.callStatus || terminal.has(event.callStatus)),
+      );
+      if (call) {
+        setPendingCall(null);
+        setDrawer({ rowId: row.id, mode: 'postCall' });
+      }
+    };
+    void check();
+    const id = window.setInterval(() => void check(), 10_000);
+    return () => window.clearInterval(id);
+  }, [pendingCall, boardRows]);
+
+  const startCall = (row: DeskRow) => {
+    if (!row.phoneE164) return;
+    window.postMessage(
+      { type: 'propel:dial', number: row.phoneE164, name: row.name, leadId: row.personId ?? undefined, source: 'my-desk' },
+      window.location.origin,
+    );
+    setPendingCall({ rowId: row.id, startedAtMs: Date.now() });
+    host.notify('Dialer ready — press Call when you are ready.', 'info');
+  };
 
   useEffect(() => {
     cancelledRef.current = false;
@@ -152,11 +188,30 @@ export default function MyDeskHero(_props: { host: PropelHeroHost }) {
               partial={boardPartial}
               nowMs={nowMs}
               stripFilter={stripFilter}
-              // The peek drawer lands in a later task — Task 12 is read-only.
-              onRowClick={() => {}}
+              onRowClick={(row) => setDrawer({ rowId: row.id, mode: 'overview' })}
+              onRowAction={(action, row) => {
+                if (action === 'call' && row.phoneE164) {
+                  startCall(row);
+                  return;
+                }
+                setDrawer({ rowId: row.id, mode: action === 'call' ? 'overview' : action });
+              }}
             />
             <RightRail status={railStatus} rail={rail} error={railError} />
           </div>
+          {drawer && (() => {
+            const row = boardRows.find((candidate) => candidate.id === drawer.rowId);
+            return row ? (
+              <PeekDrawer
+                row={row}
+                mode={drawer.mode}
+                host={host}
+                onClose={() => setDrawer(null)}
+                onStartCall={() => startCall(row)}
+                onRowPatch={(patch) => setBoardRows((current) => current.map((candidate) => candidate.id === row.id ? { ...candidate, ...patch } : candidate))}
+              />
+            ) : null;
+          })()}
         </PulseNocturne>
       </PageContainer>
     </PropelMantineProvider>

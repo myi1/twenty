@@ -18,6 +18,7 @@ import type {
   DeskRow,
   DeskTimelineResponse,
   DeskWaContextResponse,
+  DeskWriteResponse,
 } from './types';
 
 const ROUTE = '/my-desk';
@@ -95,4 +96,22 @@ export const fetchTimeline = (
     laneObject,
     recordId,
     ...(cursor ? { cursor } : {}),
+  });
+
+export const runDeskAction = (
+  action: string,
+  body: Record<string, unknown>,
+): Promise<DeskWriteResponse | null> =>
+  callPropelRoute<DeskWriteResponse>(ROUTE, { action, ...body });
+
+export const sendDeskWhatsApp = (
+  conversationId: string,
+  body: string,
+  templateName?: string,
+): Promise<Record<string, unknown> | null> =>
+  callPropelRoute<Record<string, unknown>>('/marketing/inbox-reply', {
+    id: conversationId,
+    channel: 'WHATSAPP',
+    body,
+    ...(templateName ? { templateName } : {}),
   });
