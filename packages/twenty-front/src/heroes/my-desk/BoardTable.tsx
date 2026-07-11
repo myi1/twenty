@@ -13,7 +13,7 @@
 // would visually distinguish a going-cold row from any other lands in Task 14.
 // Don't preempt that task's diff by inventing band-driven colors here.
 
-import { useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import styled from '@emotion/styled';
 import { IconComment, IconDotsVertical, IconNotes, IconPhone } from 'twenty-ui/display';
 
@@ -162,11 +162,12 @@ const RowEl = styled.div`
   }
 `;
 
-const LastTouch = styled.span`
+const LastTouch = styled.span<{ $hidden: boolean }>`
+  opacity: ${({ $hidden }) => ($hidden ? 0 : 1)};
   transition: opacity ${DUR.tooltip}ms ${EASE.out};
 `;
 
-const ActionTray = styled.div`
+const ActionTray = styled.div<{ $visible: boolean }>`
   position: absolute;
   inset: 0;
   display: flex;
@@ -174,16 +175,10 @@ const ActionTray = styled.div`
   justify-content: flex-end;
   gap: 4px;
   background: var(--p-surface);
-  opacity: 0;
-  pointer-events: none;
-  transform: translate3d(4px, 0, 0);
+  opacity: ${({ $visible }) => ($visible ? 1 : 0)};
+  pointer-events: ${({ $visible }) => ($visible ? 'auto' : 'none')};
+  transform: translate3d(${({ $visible }) => ($visible ? 0 : 4)}px, 0, 0);
   transition: opacity ${DUR.dropdown}ms ${EASE.out}, transform ${DUR.dropdown}ms ${EASE.out};
-  ${RowEl}:hover &,
-  ${RowEl}:focus-within & {
-    opacity: 1;
-    pointer-events: auto;
-    transform: translate3d(0, 0, 0);
-  }
 `;
 
 const RowAction = styled.button`
@@ -291,6 +286,7 @@ export const BoardTable = ({
   onRowAction: (action: 'call' | 'whatsapp' | 'note' | 'more', row: DeskRow) => void;
 }) => {
   const [laneFilter, setLaneFilter] = useState<LaneFilter>('all');
+  const [actionRowId, setActionRowId] = useState<string | null>(null);
   const [colWidths, setColWidths] = useState<(string | null)[]>(() => COL_DEFAULTS.map(() => null));
   const [tooltip, setTooltip] = useState<TooltipState>(null);
   const headerCellRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -392,6 +388,12 @@ export const BoardTable = ({
       return;
     }
     onRowClick(row);
+  };
+
+  const handleRowBlur = (event: ReactFocusEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      setActionRowId(null);
+    }
   };
 
   return (
@@ -511,6 +513,10 @@ export const BoardTable = ({
             <RowEl
               key={row.id}
               style={{ gridTemplateColumns: colsTemplate, minWidth: TABLE_MIN_WIDTH }}
+              onMouseEnter={() => setActionRowId(row.id)}
+              onMouseLeave={() => setActionRowId(null)}
+              onFocus={() => setActionRowId(row.id)}
+              onBlur={handleRowBlur}
               onClick={() => handleRowClick(row)}
             >
               <div
@@ -625,6 +631,7 @@ export const BoardTable = ({
                   never bleed into the next-action copy. */}
               <div style={{ textAlign: 'right', minWidth: 0, position: 'relative', height: 28, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
                 <LastTouch
+                  $hidden={actionRowId === row.id}
                   style={{
                     fontFamily: FONT_MONO,
                     fontSize: 11.5,
@@ -634,7 +641,7 @@ export const BoardTable = ({
                 >
                   {formatRelative(row.lastTouchAt) ?? 'no touch yet'}
                 </LastTouch>
-                <ActionTray>
+                <ActionTray $visible={actionRowId === row.id}>
                   <RowAction
                     type="button"
                     aria-label={`Call ${row.name}`}
