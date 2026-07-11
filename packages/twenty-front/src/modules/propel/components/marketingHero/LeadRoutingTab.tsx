@@ -15,7 +15,7 @@ import {
   Text,
   Title,
 } from '@mantine/core';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   IconAlertTriangle,
   IconArrowsSplit2,
@@ -28,6 +28,8 @@ import {
   type LeadConfigRow,
 } from '@/propel/types/leadRouting';
 import { friendlyError } from '@/propel/lib/friendlyError';
+import { callPropelRoute } from '@/propel/lib/callPropelRoute';
+import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { useLeadRoutingConfig } from '@/propel/hooks/useLeadRoutingConfig';
 
 // Lead Routing tab of the unified Marketing hero (Lead Engine S3) — manager/admin
@@ -42,6 +44,114 @@ import { useLeadRoutingConfig } from '@/propel/hooks/useLeadRoutingConfig';
 
 const toStringArray = (raw: unknown): string[] =>
   Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : [];
+
+// ── Comment-thread ownership (comment-inbox-gate follow-up, 2026-07-11) ──────────
+// Who owns an incoming FB/IG comment thread the moment it lands in the Inbox. The
+// founder-editable setting lives on the leadRoutingConfig singleton
+// (commentThreadOwnerId) behind the existing Manager/Admin-gated
+// /settings/automation-config route — this card is just a picker over it.
+// UNASSIGNED (the default) = the thread lands unowned and waits in the Inbox
+// needs-triage bucket until a human takes it.
+
+const UNASSIGNED = '__UNASSIGNED__';
+
+type SettingsConfigResponse = {
+  ok?: boolean;
+  configs?: { leadRouting?: { commentThreadOwnerId?: string | null } | null };
+  members?: { id: string; name: string }[];
+  canEdit?: boolean;
+  error?: string;
+  operatorAction?: string;
+};
+
+const CommentThreadOwnerCard = () => {
+  const notify = usePropelToast();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [canEdit, setCanEdit] = useState(false);
+  const [ownerId, setOwnerId] = useState<string | null>(null);
+  const [members, setMembers] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    let alive = true;
+    void callPropelRoute<SettingsConfigResponse>(
+      '/settings/automation-config',
+      {},
+    ).then((res) => {
+      if (!alive) return;
+      setLoading(false);
+      if (!res?.ok) return; // soft-fail: the card renders read-only defaults
+      setCanEdit(Boolean(res.canEdit));
+      setMembers(res.members ?? []);
+      setOwnerId(res.configs?.leadRouting?.commentThreadOwnerId ?? null);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const save = async (next: string | null) => {
+    const prev = ownerId;
+    setOwnerId(next); // optimistic
+    setSaving(true);
+    const res = await callPropelRoute<SettingsConfigResponse>(
+      '/settings/automation-config',
+      { save: { group: 'leadRouting', patch: { commentThreadOwnerId: next } } },
+    );
+    setSaving(false);
+    if (res?.ok) {
+      notify(
+        next === null
+          ? 'New comment threads will wait in Needs triage until someone takes them.'
+          : 'New comment threads will go straight to the person you picked.',
+        'success',
+      );
+    } else {
+      setOwnerId(prev); // revert
+      notify(
+        res?.operatorAction ||
+          friendlyError(res?.error ?? 'Could not save the setting.', 'save'),
+        'error',
+      );
+    }
+  };
+
+  const options = [
+    { value: UNASSIGNED, label: 'Needs triage (nobody yet)' },
+    ...members.map((m) => ({ value: m.id, label: m.name })),
+  ];
+
+  return (
+    <Paper withBorder p="md" radius="md" mb="md">
+      <Group justify="space-between" align="flex-end" wrap="wrap" gap="md">
+        <Box maw={520}>
+          <Text fw={600} size="sm">
+            New comment threads go to
+          </Text>
+          <Text c="dimmed" size="xs" mt={2}>
+            When someone comments on a Facebook or Instagram post, the comment
+            lands in the Inbox as a thread. Choose who owns it right away — or
+            leave it in Needs triage so nothing is assigned until a person
+            reviews it. Comments never create contacts or leads on their own.
+          </Text>
+        </Box>
+        <Select
+          data={options}
+          value={ownerId ?? UNASSIGNED}
+          disabled={loading || saving || !canEdit}
+          allowDeselect={false}
+          checkIconPosition="right"
+          searchable
+          w={260}
+          onChange={(v) => {
+            if (v === null) return;
+            void save(v === UNASSIGNED ? null : v);
+          }}
+        />
+      </Group>
+    </Paper>
+  );
+};
 
 export const LeadRoutingTab = () => {
   const {
@@ -196,6 +306,8 @@ export const LeadRoutingTab = () => {
           Refresh
         </Button>
       </Group>
+
+      <CommentThreadOwnerCard />
 
       {error ? (
         <Alert
