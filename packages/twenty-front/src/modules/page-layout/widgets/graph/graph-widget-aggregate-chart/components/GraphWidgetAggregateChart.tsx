@@ -37,9 +37,15 @@ const StyledTrendIconContainer = styled.div`
   justify-content: center;
 `;
 
+// PROPEL-NOCTURNE PATCH (Tier B) — re-apply on Twenty upgrade.
+// KPI/aggregate tile figures render as gold tabular Plex (DESIGN.md §4 KPI
+// tiles): mono code family + strongest gold token, hairline-first chrome.
 const StyledH1TitleWrapper = styled.div`
   > h2 {
+    color: ${themeCssVariables.color.gold11};
+    font-family: ${themeCssVariables.code.font.family};
     font-size: ${themeCssVariables.font.size.xxl};
+    font-variant-numeric: tabular-nums;
     margin: 0;
   }
 `;

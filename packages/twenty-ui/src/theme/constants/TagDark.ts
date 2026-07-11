@@ -5,11 +5,14 @@ export const TAG_DARK = {
     gray: COLOR_DARK.gray11,
     mauve: COLOR_DARK.mauve11,
     slate: COLOR_DARK.slate11,
-    sage: COLOR_DARK.sage11,
+    // PROPEL-NOCTURNE PATCH (Tier B) — warm semantic set (DESIGN.md §2.1):
+    // sage #7F9B6E = good/won, amber #D8B14E = warn, red -> terracotta
+    // #C7513B = bad.
+    sage: 'color(display-p3 0.498 0.608 0.431)',
     olive: COLOR_DARK.olive11,
     sand: COLOR_DARK.sand11,
     tomato: COLOR_DARK.tomato11,
-    red: COLOR_DARK.red11,
+    red: 'color(display-p3 0.78 0.318 0.231)',
     ruby: COLOR_DARK.ruby11,
     crimson: COLOR_DARK.crimson11,
     pink: COLOR_DARK.pink11,
@@ -30,18 +33,19 @@ export const TAG_DARK = {
     gold: COLOR_DARK.gold11,
     brown: COLOR_DARK.brown11,
     orange: COLOR_DARK.orange11,
-    amber: COLOR_DARK.amber11,
+    amber: 'color(display-p3 0.847 0.694 0.306)',
     yellow: COLOR_DARK.yellow11,
   },
   background: {
     gray: COLOR_DARK.gray3,
     mauve: COLOR_DARK.mauve3,
     slate: COLOR_DARK.slate3,
-    sage: COLOR_DARK.sage3,
+    // PROPEL-NOCTURNE PATCH (Tier B) — soft washes of the warm semantic set.
+    sage: 'color(display-p3 0.498 0.608 0.431 / 0.14)',
     olive: COLOR_DARK.olive3,
     sand: COLOR_DARK.sand3,
     tomato: COLOR_DARK.tomato3,
-    red: COLOR_DARK.red3,
+    red: 'color(display-p3 0.78 0.318 0.231 / 0.14)',
     ruby: COLOR_DARK.ruby3,
     crimson: COLOR_DARK.crimson3,
     pink: COLOR_DARK.pink3,
@@ -62,7 +66,7 @@ export const TAG_DARK = {
     gold: COLOR_DARK.gold3,
     brown: COLOR_DARK.brown3,
     orange: COLOR_DARK.orange3,
-    amber: COLOR_DARK.amber3,
+    amber: 'color(display-p3 0.847 0.694 0.306 / 0.14)',
     yellow: COLOR_DARK.yellow3,
   },
 };

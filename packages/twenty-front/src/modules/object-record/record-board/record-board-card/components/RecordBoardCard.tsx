@@ -17,6 +17,7 @@ import { RECORD_BOARD_CARD_CLICK_OUTSIDE_ID } from '@/object-record/record-board
 import { RECORD_BOARD_CARD_INPUT_ID_PREFIX } from '@/object-record/record-board/record-board-card/constants/RecordBoardCardInputIdPrefix';
 import { RecordBoardCardComponentInstanceContext } from '@/object-record/record-board/record-board-card/states/contexts/RecordBoardCardComponentInstanceContext';
 import { recordBoardCardIsExpandedComponentState } from '@/object-record/record-board/record-board-card/states/recordBoardCardIsExpandedComponentState';
+import { RecordBoardColumnContext } from '@/object-record/record-board/record-board-column/contexts/RecordBoardColumnContext';
 import { RecordBoardComponentInstanceContext } from '@/object-record/record-board/states/contexts/RecordBoardComponentInstanceContext';
 import { RecordCard } from '@/object-record/record-card/components/RecordCard';
 import { isRecordIdPrimaryDragMultipleComponentFamilyState } from '@/object-record/record-drag/states/isRecordIdPrimaryDragMultipleComponentFamilyState';
@@ -48,10 +49,40 @@ const StyledBoardCardWrapper = styled.div`
   width: 100%;
 `;
 
+// PROPEL-NOCTURNE PATCH (Tier B) — re-apply on Twenty upgrade.
+// Maps the kanban column's group color onto the 3px stage-bar semantic
+// (DESIGN.md §4): sage = won-path, blue = new, muted = nurture/no-group,
+// brass = active (everything in-flight). Consumed by RecordCard's
+// --propel-stage-bar-color pseudo-element.
+const getStageBarColor = (groupColor: string): string => {
+  switch (groupColor) {
+    case 'green':
+    case 'grass':
+    case 'jade':
+    case 'mint':
+    case 'lime':
+    case 'sage':
+    case 'turquoise':
+      return themeCssVariables.tag.text.sage;
+    case 'blue':
+    case 'sky':
+    case 'cyan':
+      return themeCssVariables.tag.text.blue;
+    case 'gray':
+    case 'transparent':
+      return themeCssVariables.border.color.strong;
+    default:
+      return themeCssVariables.accent.accent9;
+  }
+};
+
 export const RecordBoardCard = () => {
   const { recordId, rowIndex, columnIndex } = useContext(
     RecordBoardCardContext,
   );
+
+  // PROPEL-NOCTURNE PATCH (Tier B) — stage-bar semantic from the column.
+  const { columnDefinition } = useContext(RecordBoardColumnContext);
 
   const recordBoardId = useAvailableComponentInstanceIdOrThrow(
     RecordBoardComponentInstanceContext,
@@ -164,6 +195,13 @@ export const RecordBoardCard = () => {
           >
             {isRecordIdPrimaryDragMultiple && <RecordBoardCardMultiDragStack />}
             <RecordCard
+              style={
+                {
+                  '--propel-stage-bar-color': getStageBarColor(
+                    columnDefinition?.color ?? 'transparent',
+                  ),
+                } as React.CSSProperties
+              }
               data-selected={isRecordBoardCardSelected}
               data-focused={isRecordBoardCardFocused}
               data-active={isRecordBoardCardActive}
