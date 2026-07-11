@@ -16,6 +16,7 @@ import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import { formatAed } from '@/propel/lib/formatMoney';
 import { DUR, EASE, RADIUS, SPACE, Z } from '~/heroes/_pulse/pulse-tokens';
 import { FONT_MONO, P, PulseFonts, PulseScope } from '~/heroes/_pulse/pulse';
+import { compactFilterLabel } from './filterLabels';
 import { quarterCutoffIso } from './handover';
 import type { OffplanBrowseFilters, OffplanMapPoint } from './types';
 
@@ -258,6 +259,9 @@ function BarPopover({
 // instrument row. Mantine's searchable MultiSelect normally reserves a 100px
 // input after selected pills, which wraps and grows the control vertically.
 // Collapse that search field's minimum and keep the pill group on one line.
+// Individual pills are hidden: the searchable input's placeholder carries one
+// compact summary ("Emaar Properties +2") while the dropdown keeps full
+// multi-select behaviour and checkmarks.
 const selectInput = {
   fontFamily: 'inherit',
   fontSize: 12.5,
@@ -280,7 +284,7 @@ const MULTI_STYLES = {
     paddingBottom: 2,
   },
   pillsList: { flexWrap: 'nowrap', overflow: 'hidden', height: '100%' },
-  pill: { minWidth: 0, maxWidth: '100%' },
+  pill: { display: 'none' },
   inputField: { minWidth: 8 },
 } as const;
 
@@ -565,13 +569,13 @@ export function OffplanFilters({
       <>
         <Field>
           <FieldLabel>District</FieldLabel>
-          <MultiSelect placeholder={filters.districtIds.length === 0 ? 'All districts' : undefined} data={districtOptions} value={filters.districtIds}
+          <MultiSelect placeholder={compactFilterLabel(districtOptions, filters.districtIds, 'All districts')} data={districtOptions} value={filters.districtIds}
             onChange={(v) => onChange({ districtIds: v })} searchable clearable size="xs"
             styles={MULTI_STYLES} {...w(170)} />
         </Field>
         <Field>
           <FieldLabel>Developer</FieldLabel>
-          <MultiSelect placeholder={filters.developerSlugs.length === 0 ? 'All developers' : undefined} data={developerOptions} value={filters.developerSlugs}
+          <MultiSelect placeholder={compactFilterLabel(developerOptions, filters.developerSlugs, 'All developers')} data={developerOptions} value={filters.developerSlugs}
             onChange={(v) => onChange({ developerSlugs: v })} searchable clearable size="xs"
             styles={MULTI_STYLES} {...w(220)} />
         </Field>
