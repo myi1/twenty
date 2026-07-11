@@ -7,7 +7,6 @@ import {
   Group,
   Loader,
   Paper,
-  RingProgress,
   SimpleGrid,
   Stack,
   Switch,
@@ -27,20 +26,17 @@ import {
   IconExternalLink,
   IconInfoCircle,
   IconLoader,
+  IconMinus,
   IconPlus,
   IconRefresh,
   IconSearch,
   IconSparkles,
+  IconSwords,
   IconTarget,
   IconWand,
   IconWorld,
 } from 'twenty-ui/display';
-import {
-  getSeoAiData,
-  type AiVisibilityEngineResult,
-  type AiVisibilityPromptRow,
-  type SeoAiAutomationToggles,
-} from '@/propel/mocks/websiteMockData';
+import { getSeoAiData, type SeoAiAutomationToggles } from '@/propel/mocks/websiteMockData';
 import {
   DEFAULT_SEO_BASE_URL,
   relativeScanAge,
@@ -48,37 +44,37 @@ import {
   type SeoIssueSeverity,
 } from '@/propel/lib/websiteSeoCrm';
 import { useWebsiteSeo } from '@/propel/hooks/useWebsiteSeo';
+import { useAiVisibility } from '@/propel/hooks/useAiVisibility';
+import {
+  relativeCheckAge,
+  type AiBoardPrompt,
+  type AiDetectedRival,
+  type AiEngine,
+  type AiEngineCell,
+} from '@/propel/lib/aiVisibilityCrm';
+import { friendlyError } from '@/propel/lib/friendlyError';
 
 // Visible build tag (footer) — bump on user-visible fixes so stale-cache
 // debates end with a glance.
-const HERO_UI_BUILD = 'r6-svg';
-
-// Gauge geometry. NOTE Mantine converts px props to rem against a 16px
-// assumption; Twenty's 13px root shrinks everything by 13/16 — 96 renders
-// ~78px. Size chosen so the % label breathes and the stroke stays crisp.
-const GAUGE_SIZE = 96;
-const GAUGE_THICKNESS = 8;
+const HERO_UI_BUILD = 'r7-aivis-real';
 
 // SEO and AI sub-tab of the Website tab (WEBSITE-REBUILD-DESIGN.md §6 "SEO and AI").
 //
-// REAL: the SEO-audit half. "Run audit" hits POST /website/seo-audit (a
-// Manager/Admin-gated CRM logic-function route on develop) via useWebsiteSeo →
-// websiteSeoCrm.ts. The metric rings and issue list are derived purely from what
-// the crawler actually found — no invented scores. "Fix with AI" is surfaced as
-// an HONEST per-issue flag: the route reports whether an automated fix WILL be
-// available, but no remediation endpoint exists yet, so nothing here simulates a
-// fix.
+// REAL: the SEO-audit half hits POST /website/seo-audit (a Manager/Admin-gated
+// CRM route) via useWebsiteSeo → websiteSeoCrm.ts. The metric rings and issue list
+// are derived purely from what the crawler actually found.
 //
-// PREVIEW (mock, clearly labelled): the AI-visibility monitor and the automation
-// toggles. Those depend on a visibility-check route + tracked-prompt store and a
-// config/cron surface that don't exist yet (net-new, gated — see
-// WEBSITE-MARKETING-TAB-PLAN.md R2). They read getSeoAiData() and mutate local
-// state only, marked as previews so a future wiring pass knows exactly what to
-// replace.
+// REAL (net-new): the AI-visibility monitor now queries the search-grounded AI
+// engines (Perplexity / OpenAI web-search / Gemini grounding) via a Manager-gated
+// CRM route and detects whether remaxhub.ae is genuinely cited — replacing the old
+// fake "sample data" preview that misled with a fabricated "✓ Cited". Labelled
+// "Beta · directional" because API answers differ from the ChatGPT app and vary
+// between runs (honest snapshot, not gospel).
+//
+// PREVIEW (still mock, clearly labelled): only the automation toggles below —
+// those depend on config/cron surfaces that don't exist yet.
 
-// Build the real page URL an issue points at, so a row click opens exactly the
-// affected page in a new tab. Tolerates a full URL, a "/path" slug, or a bare
-// asset name (e.g. sitemap.xml) — the audit uses all three shapes.
+// Build the real page URL an issue points at.
 const buildIssuePageUrl = (baseUrl: string, slug: string): string => {
   const s = (slug ?? '').trim();
   if (/^https?:\/\//i.test(s)) return s;
@@ -87,27 +83,21 @@ const buildIssuePageUrl = (baseUrl: string, slug: string): string => {
   return `${b}${path}`;
 };
 
-const SEVERITY_META: Record<
-  SeoIssueSeverity,
-  { color: string; label: string }
-> = {
+const SEVERITY_META: Record<SeoIssueSeverity, { color: string; label: string }> = {
   CRITICAL: { color: 'red', label: 'Critical' },
   WARNING: { color: 'yellow', label: 'Warning' },
   INFO: { color: 'gray', label: 'Info' },
 };
 
-const ENGINE_META: Record<
-  AiVisibilityEngineResult['engine'],
-  { label: string; Icon: typeof IconBrandOpenai }
-> = {
+const ENGINE_META: Record<AiEngine, { label: string; Icon: typeof IconBrandOpenai }> = {
   CHATGPT: { label: 'ChatGPT', Icon: IconBrandOpenai },
   PERPLEXITY: { label: 'Perplexity', Icon: IconSearch },
   GEMINI: { label: 'Gemini', Icon: IconBrandGoogle },
 };
 
-// A ring gauge + label, for the two derived scores at the top of the audit
-// result. Plain Paper per CONVENTIONS.md (not WidgetCard — that shell is for the
-// draggable Home dashboard grid).
+const ENGINE_ORDER: AiEngine[] = ['CHATGPT', 'PERPLEXITY', 'GEMINI'];
+
+// ── SEO audit score/count tiles (unchanged, honest — derived from the crawl) ──
 const ScoreCard = ({
   label,
   valuePct,
@@ -121,15 +111,6 @@ const ScoreCard = ({
 }) => (
   <Paper withBorder radius="md" p="md">
     <Group gap="md" wrap="nowrap" align="center">
-      {/* r6 — SINGLE-SVG gauge. Five rounds of "circles look off" traced to
-          stacking an HTML label OVER a Mantine svg: two rendering systems,
-          every boundary (rem-scaling, zoom, DPR, flex rounding) a chance to
-          drift. Here the track, the arc AND the text share ONE svg coordinate
-          system — the <text> is anchored at the circle's own cx/cy, so ring
-          and label cannot disagree at any zoom or DPI. Optical centering: the
-          digits are the anchored run; the % is a smaller dimmed tspan hung
-          AFTER the anchor with its width ignored, so the eye's target — the
-          number — sits exactly on the ring axis. */}
       <svg
         width={78}
         height={78}
@@ -138,14 +119,7 @@ const ScoreCard = ({
         role="img"
         aria-label={`${label}: ${valuePct}%`}
       >
-        <circle
-          cx={48}
-          cy={48}
-          r={40}
-          fill="none"
-          stroke="var(--mantine-color-dark-4)"
-          strokeWidth={8}
-        />
+        <circle cx={48} cy={48} r={40} fill="none" stroke="var(--mantine-color-dark-4)" strokeWidth={8} />
         {valuePct > 0 ? (
           <circle
             cx={48}
@@ -159,12 +133,6 @@ const ScoreCard = ({
             transform="rotate(-90 48 48)"
           />
         ) : null}
-        {/* text-anchor=middle centers the WHOLE run (digits + % tspan), which
-            re-creates the optical left-shift. dx shifts the run right by half
-            of (gap + %-width) so the DIGITS' center lands exactly on x=48.
-            %-glyph width measured live: 11.05px at 600 11px Inter; gap 1px →
-            dx = 6. Constant because the svg viewBox scales everything
-            uniformly — no zoom/DPR dependence. */}
         <text
           x={48}
           y={48}
@@ -175,11 +143,7 @@ const ScoreCard = ({
           style={{ font: '700 17px/1 Inter, sans-serif', fontVariantNumeric: 'tabular-nums' }}
         >
           {valuePct}
-          <tspan
-            dx={1}
-            style={{ font: '600 11px/1 Inter, sans-serif' }}
-            fill="var(--mantine-color-dimmed)"
-          >
+          <tspan dx={1} style={{ font: '600 11px/1 Inter, sans-serif' }} fill="var(--mantine-color-dimmed)">
             %
           </tspan>
         </text>
@@ -196,7 +160,6 @@ const ScoreCard = ({
   </Paper>
 );
 
-// A plain count tile (crawl issue counts) — no fake percentage.
 const CountCard = ({
   label,
   value,
@@ -223,9 +186,6 @@ const CountCard = ({
   </Paper>
 );
 
-// Honest per-issue "Fix with AI" affordance. The route flags whether an automated
-// fix WILL be available for this issue type, but no remediation endpoint exists
-// yet — so this reports the flag, it never simulates a fix.
 const FixAffordance = ({ issue }: { issue: SeoAuditIssue }) => {
   if (!issue.fixWithAiAvailable) {
     return (
@@ -238,20 +198,21 @@ const FixAffordance = ({ issue }: { issue: SeoAuditIssue }) => {
   }
   return (
     <Tooltip label="An automated AI fix for this issue type is planned but not wired yet.">
-      <Badge
-        size="sm"
-        variant="light"
-        color="grape"
-        leftSection={<IconWand size={12} />}
-      >
+      <Badge size="sm" variant="light" color="grape" leftSection={<IconWand size={12} />}>
         AI-fixable
       </Badge>
     </Tooltip>
   );
 };
 
-// ── Preview: AI visibility monitor (mock, not wired) ─────────────────────────
-const AddPromptRow = ({ onAdd }: { onAdd: (prompt: string) => void }) => {
+// ── AI visibility monitor (REAL) ──────────────────────────────────────────────
+const AddPromptRow = ({
+  onAdd,
+  disabled,
+}: {
+  onAdd: (prompt: string) => void;
+  disabled: boolean;
+}) => {
   const [value, setValue] = useState('');
   const submit = () => {
     const trimmed = value.trim();
@@ -269,13 +230,14 @@ const AddPromptRow = ({ onAdd }: { onAdd: (prompt: string) => void }) => {
         onKeyDown={(e) => {
           if (e.key === 'Enter') submit();
         }}
+        disabled={disabled}
       />
       <Button
         size="sm"
         variant="default"
         leftSection={<IconPlus size={14} />}
         onClick={submit}
-        disabled={value.trim().length === 0}
+        disabled={disabled || value.trim().length === 0}
       >
         Track prompt
       </Button>
@@ -283,66 +245,106 @@ const AddPromptRow = ({ onAdd }: { onAdd: (prompt: string) => void }) => {
   );
 };
 
-const EngineResultCell = ({ result }: { result: AiVisibilityEngineResult }) => {
-  const meta = ENGINE_META[result.engine];
-  if (result.cited) {
+// One engine's status cell — CITED / MENTIONED / NOT_FOUND / never-checked. Never
+// fabricates a "Cited": an unchecked engine reads as a dimmed dash.
+const EngineStatusCell = ({ cell, available }: { cell: AiEngineCell; available: boolean }) => {
+  if (!cell.checked) {
     return (
-      <Group gap={6} wrap="nowrap">
-        <IconCheck size={15} color="var(--mantine-color-teal-6)" />
-        <Text size="xs" c="teal.7" fw={600}>
-          Cited
-        </Text>
-      </Group>
-    );
-  }
-  if (result.rivalCited !== null) {
-    return (
-      <Tooltip label={`${meta.label} cited ${result.rivalCited} instead`}>
+      <Tooltip label={available ? 'Not checked yet' : 'This engine has no API key configured'}>
         <Group gap={6} wrap="nowrap">
-          <IconAlertTriangle size={15} color="var(--mantine-color-orange-6)" />
-          <Text size="xs" c="orange.7" fw={600} truncate maw={110}>
-            Rival: {result.rivalCited}
+          <IconMinus size={15} color="var(--mantine-color-gray-5)" />
+          <Text size="xs" c="dimmed">
+            {available ? 'Not checked' : 'No key'}
           </Text>
         </Group>
       </Tooltip>
     );
   }
-  if (result.mentioned) {
+  if (cell.status === 'CITED') {
     return (
-      <Group gap={6} wrap="nowrap">
-        <IconInfoCircle size={15} color="var(--mantine-color-blue-6)" />
-        <Text size="xs" c="blue.7">
-          Mentioned
-        </Text>
-      </Group>
+      <Tooltip label={cell.ourUrl ? `Cited: ${cell.ourUrl}` : 'remaxhub.ae cited as a source'}>
+        <Group gap={6} wrap="nowrap">
+          <IconCheck size={15} color="var(--mantine-color-teal-6)" />
+          <Text size="xs" c="teal.7" fw={600}>
+            Cited
+          </Text>
+        </Group>
+      </Tooltip>
+    );
+  }
+  if (cell.status === 'MENTIONED') {
+    return (
+      <Tooltip label="RE/MAX Hub is named in the answer, but not cited as a source">
+        <Group gap={6} wrap="nowrap">
+          <IconInfoCircle size={15} color="var(--mantine-color-blue-6)" />
+          <Text size="xs" c="blue.7">
+            Mentioned
+          </Text>
+        </Group>
+      </Tooltip>
     );
   }
   return (
-    <Group gap={6} wrap="nowrap">
-      <IconCircleX size={15} color="var(--mantine-color-gray-5)" />
+    <Tooltip label="remaxhub.ae was neither cited nor named in this answer">
+      <Group gap={6} wrap="nowrap">
+        <IconCircleX size={15} color="var(--mantine-color-gray-5)" />
+        <Text size="xs" c="dimmed">
+          Not found
+        </Text>
+      </Group>
+    </Tooltip>
+  );
+};
+
+// Union of rivals across all engine cells for a prompt (dedupe by domain, a
+// cited detection outranks a text-only mention).
+const mergeRivals = (results: AiEngineCell[]): AiDetectedRival[] => {
+  const byDomain = new Map<string, AiDetectedRival>();
+  for (const cell of results) {
+    for (const r of cell.rivals) {
+      const prev = byDomain.get(r.domain);
+      if (!prev || (r.cited && !prev.cited)) byDomain.set(r.domain, r);
+    }
+  }
+  // cited first, then alphabetical.
+  return [...byDomain.values()].sort((a, b) =>
+    a.cited === b.cited ? a.name.localeCompare(b.name) : a.cited ? -1 : 1,
+  );
+};
+
+const RivalBadges = ({ rivals }: { rivals: AiDetectedRival[] }) => {
+  if (rivals.length === 0) {
+    return (
       <Text size="xs" c="dimmed">
-        Not found
+        No tracked rivals cited.
       </Text>
+    );
+  }
+  return (
+    <Group gap={4} mt={4}>
+      {rivals.map((r) => (
+        <Tooltip
+          key={r.domain}
+          label={r.cited ? `${r.name} cited as a source (${r.domain})` : `${r.name} named in the answer`}
+        >
+          <Badge
+            size="xs"
+            variant={r.cited ? 'filled' : 'light'}
+            color="orange"
+            leftSection={<IconSwords size={10} />}
+          >
+            {r.name}
+          </Badge>
+        </Tooltip>
+      ))}
     </Group>
   );
 };
 
-const AUTOMATION_LABELS: Record<
-  keyof SeoAiAutomationToggles,
-  { label: string; detail: string }
-> = {
-  monthlyDataRefresh: {
-    label: 'Monthly data refresh',
-    detail: 'Re-render area/project pages with fresh DLD data',
-  },
-  aiMetaOnPublish: {
-    label: 'AI meta on publish',
-    detail: 'Auto-generate meta title/description for new pages',
-  },
-  arAutoTranslate: {
-    label: 'AR auto-translate',
-    detail: 'Translate published EN content to Arabic automatically',
-  },
+const AUTOMATION_LABELS: Record<keyof SeoAiAutomationToggles, { label: string; detail: string }> = {
+  monthlyDataRefresh: { label: 'Monthly data refresh', detail: 'Re-render area/project pages with fresh DLD data' },
+  aiMetaOnPublish: { label: 'AI meta on publish', detail: 'Auto-generate meta title/description for new pages' },
+  arAutoTranslate: { label: 'AR auto-translate', detail: 'Translate published EN content to Arabic automatically' },
   sitemapLlmsTxtCurrency: {
     label: 'Sitemap & llms.txt currency',
     detail: 'Keep sitemap.xml and llms.txt in sync with published pages',
@@ -353,10 +355,175 @@ const AUTOMATION_LABELS: Record<
   },
 };
 
+const VisibilityRow = ({
+  row,
+  availByEngine,
+  onRecheck,
+  busy,
+}: {
+  row: AiBoardPrompt;
+  availByEngine: Record<AiEngine, boolean>;
+  onRecheck: (id: string) => void;
+  busy: boolean;
+}) => {
+  const byEngine = Object.fromEntries(row.results.map((r) => [r.engine, r])) as Record<AiEngine, AiEngineCell>;
+  const rivals = mergeRivals(row.results);
+  return (
+    <Table.Tr>
+      <Table.Td>
+        <Text size="sm" fw={500}>
+          {row.prompt}
+        </Text>
+        <RivalBadges rivals={rivals} />
+      </Table.Td>
+      {ENGINE_ORDER.map((engine) => {
+        const cell =
+          byEngine[engine] ??
+          ({ engine, checked: false, status: null, ourUrl: null, rivals: [], checkedAt: null } as AiEngineCell);
+        return (
+          <Table.Td key={engine}>
+            <EngineStatusCell cell={cell} available={availByEngine[engine] ?? true} />
+          </Table.Td>
+        );
+      })}
+      <Table.Td>
+        <Text size="xs" c="dimmed">
+          {relativeCheckAge(row.lastCheckedAt)}
+        </Text>
+      </Table.Td>
+      <Table.Td>
+        <Tooltip label="Re-run this prompt against the engines now">
+          <Button
+            size="compact-xs"
+            variant="subtle"
+            color="gray"
+            leftSection={<IconRefresh size={12} />}
+            onClick={() => onRecheck(row.id)}
+            disabled={busy}
+          >
+            Re-check
+          </Button>
+        </Tooltip>
+      </Table.Td>
+    </Table.Tr>
+  );
+};
+
+const AiVisibilityPanel = () => {
+  const { phase, error, data, reload, busy, actionError, clearActionError, addPrompt, recheck } = useAiVisibility();
+
+  const availByEngine = {
+    CHATGPT: true,
+    PERPLEXITY: true,
+    GEMINI: true,
+  } as Record<AiEngine, boolean>;
+  for (const e of data?.engines ?? []) availByEngine[e.engine] = e.available;
+  const unavailable = (data?.engines ?? []).filter((e) => !e.available);
+
+  return (
+    <Paper withBorder radius="md" p="md" mb="lg">
+      <Group justify="space-between" align="flex-start" mb="sm" wrap="nowrap">
+        <Group gap={8}>
+          <IconSparkles size={16} />
+          <Title order={5}>AI visibility monitor</Title>
+        </Group>
+        <Group gap="xs" wrap="nowrap">
+          <Tooltip label="Live API answers can differ from the ChatGPT app and vary between runs — treat this as a directional scoreboard, not gospel.">
+            <Badge color="orange" variant="light" size="xs">
+              Beta · directional
+            </Badge>
+          </Tooltip>
+          <Button
+            size="compact-xs"
+            variant="light"
+            color="grape"
+            leftSection={<IconRefresh size={12} />}
+            loading={busy}
+            onClick={() => void recheck()}
+            disabled={phase !== 'ready'}
+          >
+            Re-check all
+          </Button>
+        </Group>
+      </Group>
+
+      <Text c="dimmed" size="sm" mb="sm">
+        Buyer prompts run against ChatGPT, Perplexity and Gemini to see whether{' '}
+        <Text span fw={600}>
+          remaxhub.ae
+        </Text>{' '}
+        is cited — and which rivals are cited instead. These are real, search-grounded API answers; they can differ
+        from the ChatGPT app and shift run-to-run, so read the grid as a snapshot, not a verdict.
+      </Text>
+
+      {unavailable.length > 0 ? (
+        <Alert color="gray" variant="light" icon={<IconInfoCircle size={16} />} mb="md">
+          {unavailable.map((e) => `${ENGINE_META[e.engine].label} (needs ${e.missingEnv})`).join(', ')} not configured —
+          that column stays "No key" until the API key is set.
+        </Alert>
+      ) : null}
+
+      {actionError ? (
+        <Alert
+          color="red"
+          variant="light"
+          icon={<IconAlertTriangle size={16} />}
+          mb="md"
+          withCloseButton
+          onClose={clearActionError}
+        >
+          {friendlyError(actionError, 'generic')}
+        </Alert>
+      ) : null}
+
+      <Box mb="md">
+        <AddPromptRow onAdd={(p) => void addPrompt(p)} disabled={busy} />
+      </Box>
+
+      {phase === 'error' ? (
+        <Alert color="red" variant="light" icon={<IconAlertTriangle size={16} />} title="Couldn't load the monitor">
+          <Stack gap="sm" align="flex-start">
+            <Text size="sm">{error ? friendlyError(error, 'load') : 'Unknown error.'}</Text>
+            <Button size="compact-sm" variant="light" color="red" leftSection={<IconRefresh size={13} />} onClick={reload}>
+              Retry
+            </Button>
+          </Stack>
+        </Alert>
+      ) : phase === 'loading' ? (
+        <Center h={140}>
+          <Loader color="grape" />
+        </Center>
+      ) : (data?.prompts.length ?? 0) === 0 ? (
+        <Text c="dimmed" size="sm">
+          No prompts tracked yet. Add a buyer prompt above (e.g. "best real estate agency in Dubai for off-plan
+          investment") to see whether AI engines cite remaxhub.ae.
+        </Text>
+      ) : (
+        <Table.ScrollContainer minWidth={720}>
+          <Table verticalSpacing="sm" horizontalSpacing="md" layout="auto">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Prompt &amp; rivals cited</Table.Th>
+                <Table.Th w={120}>ChatGPT</Table.Th>
+                <Table.Th w={120}>Perplexity</Table.Th>
+                <Table.Th w={120}>Gemini</Table.Th>
+                <Table.Th w={90}>Checked</Table.Th>
+                <Table.Th w={110} />
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {(data?.prompts ?? []).map((row) => (
+                <VisibilityRow key={row.id} row={row} availByEngine={availByEngine} onRecheck={(id) => void recheck(id)} busy={busy} />
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      )}
+    </Paper>
+  );
+};
+
 export const SeoAiTab = () => {
-  // ── Real SEO audit ──────────────────────────────────────────────────────────
-  // `baseUrlInput` is what the user is typing; `target` is the committed URL the
-  // hook crawls (a live crawl runs on mount + when the target changes / Retry).
   const [baseUrlInput, setBaseUrlInput] = useState(DEFAULT_SEO_BASE_URL);
   const [target, setTarget] = useState(DEFAULT_SEO_BASE_URL);
   const { phase, error, data, reload } = useWebsiteSeo(target);
@@ -368,41 +535,10 @@ export const SeoAiTab = () => {
     else setTarget(next);
   };
 
-  // ── Preview: AI-visibility monitor + automations (mock, local state only) ────
-  const [{ visibilityPrompts, automation }, setPreview] = useState(() => {
-    const seed = getSeoAiData();
-    return {
-      visibilityPrompts: seed.visibilityPrompts,
-      automation: seed.automation,
-    };
-  });
-
-  // PREVIEW STUB: appends a "not checked yet" row — no engine is queried. A real
-  // wiring pass replaces this with a tracked-prompt store + visibility-check job.
-  const handleAddPrompt = (prompt: string) => {
-    const newRow: AiVisibilityPromptRow = {
-      id: `prompt-${Date.now()}`,
-      prompt,
-      lastCheckedLabel: 'Not checked yet',
-      results: [
-        { engine: 'CHATGPT', mentioned: false, cited: false, rivalCited: null },
-        { engine: 'PERPLEXITY', mentioned: false, cited: false, rivalCited: null },
-        { engine: 'GEMINI', mentioned: false, cited: false, rivalCited: null },
-      ],
-    };
-    setPreview((prev) => ({
-      ...prev,
-      visibilityPrompts: [newRow, ...prev.visibilityPrompts],
-    }));
-  };
-
-  // PREVIEW STUB: local toggle flip only — no automation job is wired yet.
-  const handleToggleAutomation = (key: keyof SeoAiAutomationToggles) => {
-    setPreview((prev) => ({
-      ...prev,
-      automation: { ...prev.automation, [key]: !prev.automation[key] },
-    }));
-  };
+  // Automations preview stays mock (out of scope; separate config/cron surface).
+  const [automation, setAutomation] = useState<SeoAiAutomationToggles>(() => getSeoAiData().automation);
+  const handleToggleAutomation = (key: keyof SeoAiAutomationToggles) =>
+    setAutomation((prev) => ({ ...prev, [key]: !prev[key] }));
 
   return (
     <Box p="md">
@@ -433,9 +569,7 @@ export const SeoAiTab = () => {
             size="xs"
             color="red"
             mt={20}
-            leftSection={
-              phase === 'loading' ? undefined : <IconRefresh size={14} />
-            }
+            leftSection={phase === 'loading' ? undefined : <IconRefresh size={14} />}
             loading={phase === 'loading'}
             onClick={runAudit}
           >
@@ -446,22 +580,10 @@ export const SeoAiTab = () => {
 
       {/* ── Real SEO audit result ── */}
       {phase === 'error' ? (
-        <Alert
-          color="red"
-          icon={<IconAlertTriangle size={16} />}
-          variant="light"
-          mb="lg"
-          title="Couldn't run the SEO audit"
-        >
+        <Alert color="red" icon={<IconAlertTriangle size={16} />} variant="light" mb="lg" title="Couldn't run the SEO audit">
           <Stack gap="sm" align="flex-start">
             <Text size="sm">{error}</Text>
-            <Button
-              size="compact-sm"
-              variant="light"
-              color="red"
-              leftSection={<IconRefresh size={13} />}
-              onClick={reload}
-            >
+            <Button size="compact-sm" variant="light" color="red" leftSection={<IconRefresh size={13} />} onClick={reload}>
               Retry
             </Button>
           </Stack>
@@ -483,18 +605,8 @@ export const SeoAiTab = () => {
                   : `${data.pagesWithIssues} of ${data.pagesAudited} pages have issues`
               }
             />
-            <ScoreCard
-              label="AI readiness"
-              valuePct={data.aiReadinessPct}
-              color="grape"
-              detail="Pages carrying JSON-LD structured data"
-            />
-            <CountCard
-              label="Critical issues"
-              value={data.criticalCount}
-              color="red"
-              detail="Missing structured data, etc."
-            />
+            <ScoreCard label="AI readiness" valuePct={data.aiReadinessPct} color="grape" detail="Pages carrying JSON-LD structured data" />
+            <CountCard label="Critical issues" value={data.criticalCount} color="red" detail="Missing structured data, etc." />
             <CountCard
               label="Warnings"
               value={data.warningCount}
@@ -504,25 +616,16 @@ export const SeoAiTab = () => {
           </SimpleGrid>
 
           <Text size="xs" c="dimmed" mb="lg">
-            Crawled {data.pagesReachable} of {data.pagesAudited} representative
-            pages on {data.baseUrl}
+            Crawled {data.pagesReachable} of {data.pagesAudited} representative pages on {data.baseUrl}
             {data.scannedAt ? ` · ${relativeScanAge(data.scannedAt)}` : ''}.
-            {/* Build stamp — settles "am I on the new bundle?" instantly.
-                Bump HERO_UI_BUILD on visible UI fixes. */}
             {' · ui '}
             {HERO_UI_BUILD}
           </Text>
 
           {data.pagesUnreachable > 0 ? (
-            <Alert
-              color="yellow"
-              variant="light"
-              icon={<IconAlertTriangle size={16} />}
-              mb="lg"
-            >
-              {data.pagesUnreachable} of {data.pagesAudited} pages could not be
-              crawled — they may not be deployed yet at {data.baseUrl}. Each is
-              listed below as an info-level issue.
+            <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={16} />} mb="lg">
+              {data.pagesUnreachable} of {data.pagesAudited} pages could not be crawled — they may not be deployed yet at{' '}
+              {data.baseUrl}. Each is listed below as an info-level issue.
             </Alert>
           ) : null}
 
@@ -556,9 +659,7 @@ export const SeoAiTab = () => {
                       <Table.Tr
                         key={issue.id}
                         style={{ cursor: 'pointer' }}
-                        onClick={() =>
-                          window.open(pageUrl, '_blank', 'noopener,noreferrer')
-                        }
+                        onClick={() => window.open(pageUrl, '_blank', 'noopener,noreferrer')}
                       >
                         <Table.Td>
                           <Badge size="sm" variant="light" color={sev.color}>
@@ -579,10 +680,7 @@ export const SeoAiTab = () => {
                               <Text size="xs" ff="monospace" c="dimmed" truncate maw={180}>
                                 {issue.pageSlug}
                               </Text>
-                              <IconExternalLink
-                                size={13}
-                                style={{ color: 'var(--mantine-color-dimmed)', flexShrink: 0 }}
-                              />
+                              <IconExternalLink size={13} style={{ color: 'var(--mantine-color-dimmed)', flexShrink: 0 }} />
                             </Group>
                           </Tooltip>
                         </Table.Td>
@@ -599,69 +697,8 @@ export const SeoAiTab = () => {
         </>
       ) : null}
 
-      {/* ── Preview: AI visibility monitor (no backend yet) ── */}
-      <Paper withBorder radius="md" p="md" mb="lg">
-        <Group justify="space-between" align="flex-start" mb="sm" wrap="nowrap">
-          <Group gap={8}>
-            <IconSparkles size={16} />
-            <Title order={5}>AI visibility monitor</Title>
-          </Group>
-          <Badge color="gray" variant="light" size="xs">
-            Preview
-          </Badge>
-        </Group>
-        <Text c="dimmed" size="sm" mb="sm">
-          Preview of the tracked-prompt monitor: buyer prompts checked against
-          ChatGPT, Perplexity, and Gemini for a remaxhub.ae mention or citation.
-          Not wired to a live checker yet — rows and results below are sample data
-          and reset on reload.
-        </Text>
-        <Box mb="md">
-          <AddPromptRow onAdd={handleAddPrompt} />
-        </Box>
-        <Table verticalSpacing="sm" horizontalSpacing="md" layout="auto">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Prompt</Table.Th>
-              <Table.Th w={130}>ChatGPT</Table.Th>
-              <Table.Th w={130}>Perplexity</Table.Th>
-              <Table.Th w={130}>Gemini</Table.Th>
-              <Table.Th w={110}>Last checked</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {visibilityPrompts.map((row) => {
-              const byEngine = Object.fromEntries(
-                row.results.map((r) => [r.engine, r]),
-              ) as Record<
-                AiVisibilityEngineResult['engine'],
-                AiVisibilityEngineResult
-              >;
-              return (
-                <Table.Tr key={row.id}>
-                  <Table.Td>
-                    <Text size="sm">{row.prompt}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <EngineResultCell result={byEngine.CHATGPT} />
-                  </Table.Td>
-                  <Table.Td>
-                    <EngineResultCell result={byEngine.PERPLEXITY} />
-                  </Table.Td>
-                  <Table.Td>
-                    <EngineResultCell result={byEngine.GEMINI} />
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="xs" c="dimmed">
-                      {row.lastCheckedLabel}
-                    </Text>
-                  </Table.Td>
-                </Table.Tr>
-              );
-            })}
-          </Table.Tbody>
-        </Table>
-      </Paper>
+      {/* ── AI visibility monitor (REAL) ── */}
+      <AiVisibilityPanel />
 
       {/* ── Preview: automations (no backend yet) ── */}
       <Paper withBorder radius="md" p="md">
@@ -675,34 +712,26 @@ export const SeoAiTab = () => {
           </Badge>
         </Group>
         <Text c="dimmed" size="sm" mb="md">
-          Preview of the automation controls — toggle state is local only and
-          resets on reload. None of these is wired to a real job yet (each needs a
-          gated cron logic-function).
+          Preview of the automation controls — toggle state is local only and resets on reload. None of these is wired
+          to a real job yet (each needs a gated cron logic-function).
         </Text>
         <Stack gap="sm">
-          {(Object.keys(AUTOMATION_LABELS) as (keyof SeoAiAutomationToggles)[]).map(
-            (key) => {
-              const meta = AUTOMATION_LABELS[key];
-              return (
-                <Group key={key} justify="space-between" wrap="nowrap">
-                  <Box style={{ minWidth: 0 }}>
-                    <Text size="sm" fw={600}>
-                      {meta.label}
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      {meta.detail}
-                    </Text>
-                  </Box>
-                  <Switch
-                    color="red"
-                    checked={automation[key]}
-                    onChange={() => handleToggleAutomation(key)}
-                    aria-label={meta.label}
-                  />
-                </Group>
-              );
-            },
-          )}
+          {(Object.keys(AUTOMATION_LABELS) as (keyof SeoAiAutomationToggles)[]).map((key) => {
+            const meta = AUTOMATION_LABELS[key];
+            return (
+              <Group key={key} justify="space-between" wrap="nowrap">
+                <Box style={{ minWidth: 0 }}>
+                  <Text size="sm" fw={600}>
+                    {meta.label}
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    {meta.detail}
+                  </Text>
+                </Box>
+                <Switch color="red" checked={automation[key]} onChange={() => handleToggleAutomation(key)} aria-label={meta.label} />
+              </Group>
+            );
+          })}
         </Stack>
       </Paper>
     </Box>

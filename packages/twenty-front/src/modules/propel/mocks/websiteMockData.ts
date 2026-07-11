@@ -574,19 +574,10 @@ export interface SeoIssueRow {
   fixWithAiAvailable: boolean;
 }
 
-export interface AiVisibilityEngineResult {
-  engine: 'CHATGPT' | 'PERPLEXITY' | 'GEMINI';
-  mentioned: boolean;
-  cited: boolean;
-  rivalCited: string | null; // rival domain if a competitor was cited instead
-}
-
-export interface AiVisibilityPromptRow {
-  id: string;
-  prompt: string;
-  lastCheckedLabel: string;
-  results: AiVisibilityEngineResult[];
-}
+// NOTE: the AI-visibility monitor is now REAL — it queries the search-grounded AI
+// engines via the CRM route (aiVisibilityCrm.ts / useAiVisibility). The former
+// fake `AiVisibilityPromptRow` / `AiVisibilityEngineResult` / `mockAiVisibilityPrompts`
+// were removed (they rendered a fabricated "✓ Cited" that misled the founder).
 
 export interface SeoAiScores {
   seoHealthPct: number;
@@ -646,43 +637,9 @@ const mockSeoIssues: SeoIssueRow[] = [
   },
 ];
 
-const mockAiVisibilityPrompts: AiVisibilityPromptRow[] = [
-  {
-    id: 'prompt-1',
-    prompt: 'best real estate agency in Dubai for off-plan investment',
-    lastCheckedLabel: '6h ago',
-    results: [
-      { engine: 'CHATGPT', mentioned: true, cited: true, rivalCited: null },
-      { engine: 'PERPLEXITY', mentioned: true, cited: false, rivalCited: 'bayut.com' },
-      { engine: 'GEMINI', mentioned: false, cited: false, rivalCited: 'propertyfinder.ae' },
-    ],
-  },
-  {
-    id: 'prompt-2',
-    prompt: 'how does the UAE golden visa work through real estate',
-    lastCheckedLabel: '6h ago',
-    results: [
-      { engine: 'CHATGPT', mentioned: false, cited: false, rivalCited: null },
-      { engine: 'PERPLEXITY', mentioned: true, cited: true, rivalCited: null },
-      { engine: 'GEMINI', mentioned: false, cited: false, rivalCited: null },
-    ],
-  },
-  {
-    id: 'prompt-3',
-    prompt: 'Dubai Marina vs JBR which is better to buy',
-    lastCheckedLabel: '1d ago',
-    results: [
-      { engine: 'CHATGPT', mentioned: false, cited: false, rivalCited: 'bayut.com' },
-      { engine: 'PERPLEXITY', mentioned: false, cited: false, rivalCited: 'bayut.com' },
-      { engine: 'GEMINI', mentioned: false, cited: false, rivalCited: null },
-    ],
-  },
-];
-
 export const getSeoAiData = (): {
   scores: SeoAiScores;
   issues: SeoIssueRow[];
-  visibilityPrompts: AiVisibilityPromptRow[];
   automation: SeoAiAutomationToggles;
 } => ({
   scores: {
@@ -692,7 +649,6 @@ export const getSeoAiData = (): {
     citationCount: 9,
   },
   issues: mockSeoIssues,
-  visibilityPrompts: mockAiVisibilityPrompts,
   automation: {
     monthlyDataRefresh: true,
     aiMetaOnPublish: true,
