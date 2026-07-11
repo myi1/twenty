@@ -52,7 +52,16 @@ export type OffplanMapPoint = {
   developerSlug: string | null;
   heroImageUrl?: string | null;
 };
-export type OffplanMapPointsResult = { points: OffplanMapPoint[]; total: number };
+// Paged shape from /v1/map/points when { offset, limit } are sent. nextOffset +
+// hasMore drive the hero's page loop (the CRM proxy's IPC response channel drops
+// payloads > ~64KB, so the ~550KB set is pulled in bounded pages). nextOffset/
+// hasMore are optional so the unpaged whole-set response still type-checks.
+export type OffplanMapPointsResult = {
+  points: OffplanMapPoint[];
+  total: number;
+  nextOffset?: number;
+  hasMore?: boolean;
+};
 
 // Full project detail from /offplan/browse { action:'projectDetail' } →
 // geniemap POST /v1/projects/detail. Deliberately separate from the lean
