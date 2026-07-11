@@ -23,7 +23,7 @@ import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { type PropelHeroHost } from '@/propel/runtime/heroHost';
 
-import { RADIUS, SPACE } from '../_pulse/pulse-tokens';
+import { SPACE } from '../_pulse/pulse-tokens';
 import {
   FONT_DISPLAY,
   FONT_MONO,
@@ -35,6 +35,13 @@ import {
 } from '../_pulse/pulse';
 
 import { fetchBoard, fetchRail } from './deskApi';
+import {
+  formatAedTotal,
+  formatClock,
+  formatRelative,
+  friendlyError,
+} from './format';
+import { SkeletonBar, SkeletonStack, Text } from './shared';
 import type {
   DeskRailResponse,
   DeskRow,
@@ -47,61 +54,18 @@ import type {
 // `{ ok: false; error }` envelope so panel code never has to re-check `ok`.
 type DeskRailOk = Extract<DeskRailResponse, { ok: true }>;
 
-// ── Small formatting helpers (data formatting, not design tokens) ───────────
+// Skeleton bar heights, matched to the REAL rows they stand in for (a BoardRow
+// renders at ≈56px, a RailItem block at ≈40px) so the loading→loaded swap
+// doesn't shift the layout.
+const BOARD_ROW_HEIGHT = 56;
+const RAIL_ITEM_HEIGHT = 40;
 
-const friendlyError = (raw: string): string =>
-  raw === 'NOT_AUTHENTICATED'
-    ? 'You need to sign in again to load this.'
-    : "Couldn't load this — try refreshing the page.";
-
-const formatClock = (iso: string | null): string | null => {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-};
-
-const formatRelative = (iso: string | null): string | null => {
-  if (!iso) return null;
-  const ms = Date.parse(iso);
-  if (Number.isNaN(ms)) return null;
-  const diff = Date.now() - ms;
-  if (diff < 0) return 'just now';
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-};
-
-const formatAedTotal = (totalAed: number): string => {
-  if (totalAed >= 1_000_000) return `AED ${(totalAed / 1_000_000).toFixed(1)}M`;
-  if (totalAed >= 1_000) return `AED ${Math.round(totalAed / 1_000)}K`;
-  return `AED ${totalAed}`;
-};
-
-// ── Skeletons — fixed heights so nothing jumps when real content lands ──────
-
-const SkeletonBar = ({ height }: { height: number }) => (
-  <div
-    style={{
-      height,
-      borderRadius: RADIUS.sm,
-      background: 'var(--p-surface-2)',
-      opacity: 0.6,
-    }}
-  />
-);
-
-const SkeletonStack = ({ rows, height }: { rows: number; height: number }) => (
-  <div style={{ display: 'flex', flexDirection: 'column', gap: SPACE[2] }}>
-    {Array.from({ length: rows }, (_, i) => (
-      <SkeletonBar key={i} height={height} />
-    ))}
-  </div>
-);
+// Reserves a KpiTile text line's height while its content is still unknown —
+// without it the strip tiles grow when data lands (KpiTile omits the delta
+// line entirely for an undefined delta, and pulse.tsx is shared/untouchable).
+// The value is a NON-BREAKING space (U+00A0) — a plain space would
+// whitespace-collapse into a zero-height line and reserve nothing.
+const LINE_PLACEHOLDER = ' ';
 
 // ── Today Strip — 4 KPI tiles laid over a 1px --p-line grid (DESIGN.md §4) ──
 
@@ -167,11 +131,17 @@ const TodayStrip = ({
       {(stats ?? Array.from({ length: 4 })).map((stat, i) => (
         <KpiTile
           key={stat ? stat.label : i}
-          label={stat ? stat.label : ' '}
+          label={stat ? stat.label : LINE_PLACEHOLDER}
           figure={
             status === 'error' ? '—' : stat ? stat.figure : <SkeletonBar height={27} />
           }
-          delta={status === 'error' ? "Couldn't load" : stat?.hint}
+          delta={
+            status === 'error'
+              ? "Couldn't load"
+              : stat
+                ? stat.hint
+                : LINE_PLACEHOLDER
+          }
           deltaTone={stat?.deltaTone ?? 'flat'}
           style={{ borderRadius: 0 }}
         />
@@ -187,10 +157,13 @@ const BoardList = ({
   status,
   rows,
   error,
+  partial,
 }: {
   status: 'loading' | 'ready' | 'error';
   rows: DeskRow[];
   error: string | null;
+  /** Later pages failed after some rows already landed — keep them on screen. */
+  partial: boolean;
 }) => {
   const totalValue = rows.reduce((sum, r) => sum + (r.valueAed ?? 0), 0);
 
@@ -227,16 +200,27 @@ const BoardList = ({
         {status === 'error' && (
           <Text muted>{friendlyError(error ?? 'DESK_LOAD_FAILED')}</Text>
         )}
-        {status === 'loading' && <SkeletonStack rows={7} height={52} />}
+        {status === 'loading' && (
+          <SkeletonStack rows={7} height={BOARD_ROW_HEIGHT} />
+        )}
         {status === 'ready' && rows.length === 0 && (
           <Text muted>Nothing needs you right now — all replies are on time.</Text>
         )}
         {status === 'ready' && rows.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: 'var(--p-line)' }}>
-            {rows.map((row) => (
-              <BoardRow key={row.id} row={row} />
-            ))}
-          </div>
+          <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: 'var(--p-line)' }}>
+              {rows.map((row) => (
+                <BoardRow key={row.id} row={row} />
+              ))}
+            </div>
+            {partial && (
+              <div style={{ paddingTop: SPACE[3] }}>
+                <Text muted>
+                  Couldn't load the rest — showing what arrived.
+                </Text>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -300,7 +284,7 @@ const RailPanelShell = ({
         <span style={{ fontFamily: FONT_MONO, fontSize: 11, color: P.ink2 }}>{count}</span>
       )}
     </div>
-    {status === 'loading' && <SkeletonStack rows={2} height={40} />}
+    {status === 'loading' && <SkeletonStack rows={2} height={RAIL_ITEM_HEIGHT} />}
     {status === 'error' && <Text muted>{friendlyError(error ?? 'DESK_LOAD_FAILED')}</Text>}
     {status === 'ready' && count === 0 && <Text muted>{emptyLabel}</Text>}
     {status === 'ready' && count !== null && count > 0 && children}
@@ -314,10 +298,6 @@ const RailItem = ({ title, subtitle }: { title: string; subtitle: string | null 
       <div style={{ fontFamily: FONT_UI, fontSize: 11, color: P.ink2, marginTop: 2 }}>{subtitle}</div>
     )}
   </div>
-);
-
-const Text = ({ muted, children }: { muted?: boolean; children: ReactNode }) => (
-  <div style={{ fontFamily: FONT_UI, fontSize: 12.5, color: muted ? P.ink2 : P.ink }}>{children}</div>
 );
 
 const taskSubtitle = (t: DeskTaskItem): string | null => {
@@ -408,6 +388,10 @@ export default function MyDeskHero(_props: { host: PropelHeroHost }) {
   const [boardStatus, setBoardStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [boardRows, setBoardRows] = useState<DeskRow[]>([]);
   const [boardError, setBoardError] = useState<string | null>(null);
+  // A later page failed AFTER rows were already painted — keep them on screen
+  // (BoardList renders an inline "showing what arrived" line instead of an
+  // error state that would erase the rows the agent is already looking at).
+  const [boardPartial, setBoardPartial] = useState(false);
 
   const [railStatus, setRailStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [rail, setRail] = useState<DeskRailOk | null>(null);
@@ -419,13 +403,22 @@ export default function MyDeskHero(_props: { host: PropelHeroHost }) {
     cancelledRef.current = false;
 
     // Board — fails ALONE (a rail outage must never blank the opportunities list).
+    // Tracks how many rows made it on screen so a MID-SEQUENCE failure (page 2+,
+    // incl. deskApi's stuck-cursor/page-cap bails) degrades to a partial board
+    // instead of erasing rows the agent is already reading.
+    let boardRowsReceived = 0;
     fetchBoard((rows) => {
       if (cancelledRef.current) return;
+      boardRowsReceived = rows.length;
       setBoardRows(rows);
       setBoardStatus('ready');
     })
       .catch((err: unknown) => {
         if (cancelledRef.current) return;
+        if (boardRowsReceived > 0) {
+          setBoardPartial(true); // keep the painted rows; flag the gap inline
+          return;
+        }
         setBoardStatus('error');
         setBoardError(err instanceof Error ? err.message : 'DESK_LOAD_FAILED');
       });
@@ -476,7 +469,12 @@ export default function MyDeskHero(_props: { host: PropelHeroHost }) {
         >
           <TodayStrip status={railStatus} rail={rail} />
           <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-            <BoardList status={boardStatus} rows={boardRows} error={boardError} />
+            <BoardList
+              status={boardStatus}
+              rows={boardRows}
+              error={boardError}
+              partial={boardPartial}
+            />
             <RailRegion status={railStatus} rail={rail} error={railError} />
           </div>
         </PulseNocturne>

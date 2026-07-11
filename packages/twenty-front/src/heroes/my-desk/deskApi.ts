@@ -22,18 +22,28 @@ import type {
 
 const ROUTE = '/my-desk';
 
+// Paging safety rails: the loop must terminate even against a misbehaving
+// server. A non-advancing nextCursor (the same value echoed back) would
+// otherwise spin forever; MAX_BOARD_PAGES caps a runaway-but-advancing
+// sequence (40 pages × 50 rows = a 2,000-row desk — far past any real
+// personal book).
+const MAX_BOARD_PAGES = 40;
+
 /**
  * Pages through the board (route caps each page at 50 rows / 25 per lane — the
  * 64KB IPC ceiling gotcha — so a real book needs several round-trips). `onPage`
  * is called with the growing accumulator after every page lands, so the caller
  * can paint rows as they arrive instead of showing a blank desk until the last
- * page resolves.
+ * page resolves. Throws on any failure — including a stuck/runaway cursor —
+ * AFTER the pages that did land were already delivered via `onPage`, so the
+ * caller can keep the partial board on screen and flag the gap.
  */
 export const fetchBoard = async (
   onPage: (rows: DeskRow[]) => void,
 ): Promise<DeskRow[]> => {
   const all: DeskRow[] = [];
   let cursor: string | null = null;
+  let pages = 0;
   do {
     const page: DeskBoardResponse | null = await callPropelRoute<DeskBoardResponse>(ROUTE, {
       action: 'board',
@@ -47,7 +57,16 @@ export const fetchBoard = async (
     }
     all.push(...page.rows);
     onPage(all); // stream pages into the table — no blank desk while later pages load
+    pages += 1;
+    const previousCursor: string | null = cursor;
     cursor = page.nextCursor;
+    if (cursor !== null && cursor === previousCursor) {
+      // Server echoed the cursor back unchanged — bail instead of looping forever.
+      throw new Error('DESK_PAGING_STUCK');
+    }
+    if (cursor !== null && pages >= MAX_BOARD_PAGES) {
+      throw new Error('DESK_PAGING_OVERFLOW');
+    }
   } while (cursor);
   return all;
 };
