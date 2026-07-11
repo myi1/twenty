@@ -1,5 +1,6 @@
 import styled from '@emotion/styled';
 import { PULSE_RED } from '@/propel/lib/socialCalendarConfig';
+import { MOTION_VARS } from '~/heroes/_pulse/motion';
 
 // react-big-calendar's base stylesheet (layout/positioning). Imported once here,
 // at the calendar boundary — Twenty has no global rbc CSS. Propel overrides below
@@ -14,8 +15,7 @@ import 'react-big-calendar/lib/addons/dragAndDrop/styles.css';
 // light + dark. Status pill treatments follow spec §7; motion follows §15
 // (transform/opacity only, shared easing family).
 export const StyledSocialCalendarShell = styled.div`
-  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
-  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  ${MOTION_VARS}
   --pulse-red: ${PULSE_RED};
   --pulse-red-soft: color-mix(in srgb, var(--pulse-red) 12%, transparent);
 

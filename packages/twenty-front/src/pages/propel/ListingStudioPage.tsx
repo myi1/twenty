@@ -26,6 +26,7 @@ import {
   STUDIO_STEP_META,
 } from '@/propel/lib/listingStudioConfig';
 import { type SaveState } from '@/propel/hooks/useListingStudioDraft';
+import { EASE } from '~/heroes/_pulse/motion';
 
 // The graduated Listing Studio hero (lane #9, slice S2 = the SHELL). Rides Twenty's
 // DefaultLayout (nav + top bar from the router <Outlet/>); this page owns the
@@ -46,8 +47,6 @@ const SAVE_LABEL: Record<SaveState, string> = {
   saved: 'Saved',
   error: "Couldn't save",
 };
-
-const EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)';
 
 export const ListingStudioPage = () => {
   const resumable = useResumableDraft();
@@ -159,7 +158,7 @@ export const ListingStudioPage = () => {
               style={{
                 flex: 1,
                 minWidth: 0,
-                animation: `studioStepIn 240ms ${EASE_OUT}`,
+                animation: `studioStepIn 240ms ${EASE.out}`,
               }}
             >
               <StudioStepBody
