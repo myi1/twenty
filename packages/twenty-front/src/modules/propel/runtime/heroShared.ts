@@ -40,7 +40,10 @@ import * as TwentyUiThemeConstants from 'twenty-ui/theme-constants';
 
 // ── host-internal modules (shimmed so hero SOURCE stays unchanged) ────────────
 import { getTokenPair } from '@/apollo/utils/getTokenPair';
-import { callPropelRoute } from '@/propel/lib/callPropelRoute';
+import {
+  callPropelRoute,
+  callPropelRouteWithStatus,
+} from '@/propel/lib/callPropelRoute';
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { useSnackBar } from '@/ui/feedback/snack-bar-manager/hooks/useSnackBar';
@@ -69,7 +72,7 @@ const SHARED: Record<string, unknown> = {
   // host-internal (named-export modules wrapped so the generated shim re-exports
   // the SAME function/value the host uses)
   '@/apollo/utils/getTokenPair': { getTokenPair },
-  '@/propel/lib/callPropelRoute': { callPropelRoute },
+  '@/propel/lib/callPropelRoute': { callPropelRoute, callPropelRouteWithStatus },
   '@/ui/layout/page/components/PageContainer': { PageContainer },
   '@/ui/layout/page/components/PageHeader': { PageHeader },
   '@/ui/feedback/snack-bar-manager/hooks/useSnackBar': { useSnackBar },
