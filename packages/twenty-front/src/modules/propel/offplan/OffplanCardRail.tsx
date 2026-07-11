@@ -2,10 +2,10 @@ import { ScrollArea, Card, Text, Group, Badge, Button, Box, Anchor } from '@mant
 import { useEffect, useRef } from 'react';
 import { OffplanHeroImage } from './OffplanHeroImage';
 import { isoToQuarterLabel } from './handover';
+import { formatAed } from '@/propel/lib/formatMoney';
 import type { OffplanMapPoint } from './types';
 
 const WINDOW = 60; // cap DOM cards (no virtualization lib available)
-const aed = (n: number | null) => (n == null ? '—' : `AED ${Math.round(n).toLocaleString('en-US')}`);
 
 export function OffplanCardRail({
   visible, total, hoveredId, onHover, onOpen, onShortlist, onPitch, onOpenDeveloper,
@@ -58,7 +58,7 @@ export function OffplanCardRail({
                     {' · '}{p.districtName}
                   </Text>
                   <Group gap="md" mt={6}>
-                    <Text fw={700} size="sm" c="red">from {aed(p.priceFromAed)}</Text>
+                    <Text fw={700} size="sm" c="red">{formatAed(p.priceFromAed, { from: true }) ?? 'Price on request'}</Text>
                     {p.unitCount > 0 && <Text size="xs" c="dimmed">{p.unitCount} units</Text>}
                     {p.handover && <Text size="xs" c="dimmed">Handover {isoToQuarterLabel(p.handover)}</Text>}
                   </Group>

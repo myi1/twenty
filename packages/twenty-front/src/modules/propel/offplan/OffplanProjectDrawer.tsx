@@ -14,6 +14,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
+import { formatAed } from '@/propel/lib/formatMoney';
 import { OffplanHeroImage } from './OffplanHeroImage';
 import { isoToQuarterLabel } from './handover';
 import type {
@@ -26,8 +27,10 @@ import type {
 
 const BRASS = '#d4af37';
 
-const aed = (n: number | null | undefined) =>
-  n == null ? null : `AED ${Math.round(n).toLocaleString('en-US')}`;
+// Scannable rounded AED (shared standard). Off-plan figures are estimates
+// (many unit "prices" are derived pricePerSqft × size upstream), so we never
+// show a fake-exact to-the-dirham number in this client-facing drawer.
+const aed = (n: number | null | undefined) => formatAed(n);
 
 type TabKey = 'overview' | 'payment' | 'area' | 'units' | 'documents' | 'amenities';
 
@@ -106,9 +109,9 @@ export function OffplanProjectDrawer({
   const description = detail?.description ?? detail?.developer?.description ?? null;
   const hasOverview = !!detail && (!!description || overviewFacts.length > 0);
 
-  const estCommissionK =
+  const estCommissionAed =
     detail?.commissionMinPct != null && fromPrice != null
-      ? Math.round((fromPrice * detail.commissionMinPct) / 100 / 1000)
+      ? (fromPrice * detail.commissionMinPct) / 100
       : null;
 
   // First tab with content — never land on an empty "Units (0)".
@@ -262,7 +265,7 @@ export function OffplanProjectDrawer({
 
             {hasUnits && (
               <Tabs.Panel value="units" pt="md">
-                <Text size="xs" c="dimmed" mb="xs">Tap a unit to anchor the pitch.</Text>
+                <Text size="xs" c="dimmed" mb="xs">Prices are estimates (price/sqft × size). Tap a unit to anchor the pitch.</Text>
                 <Table striped highlightOnHover verticalSpacing={6}>
                   <Table.Thead>
                     <Table.Tr>
@@ -276,7 +279,7 @@ export function OffplanProjectDrawer({
                         <Table.Td><Text size="sm">{u.floor ? `${u.floor}·` : ''}{u.number ?? u.layoutName}</Text></Table.Td>
                         <Table.Td><Text size="sm">{u.layoutName}</Text></Table.Td>
                         <Table.Td ta="right"><Text size="sm">{Math.round(u.squareFt)} sqft</Text></Table.Td>
-                        <Table.Td ta="right"><Text size="sm" fw={600}>{aed(u.price)}</Text></Table.Td>
+                        <Table.Td ta="right"><Text size="sm" fw={600}>{formatAed(u.price, { approx: true }) ?? '—'}</Text></Table.Td>
                         <Table.Td>{u.status === 'available' && <Badge color="green" size="xs">avail</Badge>}</Table.Td>
                       </Table.Tr>
                     ))}
@@ -316,10 +319,10 @@ export function OffplanProjectDrawer({
         px="md" py="sm"
         style={{ borderTop: '1px solid var(--mantine-color-default-border)', background: 'var(--mantine-color-body)' }}
       >
-        {estCommissionK != null ? (
+        {estCommissionAed != null ? (
           <Box>
             <Text size="10px" c="dimmed" tt="uppercase" fw={600} style={{ letterSpacing: 0.4 }}>Est. commission</Text>
-            <Text size="sm" fw={800} style={{ color: BRASS }}>~AED {estCommissionK.toLocaleString('en-US')}k</Text>
+            <Text size="sm" fw={800} style={{ color: BRASS }}>{formatAed(estCommissionAed, { approx: true })}</Text>
           </Box>
         ) : (
           <Text size="xs" c="dimmed">Commission shown when available</Text>

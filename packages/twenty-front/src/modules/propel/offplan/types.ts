@@ -171,6 +171,10 @@ export type OffplanBrowseFilters = {
   handoverBeforeIso?: string;
   developerSlugs: string[];
   newLaunchOnly: boolean;
+  // "Available stock" toggle. Signal is unitCount on the point feed — MANY off-plan
+  // projects genuinely carry unitCount:0 (real source data: sold out / not yet
+  // released), so stockedOnly ⇒ keep only unitCount > 0.
+  stockedOnly: boolean;
   projectIdAllowlist?: Set<number>; // set when a unit-level (beds) filter is active
 };
 export type MarkerMode = 'district' | 'project';

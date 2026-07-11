@@ -6,7 +6,7 @@ const pt = (o: Partial<OffplanMapPoint> = {}): OffplanMapPoint => ({
   priceFromAed: 498000, unitCount: 14, isLaunch: false, status: 'available',
   handover: '2027-10-02', developerName: 'OKSA', developerSlug: 'oksa', ...o,
 });
-const base: OffplanBrowseFilters = { q: '', districtIds: [], developerSlugs: [], newLaunchOnly: false };
+const base: OffplanBrowseFilters = { q: '', districtIds: [], developerSlugs: [], newLaunchOnly: false, stockedOnly: false };
 
 describe('applyFilters', () => {
   it('filters by price-from range', () => {
@@ -18,6 +18,12 @@ describe('applyFilters', () => {
     expect(applyFilters([pt({ externalId: 1, isLaunch: true }), pt({ externalId: 2, isLaunch: false })], { ...base, newLaunchOnly: true }).map((p) => p.externalId)).toEqual([1]);
     expect(applyFilters([pt({ externalId: 1, handover: '2026-05-01' }), pt({ externalId: 2, handover: '2028-01-01' })], { ...base, handoverBeforeIso: '2027-10-01' }).map((p) => p.externalId)).toEqual([1]);
     expect(applyFilters([pt({ externalId: 1, developerSlug: 'oksa' }), pt({ externalId: 2, developerSlug: 'emaar' })], { ...base, developerSlugs: ['emaar'] }).map((p) => p.externalId)).toEqual([2]);
+  });
+  it('stockedOnly keeps only projects with unitCount > 0', () => {
+    const out = applyFilters([pt({ externalId: 1, unitCount: 0 }), pt({ externalId: 2, unitCount: 14 })], { ...base, stockedOnly: true });
+    expect(out.map((p) => p.externalId)).toEqual([2]);
+    // off ⇒ both pass
+    expect(applyFilters([pt({ externalId: 1, unitCount: 0 }), pt({ externalId: 2, unitCount: 14 })], base).map((p) => p.externalId)).toEqual([1, 2]);
   });
   it('filters by text over name/developer/district and by projectId allowlist', () => {
     expect(applyFilters([pt({ externalId: 1, name: 'Aristo' }), pt({ externalId: 2, name: 'Zeta' })], { ...base, q: 'zet' }).map((p) => p.externalId)).toEqual([2]);

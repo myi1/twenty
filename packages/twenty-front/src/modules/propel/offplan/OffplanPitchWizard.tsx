@@ -26,6 +26,7 @@ import {
   IconX,
 } from 'twenty-ui/display';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
+import { formatAed } from '@/propel/lib/formatMoney';
 import { OffplanHeroImage } from './OffplanHeroImage';
 import {
   WA_MESSAGE_MAX,
@@ -79,8 +80,8 @@ const SECTION_LABELS: Record<keyof PitchSections, string> = {
 const LANGUAGES = ['English', 'Arabic', 'Russian', 'Hindi', 'Chinese'];
 const CURRENCIES = ['AED', 'USD', 'EUR', 'GBP'];
 
-const aed = (n: number | null | undefined) =>
-  n == null ? '—' : `AED ${Math.round(n).toLocaleString('en-US')}`;
+// Scannable rounded AED (shared standard) — off-plan from-prices are estimates.
+const aed = (n: number | null | undefined) => formatAed(n) ?? '—';
 
 const Thumb = ({ point, w, h }: { point?: OffplanMapPoint; w: number; h: number }) => (
   <OffplanHeroImage src={point?.heroImageUrl} w={w} h={h} radius="sm" alt={point?.name} />

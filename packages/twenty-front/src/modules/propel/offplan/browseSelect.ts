@@ -10,6 +10,7 @@ export function applyFilters(points: OffplanMapPoint[], f: OffplanBrowseFilters)
     if (f.districtIds.length && !f.districtIds.includes(p.districtId)) return false;
     if (f.developerSlugs.length && (p.developerSlug == null || !f.developerSlugs.includes(p.developerSlug))) return false;
     if (f.newLaunchOnly && !p.isLaunch) return false;
+    if (f.stockedOnly && !(p.unitCount > 0)) return false;
     if (f.handoverBeforeIso && (p.handover == null || p.handover >= f.handoverBeforeIso)) return false;
     if (f.projectIdAllowlist && !f.projectIdAllowlist.has(p.externalId)) return false;
     if (needle) {

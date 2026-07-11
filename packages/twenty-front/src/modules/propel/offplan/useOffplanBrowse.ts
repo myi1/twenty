@@ -4,7 +4,7 @@ import { useOffplanMapData } from './useOffplanMapData';
 import { applyFilters, selectVisibleProjects } from './browseSelect';
 import type { OffplanBrowseFilters, MapBounds, OffplanSearchResult, RouteEnvelope } from './types';
 
-const EMPTY_FILTERS: OffplanBrowseFilters = { q: '', districtIds: [], developerSlugs: [], newLaunchOnly: false };
+const EMPTY_FILTERS: OffplanBrowseFilters = { q: '', districtIds: [], developerSlugs: [], newLaunchOnly: false, stockedOnly: false };
 
 export function useOffplanBrowse() {
   const { points, byId, clusters, loading, error } = useOffplanMapData();

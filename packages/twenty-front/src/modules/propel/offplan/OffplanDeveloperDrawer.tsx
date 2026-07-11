@@ -11,11 +11,12 @@ import {
   Text,
 } from '@mantine/core';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
+import { formatAed } from '@/propel/lib/formatMoney';
 import { isoToQuarterLabel } from './handover';
 import type { OffplanDeveloperDetail, RouteEnvelope } from './types';
 
-const aed = (n: number | null | undefined) =>
-  n == null ? '—' : `AED ${Math.round(n).toLocaleString('en-US')}`;
+// Scannable rounded AED (shared standard) — portfolio from-prices are estimates.
+const aed = (n: number | null | undefined) => formatAed(n) ?? '—';
 
 export function OffplanDeveloperDrawer({
   slug,

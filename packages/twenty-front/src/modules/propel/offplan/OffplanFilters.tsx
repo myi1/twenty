@@ -114,6 +114,9 @@ export function OffplanFilters({
         <Select placeholder="Beds" data={[{ value: '0', label: 'Studio' }, { value: '1', label: '1 BR' }, { value: '2', label: '2 BR' }, { value: '3', label: '3+ BR' }]}
           onChange={(v) => onBedChange(v == null ? undefined : Number(v), undefined)} maw={110} clearable />
         <Switch label="New launches" checked={filters.newLaunchOnly} onChange={(e) => onChange({ newLaunchOnly: e.currentTarget.checked })} />
+        <Tooltip label="Only projects with available units (hides sold-out / not-yet-released)">
+          <Switch label="Available stock" checked={filters.stockedOnly} onChange={(e) => onChange({ stockedOnly: e.currentTarget.checked })} />
+        </Tooltip>
       </Group>
       <Group gap="xs" mt={8} align="center">
         <Text size="xs" c="dimmed">Price</Text>
