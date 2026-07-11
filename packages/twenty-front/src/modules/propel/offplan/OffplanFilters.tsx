@@ -539,7 +539,7 @@ export function OffplanFilters({
   };
 
   const searchField = (
-    <Field style={{ flex: 1, minWidth: 170 }}>
+    <Field style={{ flex: '0 1 620px', minWidth: 320, maxWidth: 620 }}>
       <FieldLabel>Search</FieldLabel>
       <TextInput
         placeholder="Search project, developer or area…"
@@ -571,23 +571,23 @@ export function OffplanFilters({
           <FieldLabel>District</FieldLabel>
           <MultiSelect placeholder={compactFilterLabel(districtOptions, filters.districtIds, 'All districts')} data={districtOptions} value={filters.districtIds}
             onChange={(v) => onChange({ districtIds: v })} searchable clearable size="xs"
-            styles={MULTI_STYLES} {...w(170)} />
+            styles={MULTI_STYLES} {...w(200)} />
         </Field>
         <Field>
           <FieldLabel>Developer</FieldLabel>
           <MultiSelect placeholder={compactFilterLabel(developerOptions, filters.developerSlugs, 'All developers')} data={developerOptions} value={filters.developerSlugs}
             onChange={(v) => onChange({ developerSlugs: v })} searchable clearable size="xs"
-            styles={MULTI_STYLES} {...w(220)} />
+            styles={MULTI_STYLES} {...w(320)} />
         </Field>
         <Field>
           <FieldLabel>Handover</FieldLabel>
           <Select placeholder="Any date" data={HANDOVER_OPTS} value={handoverValue}
-            onChange={setHandover} clearable size="xs" styles={SELECT_STYLES} {...w(130)} />
+            onChange={setHandover} clearable size="xs" styles={SELECT_STYLES} {...w(150)} />
         </Field>
         <Field>
           <FieldLabel>Beds</FieldLabel>
           <Select placeholder="Any" data={BED_OPTS} value={bedsValue}
-            onChange={setBeds} clearable size="xs" styles={SELECT_STYLES} {...w(inPanel ? 132 : 110)} />
+            onChange={setBeds} clearable size="xs" styles={SELECT_STYLES} {...w(inPanel ? 132 : 120)} />
         </Field>
       </>
     );
@@ -694,16 +694,15 @@ export function OffplanFilters({
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: SPACE[2] }}>
-          <Group gap={SPACE[3]} wrap="nowrap" align="flex-end">
+          <Group gap={SPACE[2]} wrap="nowrap" align="flex-end">
             {searchField}
+            <Group gap={SPACE[2]} wrap="nowrap">{chips}</Group>
+            <div style={{ flex: 1 }} />
             {clearCluster}
           </Group>
           <Group gap={SPACE[2]} wrap="nowrap" align="flex-end">
             {selectFields(false)}
             {priceControl}
-            {/* hairline seam between the filter group and the toggle chips */}
-            <div style={{ width: 1, height: CONTROL_H, background: P.line, margin: `0 ${SPACE[1]}px` }} />
-            {chips}
           </Group>
         </div>
       )}
