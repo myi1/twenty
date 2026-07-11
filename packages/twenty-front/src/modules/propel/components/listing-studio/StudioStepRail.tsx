@@ -5,6 +5,7 @@ import {
   stepIndex,
 } from '@/propel/lib/listingStudioConfig';
 import { type StudioStep } from '@/propel/types/listingStudio';
+import { EASE } from '~/heroes/_pulse/motion';
 
 // The left step rail (lane spec §6) — the 6-step state machine's view. The rail
 // never re-mounts (spec §16 "Frame & rail"); only the active marker + the
@@ -12,11 +13,10 @@ import { type StudioStep } from '@/propel/types/listingStudio';
 // check; the current step is ringed; future steps are dimmed. Clicking a visited
 // step jumps back to it (forward jumps are gated by the parent — Next advances).
 //
-// Motion: the spec's `--ease-out` on transform/opacity only; instant for the
-// number→check swap behind opacity (we keep it CSS-cheap and reduced-motion-safe
-// — opacity/color survive prefers-reduced-motion).
-
-const EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)';
+// Motion: the shared EASE.out (heroes/_pulse/motion — DESIGN.md §2.6) on
+// transform/opacity only; instant for the number→check swap behind opacity
+// (we keep it CSS-cheap and reduced-motion-safe — opacity/color survive
+// prefers-reduced-motion).
 
 export const StudioStepRail = ({
   current,
@@ -60,7 +60,7 @@ export const StudioStepRail = ({
               background: isCurrent
                 ? 'var(--mantine-color-red-light, rgba(225,29,46,0.08))'
                 : 'transparent',
-              transition: `background 200ms ${EASE_OUT}, opacity 200ms ${EASE_OUT}`,
+              transition: `background 200ms ${EASE.out}, opacity 200ms ${EASE.out}`,
             }}
           >
             {/* Step marker: number until done, then a check (crossfade via opacity). */}
@@ -83,7 +83,7 @@ export const StudioStepRail = ({
                 background: isDone
                   ? 'var(--mantine-color-red-6, #e11d2e)'
                   : 'transparent',
-                transition: `background 200ms ${EASE_OUT}, border-color 200ms ${EASE_OUT}`,
+                transition: `background 200ms ${EASE.out}, border-color 200ms ${EASE.out}`,
               }}
             >
               <Text
@@ -95,7 +95,7 @@ export const StudioStepRail = ({
                   color: isCurrent
                     ? 'var(--mantine-color-red-6, #e11d2e)'
                     : 'var(--mantine-color-dimmed)',
-                  transition: `opacity 160ms ${EASE_OUT}`,
+                  transition: `opacity 160ms ${EASE.out}`,
                 }}
               >
                 {idx + 1}
@@ -106,7 +106,7 @@ export const StudioStepRail = ({
                   display: 'flex',
                   opacity: isDone ? 1 : 0,
                   color: '#fff',
-                  transition: `opacity 160ms ${EASE_OUT}`,
+                  transition: `opacity 160ms ${EASE.out}`,
                 }}
               >
                 <IconCheck size={13} />

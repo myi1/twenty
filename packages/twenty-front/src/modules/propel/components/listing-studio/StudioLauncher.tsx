@@ -23,6 +23,7 @@ import {
   type StudioDraft,
   type StudioPropertyOption,
 } from '@/propel/types/listingStudio';
+import { EASE } from '~/heroes/_pulse/motion';
 
 // The launcher / entry screen (lane spec §4 item 1). Two entry points:
 //   A — New from documents (blank draft).
@@ -30,8 +31,6 @@ import {
 // Plus, if a local draft exists, a "Resume" card (spec §4 item 11).
 //
 // Choosing an entry hands back up to the page, which opens the Studio shell.
-
-const EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)';
 
 const EntryCard = ({
   icon,
@@ -55,7 +54,7 @@ const EntryCard = ({
     style={{
       cursor: disabled ? 'default' : 'pointer',
       opacity: disabled ? 0.6 : 1,
-      transition: `transform 160ms ${EASE_OUT}, border-color 160ms ${EASE_OUT}`,
+      transition: `transform 160ms ${EASE.out}, border-color 160ms ${EASE.out}`,
     }}
     onClick={disabled ? undefined : onClick}
   >

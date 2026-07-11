@@ -4,6 +4,7 @@
 import styled from '@emotion/styled';
 import { motion } from 'framer-motion';
 import { FAILED_FILL, PULSE_RED } from '@/propel/lib/socialCalendarConfig';
+import { EASE } from '~/heroes/_pulse/motion';
 
 // Styling for the post-detail drawer (S2). All colors read Twenty's `--mantine-*`
 // bridge tokens (via PropelMantineProvider) so the panel matches the CRM in light
@@ -35,7 +36,7 @@ export const StyledDrawerBackdrop = styled.div`
 // The sliding panel. Width caps on small viewports. Internal scroll on the body
 // only; header + footer pinned.
 export const StyledDrawerPanel = styled.div`
-  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-out: ${EASE.out};
   --failed-fill: ${FAILED_FILL};
   --pulse-red: ${PULSE_RED};
 

@@ -18,6 +18,7 @@ import {
   type SocialNetwork,
   type SocialPostStatus,
 } from '@/propel/types/socialCalendar';
+import { EASE } from '~/heroes/_pulse/motion';
 
 // Visual language for the Social Posting Calendar hero. Single source of truth
 // for channel colors/icons (§7) and status tints, plus the §15 motion tokens so
@@ -99,10 +100,12 @@ export const primaryChannelColor = (
 
 // §15 motion tokens — exported so any surface in the hero shares the same
 // easing family + durations (cohesion rule). Used inline + in the CSS string.
+// Easings come from the ONE shared source (heroes/_pulse/motion — DESIGN.md
+// §2.6); the duration names below are this hero's local vocabulary.
 export const MOTION = {
-  easeOut: 'cubic-bezier(0.23, 1, 0.32, 1)',
-  easeInOut: 'cubic-bezier(0.77, 0, 0.175, 1)',
-  easeDrawer: 'cubic-bezier(0.32, 0.72, 0, 1)',
+  easeOut: EASE.out,
+  easeInOut: EASE.inOut,
+  easeDrawer: EASE.drawer,
   press: '140ms',
   pill: '160ms',
   filter: '180ms',

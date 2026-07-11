@@ -14,6 +14,7 @@ import {
 import { IconAlertCircle } from 'twenty-ui/display';
 import { ComposeToolbar } from '@/propel/components/campaign/ComposeToolbar';
 import { type FormatAction } from '@/propel/lib/campaignBuilderConfig';
+import { DUR, EASE } from '~/heroes/_pulse/motion';
 import { type MergeField } from '@/propel/lib/campaignRenderer';
 import {
   type AbConfig,
@@ -404,7 +405,7 @@ const Segment = ({
         flex: `${pct} 0 0`,
         height: '100%',
         background: color,
-        transition: 'flex-grow 200ms cubic-bezier(0.23, 1, 0.32, 1)',
+        transition: `flex-grow ${DUR.dropdown}ms ${EASE.out}`,
       }}
     />
   );

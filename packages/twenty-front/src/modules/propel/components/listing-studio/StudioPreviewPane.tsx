@@ -1,6 +1,7 @@
 import { Badge, Box, Card, Divider, Group, Stack, Text } from '@mantine/core';
 import { IconBuildingSkyscraper, IconMap } from 'twenty-ui/display';
 import { type StudioPreview } from '@/propel/types/listingStudio';
+import { EASE } from '~/heroes/_pulse/motion';
 
 // The live Property Finder preview pane (lane spec §6). Renders the PF-vocabulary
 // projection the CRM /listing-studio/preview route builds from the current draft —
@@ -11,8 +12,6 @@ import { type StudioPreview } from '@/propel/types/listingStudio';
 // S2 shows the proven, server-built preview fields (category/type/beds/baths/size/
 // price/status/furnishing/location/title). The photo strip, AR copy, and the
 // branded card chrome layer in once Photos (S5) and Write-up (S6) land.
-
-const EASE_OUT = 'cubic-bezier(0.23, 1, 0.32, 1)';
 
 const fmtAed = (n: number): string =>
   `AED ${new Intl.NumberFormat('en-US').format(Math.round(n))}`;
@@ -109,7 +108,7 @@ export const StudioPreviewPane = ({ preview }: { preview: StudioPreview }) => {
         gap={6}
         style={{
           opacity: hasAnything ? 1 : 0.6,
-          transition: `opacity 180ms ${EASE_OUT}`,
+          transition: `opacity 180ms ${EASE.out}`,
         }}
       >
         <Text fw={600} size="sm" lineClamp={2}>
