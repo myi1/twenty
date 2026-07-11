@@ -363,7 +363,9 @@ export const SECONDARY_COLORS_DARK = {
   gold8: RadixColors.goldDarkP3.gold8,
   gold9: RadixColors.goldDarkP3.gold9,
   gold10: RadixColors.goldDarkP3.gold10,
-  gold11: RadixColors.goldDarkP3.gold11,
+  // PROPEL-NOCTURNE PATCH (Tier B) — re-apply on Twenty upgrade.
+  // Strongest gold = Nocturne --p-accent-strong #E4C988 (money numerals).
+  gold11: 'color(display-p3 0.894 0.788 0.533)',
   gold12: RadixColors.goldDarkP3.gold12,
 
   brown1: RadixColors.brownDarkP3.brown1,

@@ -216,7 +216,7 @@
   --t-tag-text-mint: color(display-p3 0.203 0.463 0.397);
   --t-tag-text-lime: color(display-p3 0.386 0.482 0.227);
   --t-tag-text-bronze: color(display-p3 0.471 0.373 0.336);
-  --t-tag-text-gold: color(display-p3 0.433 0.386 0.305);
+  --t-tag-text-gold: color(display-p3 0.541 0.416 0.204);
   --t-tag-text-brown: color(display-p3 0.485 0.374 0.288);
   --t-tag-text-orange: color(display-p3 0.76 0.34 0);
   --t-tag-text-amber: color(display-p3 0.64 0.4 0);
@@ -632,7 +632,7 @@
   --t-color-gold8: color(display-p3 0.715 0.66 0.565);
   --t-color-gold9: color(display-p3 0.579 0.517 0.41);
   --t-color-gold10: color(display-p3 0.538 0.479 0.38);
-  --t-color-gold11: color(display-p3 0.433 0.386 0.305);
+  --t-color-gold11: color(display-p3 0.541 0.416 0.204);
   --t-color-gold12: color(display-p3 0.227 0.209 0.173);
   --t-color-brown1: color(display-p3 0.995 0.992 0.989);
   --t-color-brown2: color(display-p3 0.987 0.976 0.964);
