@@ -1,13 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Anchor,
   Badge,
   Box,
   Button,
   Drawer,
-  Grid,
   Group,
-  Image,
+  ScrollArea,
   Stack,
   Table,
   Tabs,
@@ -15,6 +14,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
+import { OffplanHeroImage } from './OffplanHeroImage';
 import { isoToQuarterLabel } from './handover';
 import type {
   OffplanMapPoint,
@@ -24,7 +24,12 @@ import type {
   RouteEnvelope,
 } from './types';
 
-const aed = (n: number | null | undefined) => (n == null ? '—' : `AED ${Math.round(n).toLocaleString('en-US')}`);
+const BRASS = '#d4af37';
+
+const aed = (n: number | null | undefined) =>
+  n == null ? null : `AED ${Math.round(n).toLocaleString('en-US')}`;
+
+type TabKey = 'overview' | 'payment' | 'area' | 'units' | 'documents' | 'amenities';
 
 export function OffplanProjectDrawer({
   point, shortlisted, onClose, onShortlist, onPitch, onOpenDeveloper,
@@ -40,10 +45,11 @@ export function OffplanProjectDrawer({
   const [area, setArea] = useState<any | null>(null);
   const [detail, setDetail] = useState<OffplanProjectDetail | null>(null);
   const [anchorUnitId, setAnchorUnitId] = useState<number | undefined>(undefined);
+  const [tab, setTab] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
-    setDetail(null);
+    setDetail(null); setUnits(null); setArea(null); setAnchorUnitId(undefined); setTab(null);
     (async () => {
       const u = await callPropelRoute<RouteEnvelope<OffplanSearchResult>>('/offplan/browse', { action: 'search', params: { projectExternalId: point.externalId, limit: 100 } });
       if (alive) { const list = u?.ok ? u.data?.units ?? [] : []; setUnits(list); setAnchorUnitId([...list].sort((a, b) => a.price - b.price)[0]?.externalId); }
@@ -55,140 +61,271 @@ export function OffplanProjectDrawer({
     return () => { alive = false; };
   }, [point.externalId, point.districtName]);
 
+  // ── Derived facts ────────────────────────────────────────────────────
+  const sortedUnits = useMemo(
+    () => (units ? [...units].sort((a, b) => a.price - b.price) : []),
+    [units],
+  );
+  const anchorUnit = sortedUnits.find((u) => u.externalId === anchorUnitId) ?? sortedUnits[0];
+  const hasUnits = sortedUnits.length > 0;
+
+  const developerName = point.developerName ?? detail?.developer?.name ?? null;
+  const developerSlug = point.developerSlug ?? detail?.developer?.slug ?? null;
+  const handoverLabel = isoToQuarterLabel(point.handover ?? detail?.handover ?? undefined);
+  const fromPrice = detail?.minPriceAed ?? point.priceFromAed;
+  const pricePerSqft = anchorUnit?.pricePerSqft ?? null;
+  const firstPlan = detail?.paymentPlans?.[0];
+  const downPct = firstPlan?.downPaymentPct ?? null;
+
+  const heroSrc = detail?.renders?.primary ?? point.heroImageUrl ?? null;
+  const gallery = (detail?.renders?.gallery ?? []).slice(0, 4);
+
   const y = area?.signals?.yield?.value;
-  const hasAmenities = (detail?.amenities?.length ?? 0) > 0;
+  const areaRent = area?.signals?.rent?.value;
+  const areaSupply = area?.offplan?.totalActiveProjects;
+  const hasArea = y != null || areaRent != null || areaSupply != null;
+
+  const hasAmenities = (detail?.amenities?.filter((a) => a.name || a.code).length ?? 0) > 0;
   const hasPayment = (detail?.paymentPlans?.length ?? 0) > 0;
-  const commissionBase = detail?.minPriceAed ?? point.priceFromAed;
+  const documents = detail?.documents ?? [];
+  const hasDocuments = documents.length > 0;
+
+  const overviewFacts = detail
+    ? [
+        detail.ownershipType != null && { k: 'Ownership', v: detail.ownershipType },
+        detail.serviceCharge != null && { k: 'Service charge', v: `AED ${detail.serviceCharge}/ft²` },
+        detail.eoiAed != null && { k: 'EOI', v: aed(detail.eoiAed) },
+        detail.nocPct != null && { k: 'NOC', v: `${detail.nocPct}%` },
+        (detail.minSquareFt != null || detail.maxSquareFt != null) && {
+          k: 'Size range',
+          v: `${detail.minSquareFt != null ? Math.round(detail.minSquareFt) : '—'}–${detail.maxSquareFt != null ? Math.round(detail.maxSquareFt) : '—'} sqft`,
+        },
+        detail.startOfSales != null && { k: 'Sales start', v: isoToQuarterLabel(detail.startOfSales) ?? detail.startOfSales },
+      ].filter(Boolean as unknown as (x: any) => x is { k: string; v: string })
+    : [];
+  const description = detail?.description ?? detail?.developer?.description ?? null;
+  const hasOverview = !!detail && (!!description || overviewFacts.length > 0);
+
   const estCommissionK =
-    detail?.commissionMinPct != null && commissionBase != null
-      ? Math.round((commissionBase * detail.commissionMinPct) / 100 / 1000)
+    detail?.commissionMinPct != null && fromPrice != null
+      ? Math.round((fromPrice * detail.commissionMinPct) / 100 / 1000)
       : null;
 
-  const sizeRange =
-    detail?.minSquareFt != null || detail?.maxSquareFt != null
-      ? `${detail?.minSquareFt != null ? Math.round(detail.minSquareFt) : '—'}–${detail?.maxSquareFt != null ? Math.round(detail.maxSquareFt) : '—'} sqft`
-      : null;
+  // First tab with content — never land on an empty "Units (0)".
+  const activeTab: TabKey =
+    hasOverview ? 'overview'
+    : hasPayment ? 'payment'
+    : hasArea ? 'area'
+    : hasUnits ? 'units'
+    : hasDocuments ? 'documents'
+    : hasAmenities ? 'amenities'
+    : 'overview';
 
   return (
-    <Drawer opened position="right" size={640} onClose={onClose}
-      title={<div>
-        <Text fw={700}>{point.name}</Text>
-        <Text size="xs" c="dimmed">
-          {onOpenDeveloper && point.developerSlug ? (
-            <Anchor size="xs" onClick={() => onOpenDeveloper(point.developerSlug!)}>{point.developerName ?? point.developerSlug}</Anchor>
-          ) : (
-            point.developerName
-          )}
-          {' · '}{point.districtName} · Handover {isoToQuarterLabel(point.handover ?? undefined) ?? '—'}
-        </Text>
-      </div>}>
-      {detail?.renders?.primary && (
-        <Image src={detail.renders.primary} h={140} fit="cover" radius="sm" mb="sm" />
-      )}
-      <Text fw={700} c="red" mb="sm">from {aed(point.priceFromAed)} · {point.unitCount} units{point.isLaunch ? ' · New launch' : ''}</Text>
-      <Tabs defaultValue="units">
-        <Tabs.List>
-          <Tabs.Tab value="units">Units{units ? ` (${units.length})` : ''}</Tabs.Tab>
-          {detail && <Tabs.Tab value="overview">Overview</Tabs.Tab>}
-          {area && <Tabs.Tab value="area">Area</Tabs.Tab>}
-          {hasAmenities ? (
-            <Tabs.Tab value="amenities">Amenities</Tabs.Tab>
-          ) : (
-            <Tooltip label="No amenity data for this project"><Tabs.Tab value="amenities" disabled>Amenities</Tabs.Tab></Tooltip>
-          )}
-          {hasPayment && <Tabs.Tab value="payment">Payment</Tabs.Tab>}
-        </Tabs.List>
-
-        <Tabs.Panel value="units" pt="sm">
-          <Table striped highlightOnHover>
-            <Table.Thead><Table.Tr><Table.Th>Unit</Table.Th><Table.Th>Type</Table.Th><Table.Th>Size</Table.Th><Table.Th>Price</Table.Th><Table.Th /></Table.Tr></Table.Thead>
-            <Table.Tbody>
-              {(units ?? []).map((u) => (
-                <Table.Tr key={u.externalId} bg={u.externalId === anchorUnitId ? 'var(--mantine-color-red-light)' : undefined} onClick={() => setAnchorUnitId(u.externalId)} style={{ cursor: 'pointer' }}>
-                  <Table.Td>{u.floor ? `${u.floor}·` : ''}{u.layoutName}</Table.Td><Table.Td>{u.layoutName}</Table.Td>
-                  <Table.Td>{Math.round(u.squareFt)} sqft</Table.Td><Table.Td>{aed(u.price)}</Table.Td>
-                  <Table.Td>{u.status === 'available' && <Badge color="green" size="xs">avail</Badge>}</Table.Td>
-                </Table.Tr>
+    <Drawer
+      opened
+      position="right"
+      size={620}
+      onClose={onClose}
+      title={<Text fw={700} lineClamp={1}>{point.name}</Text>}
+      styles={{ body: { padding: 0, height: '100%', display: 'flex', flexDirection: 'column' } }}
+    >
+      <ScrollArea style={{ flex: 1 }}>
+        {/* ── Hero ─────────────────────────────────────────────── */}
+        <Box style={{ position: 'relative' }}>
+          <OffplanHeroImage src={heroSrc} h={210} radius={0} alt={point.name} />
+          <Group gap={6} style={{ position: 'absolute', top: 12, right: 12 }}>
+            {point.isLaunch && (
+              <Badge size="sm" style={{ background: BRASS, color: '#1a1408' }}>New launch</Badge>
+            )}
+          </Group>
+          {gallery.length > 0 && (
+            <Group gap={6} px="md" py={8} wrap="nowrap" style={{ overflowX: 'auto' }}>
+              {gallery.map((g, i) => (
+                <OffplanHeroImage key={`${g}-${i}`} src={g} w={92} h={60} radius={6} alt={`${point.name} render ${i + 2}`} />
               ))}
-            </Table.Tbody>
-          </Table>
-        </Tabs.Panel>
-
-        {detail && (
-          <Tabs.Panel value="overview" pt="sm">
-            <Stack gap="sm">
-              {detail.description && <Text size="sm" lineClamp={6}>{detail.description}</Text>}
-              <Grid gutter="xs">
-                {detail.ownershipType != null && <Grid.Col span={4}><Stat k="Ownership" v={detail.ownershipType} /></Grid.Col>}
-                {detail.serviceCharge != null && <Grid.Col span={4}><Stat k="Service charge" v={`AED ${detail.serviceCharge}/ft²`} /></Grid.Col>}
-                {detail.eoiAed != null && <Grid.Col span={4}><Stat k="EOI" v={aed(detail.eoiAed)} /></Grid.Col>}
-                {detail.nocPct != null && <Grid.Col span={4}><Stat k="NOC" v={`${detail.nocPct}%`} /></Grid.Col>}
-                {sizeRange != null && <Grid.Col span={4}><Stat k="Size range" v={sizeRange} /></Grid.Col>}
-                {detail.startOfSales != null && <Grid.Col span={4}><Stat k="Sales start" v={isoToQuarterLabel(detail.startOfSales) ?? detail.startOfSales} /></Grid.Col>}
-              </Grid>
-            </Stack>
-          </Tabs.Panel>
-        )}
-
-        {area && (
-          <Tabs.Panel value="area" pt="sm">
-            <Group>
-              {y != null && <Stat k="Median yield" v={`${y.toFixed(1)}%`} />}
-              {area?.signals?.rent?.value != null && <Stat k="Avg rent" v={aed(area.signals.rent.value)} />}
-              {area?.offplan?.totalActiveProjects != null && <Stat k="Off-plan supply" v={`${area.offplan.totalActiveProjects} proj`} />}
             </Group>
-          </Tabs.Panel>
-        )}
+          )}
+        </Box>
 
-        {hasAmenities && (
-          <Tabs.Panel value="amenities" pt="sm">
-            <Group gap="xs">
-              {detail!.amenities
-                .filter((a) => a.name || a.code)
-                .map((a, i) => (
-                  <Badge key={`${a.code ?? a.name}-${i}`} variant="light" color="gray">{a.name ?? a.code}</Badge>
-                ))}
-            </Group>
-          </Tabs.Panel>
-        )}
+        {/* ── Title + price ────────────────────────────────────── */}
+        <Box px="md" pt="md">
+          <Text fw={800} size="xl" lh={1.15}>{point.name}</Text>
 
-        {hasPayment && (
-          <Tabs.Panel value="payment" pt="sm">
-            <Stack gap="md">
-              {detail!.paymentPlans.map((plan) => (
-                <Box key={plan.id}>
-                  <Group gap="xs" mb={4}>
-                    <Text fw={700} size="sm">{plan.name}</Text>
-                    {plan.downPaymentPct != null && <Badge variant="light" size="xs">{plan.downPaymentPct}% down</Badge>}
-                    {plan.postHandover && <Badge variant="light" color="yellow" size="xs">Post-handover</Badge>}
-                  </Group>
-                  <Table striped>
-                    <Table.Thead><Table.Tr><Table.Th>Milestone</Table.Th><Table.Th>Instalment</Table.Th><Table.Th>Order</Table.Th></Table.Tr></Table.Thead>
-                    <Table.Tbody>
-                      {[...plan.items].sort((a, b) => a.order - b.order).map((it, i) => (
-                        <Table.Tr key={`${plan.id}-${i}`}>
-                          <Table.Td>{it.rawName}</Table.Td>
-                          <Table.Td>{it.installmentPct != null ? `${it.installmentPct}%` : '—'}</Table.Td>
-                          <Table.Td>{it.order}</Table.Td>
-                        </Table.Tr>
-                      ))}
-                    </Table.Tbody>
-                  </Table>
+          <Group align="baseline" gap="xs" mt={8}>
+            <Text size="xs" c="dimmed" tt="uppercase" fw={600} style={{ letterSpacing: 0.4 }}>From</Text>
+            <Text fw={800} size="xl" c="red">{aed(fromPrice) ?? 'Price on request'}</Text>
+            {pricePerSqft != null && (
+              <Text size="sm" c="dimmed">· AED {Math.round(pricePerSqft).toLocaleString('en-US')}/sqft</Text>
+            )}
+          </Group>
+
+          {/* ── Brass-ruled labeled key-facts strip ─────────────── */}
+          <Group
+            gap={0}
+            mt="md"
+            wrap="wrap"
+            style={{ borderTop: `2px solid ${BRASS}`, borderBottom: '1px solid var(--mantine-color-default-border)' }}
+          >
+            {developerName && (
+              <Fact k="Developer">
+                {onOpenDeveloper && developerSlug ? (
+                  <Anchor fw={600} onClick={() => onOpenDeveloper(developerSlug)}>{developerName}</Anchor>
+                ) : (
+                  <Text fw={600} size="sm" lineClamp={1}>{developerName}</Text>
+                )}
+              </Fact>
+            )}
+            <Fact k="District"><Text fw={600} size="sm" lineClamp={1}>{point.districtName}</Text></Fact>
+            {handoverLabel && <Fact k="Handover"><Text fw={600} size="sm">{handoverLabel}</Text></Fact>}
+            {hasUnits && <Fact k="Availability"><Text fw={600} size="sm">{sortedUnits.length} units</Text></Fact>}
+            {downPct != null && (
+              <Fact k="Payment">
+                <Group gap={6}><Text fw={600} size="sm">{downPct}% down</Text>{firstPlan?.postHandover && <Badge size="xs" variant="light" color="yellow">Post-HO</Badge>}</Group>
+              </Fact>
+            )}
+          </Group>
+        </Box>
+
+        {/* ── Tabs (only those with content) ───────────────────── */}
+        <Box px="md" pt="md" pb="md">
+          <Tabs value={tab ?? activeTab} onChange={setTab} keepMounted={false}>
+            <Tabs.List>
+              {hasOverview && <Tabs.Tab value="overview">Overview</Tabs.Tab>}
+              {hasPayment && <Tabs.Tab value="payment">Payment plan</Tabs.Tab>}
+              {hasArea && <Tabs.Tab value="area">Area</Tabs.Tab>}
+              {hasUnits && <Tabs.Tab value="units">Units ({sortedUnits.length})</Tabs.Tab>}
+              {hasDocuments && <Tabs.Tab value="documents">Documents</Tabs.Tab>}
+              {hasAmenities && <Tabs.Tab value="amenities">Amenities</Tabs.Tab>}
+            </Tabs.List>
+
+            {hasOverview && (
+              <Tabs.Panel value="overview" pt="md">
+                <Stack gap="md">
+                  {description && <Text size="sm" c="dimmed" lh={1.5} lineClamp={7}>{description}</Text>}
+                  {overviewFacts.length > 0 && (
+                    <Box style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+                      {overviewFacts.map((f) => <Stat key={f.k} k={f.k} v={f.v} />)}
+                    </Box>
+                  )}
+                </Stack>
+              </Tabs.Panel>
+            )}
+
+            {hasPayment && (
+              <Tabs.Panel value="payment" pt="md">
+                <Stack gap="lg">
+                  {detail!.paymentPlans.map((plan) => {
+                    const items = [...plan.items].sort((a, b) => a.order - b.order);
+                    return (
+                      <Box key={plan.id}>
+                        <Group gap="xs" mb="xs">
+                          <Text fw={700} size="sm">{plan.name}</Text>
+                          {plan.downPaymentPct != null && <Badge variant="light" size="xs">{plan.downPaymentPct}% down</Badge>}
+                          {plan.postHandover && <Badge variant="light" color="yellow" size="xs">Post-handover</Badge>}
+                        </Group>
+                        {/* Milestone strip — proportional to instalment % when known */}
+                        <Group gap={2} mb="xs" wrap="nowrap">
+                          {items.map((it, i) => (
+                            <Tooltip key={`${plan.id}-bar-${i}`} label={`${it.rawName}${it.installmentPct != null ? ` — ${it.installmentPct}%` : ''}`} withArrow>
+                              <Box style={{ flex: it.installmentPct != null ? Math.max(it.installmentPct, 3) : 6, height: 8, borderRadius: 3, background: i === 0 ? BRASS : 'var(--mantine-color-red-4)', opacity: i === 0 ? 1 : 0.55 + Math.min(0.4, (it.installmentPct ?? 6) / 60) }} />
+                            </Tooltip>
+                          ))}
+                        </Group>
+                        <Table striped withRowBorders={false} verticalSpacing={4}>
+                          <Table.Tbody>
+                            {items.map((it, i) => (
+                              <Table.Tr key={`${plan.id}-${i}`}>
+                                <Table.Td><Text size="sm">{it.rawName}</Text></Table.Td>
+                                <Table.Td ta="right"><Text size="sm" fw={600}>{it.installmentPct != null ? `${it.installmentPct}%` : '—'}</Text></Table.Td>
+                              </Table.Tr>
+                            ))}
+                          </Table.Tbody>
+                        </Table>
+                      </Box>
+                    );
+                  })}
+                </Stack>
+              </Tabs.Panel>
+            )}
+
+            {hasArea && (
+              <Tabs.Panel value="area" pt="md">
+                <Text size="xs" c="dimmed" mb="xs">{point.districtName} · off-plan market</Text>
+                <Box style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                  {y != null && <Stat k="Gross yield" v={`${y.toFixed(1)}%`} accent />}
+                  {areaRent != null && <Stat k="Avg rent" v={aed(areaRent) ?? '—'} />}
+                  {areaSupply != null && <Stat k="Off-plan supply" v={`${areaSupply} projects`} />}
                 </Box>
-              ))}
-            </Stack>
-          </Tabs.Panel>
-        )}
-      </Tabs>
+              </Tabs.Panel>
+            )}
 
-      <Group mt="lg" justify="space-between">
+            {hasUnits && (
+              <Tabs.Panel value="units" pt="md">
+                <Text size="xs" c="dimmed" mb="xs">Tap a unit to anchor the pitch.</Text>
+                <Table striped highlightOnHover verticalSpacing={6}>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Unit</Table.Th><Table.Th>Type</Table.Th>
+                      <Table.Th ta="right">Size</Table.Th><Table.Th ta="right">Price</Table.Th><Table.Th />
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {sortedUnits.map((u) => (
+                      <Table.Tr key={u.externalId} bg={u.externalId === anchorUnitId ? 'var(--mantine-color-red-light)' : undefined} onClick={() => setAnchorUnitId(u.externalId)} style={{ cursor: 'pointer' }}>
+                        <Table.Td><Text size="sm">{u.floor ? `${u.floor}·` : ''}{u.number ?? u.layoutName}</Text></Table.Td>
+                        <Table.Td><Text size="sm">{u.layoutName}</Text></Table.Td>
+                        <Table.Td ta="right"><Text size="sm">{Math.round(u.squareFt)} sqft</Text></Table.Td>
+                        <Table.Td ta="right"><Text size="sm" fw={600}>{aed(u.price)}</Text></Table.Td>
+                        <Table.Td>{u.status === 'available' && <Badge color="green" size="xs">avail</Badge>}</Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Tabs.Panel>
+            )}
+
+            {hasDocuments && (
+              <Tabs.Panel value="documents" pt="md">
+                <Stack gap="xs">
+                  {documents.map((d, i) => (
+                    <Anchor key={`${d.url}-${i}`} href={d.url} target="_blank" rel="noopener noreferrer" size="sm">
+                      {d.label || d.kind} ↗
+                    </Anchor>
+                  ))}
+                </Stack>
+              </Tabs.Panel>
+            )}
+
+            {hasAmenities && (
+              <Tabs.Panel value="amenities" pt="md">
+                <Group gap="xs">
+                  {detail!.amenities.filter((a) => a.name || a.code).map((a, i) => (
+                    <Badge key={`${a.code ?? a.name}-${i}`} variant="light" color="gray">{a.name ?? a.code}</Badge>
+                  ))}
+                </Group>
+              </Tabs.Panel>
+            )}
+          </Tabs>
+        </Box>
+      </ScrollArea>
+
+      {/* ── Pinned action bar ──────────────────────────────────── */}
+      <Group
+        justify="space-between"
+        px="md" py="sm"
+        style={{ borderTop: '1px solid var(--mantine-color-default-border)', background: 'var(--mantine-color-body)' }}
+      >
         {estCommissionK != null ? (
-          <Text size="xs" fw={700}>Est. commission ~AED {estCommissionK.toLocaleString('en-US')}k</Text>
+          <Box>
+            <Text size="10px" c="dimmed" tt="uppercase" fw={600} style={{ letterSpacing: 0.4 }}>Est. commission</Text>
+            <Text size="sm" fw={800} style={{ color: BRASS }}>~AED {estCommissionK.toLocaleString('en-US')}k</Text>
+          </Box>
         ) : (
-          <Text size="xs" c="dimmed">Est. commission — shown when available</Text>
+          <Text size="xs" c="dimmed">Commission shown when available</Text>
         )}
         <Group gap="xs">
-          <Tooltip label="Attach to a client — coming in P1"><Button variant="default" size="xs" disabled>Attach to client</Button></Tooltip>
+          <Tooltip label="Attach to a client — coming in P1"><Button variant="default" size="xs" disabled>Attach</Button></Tooltip>
           <Button variant={shortlisted ? 'filled' : 'default'} size="xs" onClick={() => onShortlist(point.externalId)}>{shortlisted ? '✓ Shortlisted' : '＋ Shortlist'}</Button>
           <Button color="red" size="xs" onClick={() => onPitch(point.externalId, anchorUnitId)}>Pitch this →</Button>
         </Group>
@@ -197,6 +334,22 @@ export function OffplanProjectDrawer({
   );
 }
 
-function Stat({ k, v }: { k: string; v: string }) {
-  return <Box style={{ padding: '8px 12px', border: '1px solid var(--mantine-color-default-border)', borderRadius: 8 }}><Text size="xs" c="dimmed">{k}</Text><Text fw={700}>{v}</Text></Box>;
+/** A labeled cell in the brass-ruled key-facts strip. */
+function Fact({ k, children }: { k: string; children: ReactNode }) {
+  return (
+    <Box style={{ flex: '1 1 30%', minWidth: 96, padding: '8px 12px 8px 0' }}>
+      <Text size="10px" c="dimmed" tt="uppercase" fw={600} style={{ letterSpacing: 0.4 }}>{k}</Text>
+      <Box mt={2}>{children}</Box>
+    </Box>
+  );
+}
+
+/** A boxed stat used in Overview / Area grids. */
+function Stat({ k, v, accent }: { k: string; v: string; accent?: boolean }) {
+  return (
+    <Box style={{ padding: '8px 12px', border: '1px solid var(--mantine-color-default-border)', borderRadius: 8 }}>
+      <Text size="10px" c="dimmed" tt="uppercase" fw={600} style={{ letterSpacing: 0.4 }}>{k}</Text>
+      <Text fw={700} size="sm" style={accent ? { color: BRASS } : undefined}>{v}</Text>
+    </Box>
+  );
 }

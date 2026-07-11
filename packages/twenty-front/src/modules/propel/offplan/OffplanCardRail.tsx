@@ -1,5 +1,6 @@
-import { ScrollArea, Card, Text, Group, Badge, Button, Box, Image, Anchor } from '@mantine/core';
+import { ScrollArea, Card, Text, Group, Badge, Button, Box, Anchor } from '@mantine/core';
 import { useEffect, useRef } from 'react';
+import { OffplanHeroImage } from './OffplanHeroImage';
 import { isoToQuarterLabel } from './handover';
 import type { OffplanMapPoint } from './types';
 
@@ -38,11 +39,9 @@ export function OffplanCardRail({
               onClick={() => onOpen(p.externalId)}
               style={{ cursor: 'pointer', outline: hoveredId === p.externalId ? '1px solid var(--mantine-color-red-6)' : undefined }}>
               <Group wrap="nowrap" gap="sm" align="flex-start">
-                {p.heroImageUrl ? (
-                  <Image src={p.heroImageUrl} w={84} h={68} radius="sm" fit="cover" style={{ flex: 'none' }} />
-                ) : (
-                  <Box w={84} h={68} style={{ flex: 'none', borderRadius: 6, background: 'linear-gradient(135deg,#2a4368,#16273f)' }} />
-                )}
+                <Box style={{ flex: 'none' }}>
+                  <OffplanHeroImage src={p.heroImageUrl} w={84} h={68} radius={6} alt={p.name} />
+                </Box>
                 <Box style={{ flex: 1, minWidth: 0 }}>
                   <Group justify="space-between" wrap="nowrap">
                     <Text fw={600} size="sm" lineClamp={1}>{p.name}</Text>
@@ -60,7 +59,7 @@ export function OffplanCardRail({
                   </Text>
                   <Group gap="md" mt={6}>
                     <Text fw={700} size="sm" c="red">from {aed(p.priceFromAed)}</Text>
-                    <Text size="xs" c="dimmed">{p.unitCount} units</Text>
+                    {p.unitCount > 0 && <Text size="xs" c="dimmed">{p.unitCount} units</Text>}
                     {p.handover && <Text size="xs" c="dimmed">Handover {isoToQuarterLabel(p.handover)}</Text>}
                   </Group>
                   <Group gap="xs" mt={8}>

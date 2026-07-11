@@ -8,7 +8,6 @@ import {
   Card,
   Chip,
   Group,
-  Image,
   Loader,
   Modal,
   ScrollArea,
@@ -27,6 +26,7 @@ import {
   IconX,
 } from 'twenty-ui/display';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
+import { OffplanHeroImage } from './OffplanHeroImage';
 import {
   WA_MESSAGE_MAX,
   WIZARD_STEPS,
@@ -82,16 +82,9 @@ const CURRENCIES = ['AED', 'USD', 'EUR', 'GBP'];
 const aed = (n: number | null | undefined) =>
   n == null ? '—' : `AED ${Math.round(n).toLocaleString('en-US')}`;
 
-const Thumb = ({ point, w, h }: { point?: OffplanMapPoint; w: number; h: number }) =>
-  point?.heroImageUrl ? (
-    <Image src={point.heroImageUrl} w={w} h={h} radius="sm" fit="cover" />
-  ) : (
-    <Box
-      w={w}
-      h={h}
-      style={{ borderRadius: 6, flex: 'none', background: 'linear-gradient(135deg,#2a4368,#16273f)' }}
-    />
-  );
+const Thumb = ({ point, w, h }: { point?: OffplanMapPoint; w: number; h: number }) => (
+  <OffplanHeroImage src={point?.heroImageUrl} w={w} h={h} radius="sm" alt={point?.name} />
+);
 
 // ── Stepper rail (local — mirrors ManualWizard's PropelStepper, vertical) ────
 const OffplanPitchStepper = ({
@@ -723,16 +716,7 @@ export function OffplanPitchWizard({
                   flexDirection: 'column',
                 }}
               >
-                {p.heroImageUrl ? (
-                  <Image src={p.heroImageUrl} h={110} fit="cover" />
-                ) : (
-                  <Box
-                    style={{
-                      height: 110,
-                      background: 'linear-gradient(135deg,#2a4368,#16273f)',
-                    }}
-                  />
-                )}
+                <OffplanHeroImage src={p.heroImageUrl} h={110} radius={0} alt={p.name} />
                 <Box p={12} style={{ flex: 1 }}>
                   <Text fw={700} size="xs" lineClamp={2} style={{ color: theme.text }}>
                     {p.name}

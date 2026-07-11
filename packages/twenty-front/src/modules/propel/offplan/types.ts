@@ -2,6 +2,7 @@ export type OffplanUnit = {
   externalId: number; projectId: string; projectName: string; developerName: string;
   districtId: string; districtName: string; price: number; pricePerSqft: number;
   squareFt: number; layoutName: string; floor: string; status: string; floorPlanUrl?: string;
+  number?: string;
 };
 export type OffplanSearchResult = { units: OffplanUnit[]; total: number; hasMore: boolean };
 
