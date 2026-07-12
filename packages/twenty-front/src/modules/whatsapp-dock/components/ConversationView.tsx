@@ -200,11 +200,19 @@ export const ConversationView = ({ target, onBack, onTargetUpdate }: Conversatio
   // Composer relies on this to decide whether it's safe to clear the typed
   // text (never fabricate a completed action; see Composer.tsx submitText).
   const handleSendText = async (text: string): Promise<boolean> => {
+    // eslint-disable-next-line no-console
+    console.log('[WA-DOCK-TRACE] ConversationView.handleSendText: entry', { target, text });
     setSending(true);
     setSendError(null);
     const outcome = await sendWaText(target, text);
+    // eslint-disable-next-line no-console
+    console.log('[WA-DOCK-TRACE] ConversationView.handleSendText: sendWaText() outcome', outcome);
     await applyOutcome(outcome);
     setSending(false);
+    // eslint-disable-next-line no-console
+    console.log('[WA-DOCK-TRACE] ConversationView.handleSendText: returning', {
+      resolvedTrue: outcome.ok === true,
+    });
     return outcome.ok === true;
   };
 

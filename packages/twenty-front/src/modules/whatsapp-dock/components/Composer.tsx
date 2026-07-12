@@ -216,10 +216,22 @@ export const Composer = ({
   // user can just hit Send again instead of retyping a "lost" message.
   const submitText = async () => {
     const trimmed = text.trim();
+    // eslint-disable-next-line no-console
+    console.log('[WA-DOCK-TRACE] Composer.submitText: called', {
+      trimmed,
+      sending,
+      conversationId,
+    });
     if (!trimmed || sending) {
+      // eslint-disable-next-line no-console
+      console.log('[WA-DOCK-TRACE] Composer.submitText: EARLY RETURN (empty text or already sending) — onSendText NEVER called');
       return;
     }
+    // eslint-disable-next-line no-console
+    console.log('[WA-DOCK-TRACE] Composer.submitText: calling onSendText() now');
     const sent = await onSendText(trimmed);
+    // eslint-disable-next-line no-console
+    console.log('[WA-DOCK-TRACE] Composer.submitText: onSendText() resolved', { sent });
     if (sent) {
       setText('');
     }
@@ -350,7 +362,15 @@ export const Composer = ({
             🎙
           </StyledIconButton>
         ) : (
-          <StyledSendButton disabled={sending} onClick={() => void submitText()} type="button">
+          <StyledSendButton
+            disabled={sending}
+            onClick={() => {
+              // eslint-disable-next-line no-console
+              console.log('[WA-DOCK-TRACE] Composer: Send button onClick fired', { sending });
+              void submitText();
+            }}
+            type="button"
+          >
             {sending ? '…' : 'Send'}
           </StyledSendButton>
         )}

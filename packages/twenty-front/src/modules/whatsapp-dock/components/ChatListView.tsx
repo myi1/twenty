@@ -206,14 +206,26 @@ export const ChatListView = ({
   }, [query]);
 
   const handleOpenRecentChat = (chat: WaChatRow) => {
-    onOpenChat({
+    // eslint-disable-next-line no-console
+    console.log('[WA-DOCK-TRACE] ChatListView.handleOpenRecentChat: row clicked (recent/suggested list, NOT search-and-pick)', chat);
+    // NOTE (instrumentation round, 2026-07-12): this path builds the WaTarget
+    // directly from the recent-chat row and NEVER calls resolveWaTarget() —
+    // that's only used by the search-and-pick flow (onPickPerson below /
+    // handlePickPerson in WhatsAppDock.tsx). In particular e164Digits is
+    // hardcoded to '' here, unlike resolveWaTarget's target which always
+    // carries the real digits. Logging the full constructed target so we can
+    // see exactly what shape reaches sendWaText() for this click path.
+    const target: WaTarget = {
       personId: chat.personId ?? '',
       name: chat.title,
       e164Digits: '',
       conversationId: chat.id,
       lineType: chat.lineType,
       lastInboundAt: null,
-    });
+    };
+    // eslint-disable-next-line no-console
+    console.log('[WA-DOCK-TRACE] ChatListView.handleOpenRecentChat: constructed target (resolveWaTarget NOT called)', target);
+    onOpenChat(target);
   };
 
   const isSearchMode = query.trim().length >= 2;
@@ -237,7 +249,15 @@ export const ChatListView = ({
               <StyledHint>No contacts match “{query.trim()}”.</StyledHint>
             )}
             {results.map((person) => (
-              <StyledRow key={person.id} onClick={() => onPickPerson(person)} type="button">
+              <StyledRow
+                key={person.id}
+                onClick={() => {
+                  // eslint-disable-next-line no-console
+                  console.log('[WA-DOCK-TRACE] ChatListView: search-result row clicked (onPickPerson path)', person);
+                  onPickPerson(person);
+                }}
+                type="button"
+              >
                 <StyledAvatar>{initial(person.name)}</StyledAvatar>
                 <StyledRowBody>
                   <StyledRowTop>

@@ -225,6 +225,8 @@ export const WhatsAppDock = () => {
   };
 
   const handlePickPerson = useCallback(async (person: WaPersonResult) => {
+    // eslint-disable-next-line no-console
+    console.log('[WA-DOCK-TRACE] WhatsAppDock.handlePickPerson: entry', person);
     // Optimistic selection so the panel switches to the conversation view
     // immediately; the thread/line resolution fills in behind it.
     setTarget({
@@ -236,8 +238,16 @@ export const WhatsAppDock = () => {
       lastInboundAt: null,
     });
     const resolved = await resolveWaTarget(person);
+    // eslint-disable-next-line no-console
+    console.log('[WA-DOCK-TRACE] WhatsAppDock.handlePickPerson: resolveWaTarget() resolved', resolved);
     setTarget((current) => (current?.personId === person.id ? resolved : current));
   }, []);
+
+  const handleSetTargetFromChatList = (target: WaTarget) => {
+    // eslint-disable-next-line no-console
+    console.log('[WA-DOCK-TRACE] WhatsAppDock: onOpenChat(target) called from ChatListView', target);
+    setTarget(target);
+  };
 
   const handleDragPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.button !== 0) {
@@ -353,7 +363,7 @@ export const WhatsAppDock = () => {
         {target === null ? (
           <ChatListView
             focusSearchSignal={newChatSignal}
-            onOpenChat={setTarget}
+            onOpenChat={handleSetTargetFromChatList}
             onPickPerson={(person) => void handlePickPerson(person)}
           />
         ) : (

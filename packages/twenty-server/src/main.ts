@@ -5,6 +5,7 @@ import fs from 'fs';
 
 import bytes from 'bytes';
 import { useContainer } from 'class-validator';
+import { type NextFunction, type Request, type Response } from 'express';
 import session from 'express-session';
 import graphqlUploadExpress from 'graphql-upload/graphqlUploadExpress.mjs';
 
@@ -43,6 +44,24 @@ const bootstrap = async () => {
         }
       : {}),
   });
+  // ── TEMP DEBUG INSTRUMENTATION (wa-dock-send-still-broken-new-contact, 4th
+  // round, 2026-07-12) ─────────────────────────────────────────────────────
+  // Raw request-arrival logger, registered as close to first as possible —
+  // BEFORE session middleware, BEFORE any Nest guard/interceptor/controller,
+  // BEFORE the logic-function HTTP route dispatcher. This settles
+  // definitively whether ANY bytes ever leave the browser for a WhatsApp-dock
+  // send: if a real click never produces a `[RAW-REQUEST-TRACE]` line here,
+  // the request never left the client (or never reached this server process
+  // at all) — independent of auth/routing possibly eating it silently
+  // downstream. REMOVE once the bug is found and fixed.
+  app.use((req: Request, _res: Response, next: NextFunction) => {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[RAW-REQUEST-TRACE] ${new Date().toISOString()} ${req.method} ${req.originalUrl}`,
+    );
+    next();
+  });
+
   const logger = app.get(LoggerService);
   const twentyConfigService = app.get(TwentyConfigService);
 

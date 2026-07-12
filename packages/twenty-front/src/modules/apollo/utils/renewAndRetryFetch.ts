@@ -123,21 +123,48 @@ const renewSessionOnce = (
  * error status) is returned as-is on the first try — this only intervenes on
  * an auth failure.
  */
+// TEMP DEBUG INSTRUMENTATION (wa-dock-send-still-broken-new-contact, 4th
+// round, 2026-07-12) — REMOVE once the bug is found and fixed.
+const waTrace = (label: string, detail?: unknown): void => {
+  // eslint-disable-next-line no-console
+  console.log(`[WA-DOCK-TRACE] fetchWithRenewal: ${label}`, detail ?? '');
+};
+
 export const fetchWithRenewal = async (
   attempt: () => Promise<Response>,
 ): Promise<Response | null> => {
   try {
     const staleAccessToken = getTokenPair()?.accessOrWorkspaceAgnosticToken?.token;
+    waTrace('firing first attempt()', { hasStaleAccessToken: staleAccessToken !== undefined });
     const first = await attempt();
+    waTrace('first attempt() resolved', { status: first.status, ok: first.ok });
     if (first.status !== 401) {
       return first;
     }
+    waTrace('got 401 — starting renewSessionOnce()');
     const renewed = await renewSessionOnce(staleAccessToken);
+    waTrace('renewSessionOnce() resolved', { renewed });
     if (!renewed) {
       return first; // renewal failed too — surface the original 401
     }
-    return await attempt(); // exactly one retry, with the fresh token
-  } catch {
+    waTrace('firing retry attempt() with renewed token');
+    const retried = await attempt(); // exactly one retry, with the fresh token
+    waTrace('retry attempt() resolved', { status: retried.status, ok: retried.ok });
+    return retried;
+  } catch (err) {
+    // THIS is the catch that would explain "zero network request, zero
+    // server log" if attempt() (the fetch() closure) throws synchronously
+    // or the Promise rejects (e.g. a TypeError before the request leaves the
+    // browser, a CORS/network-layer failure, or an exception thrown by code
+    // upstream of the actual fetch() call inside the closure). Logging the
+    // real error object (not just swallowing it) is the whole point of this
+    // instrumentation round.
+    waTrace('CAUGHT — attempt() threw / rejected; returning null', {
+      error: err,
+      errorName: err instanceof Error ? err.name : typeof err,
+      errorMessage: err instanceof Error ? err.message : String(err),
+      errorStack: err instanceof Error ? err.stack : undefined,
+    });
     return null;
   }
 };

@@ -83,23 +83,47 @@ type ConversationNode = {
 const token = (): string | undefined =>
   getTokenPair()?.accessOrWorkspaceAgnosticToken?.token;
 
+// ── TEMP DEBUG INSTRUMENTATION (wa-dock-send-still-broken-new-contact, 4th
+// round, 2026-07-12) ──────────────────────────────────────────────────────
+// Verbose breadcrumbs through the entire client-side send chain so a single
+// live click's browser console tells the full story of what ran and what
+// didn't. REMOVE once the bug is found and fixed — see the memory note for
+// context: 3 prior static-review/unit-test rounds found nothing, yet a real
+// browser click 100% reproducibly produces zero network request and zero
+// server log entry, with the composer clearing as if it succeeded.
+const waTrace = (label: string, detail?: unknown): void => {
+  // eslint-disable-next-line no-console
+  console.log(`[WA-DOCK-TRACE] ${label}`, detail ?? '');
+};
+
 const graphql = async <T>(
   query: string,
   variables: Record<string, unknown>,
 ): Promise<T | null> => {
-  if (token() === undefined) {
+  const hasToken = token() !== undefined;
+  waTrace('graphql(): entry', { hasToken, variables });
+  if (!hasToken) {
+    waTrace('graphql(): BAILING — no token, fetch never fires');
     return null;
   }
+  const url = `${REACT_APP_SERVER_BASE_URL}/graphql`;
+  const requestBody = JSON.stringify({ query, variables });
+  waTrace('graphql(): about to fetch', { url, body: requestBody });
   const response = await fetchWithRenewal(() =>
-    fetch(`${REACT_APP_SERVER_BASE_URL}/graphql`, {
+    fetch(url, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
         authorization: `Bearer ${token()}`,
       },
-      body: JSON.stringify({ query, variables }),
+      body: requestBody,
     }),
   );
+  waTrace('graphql(): fetchWithRenewal resolved', {
+    isNull: response === null,
+    status: response?.status,
+    ok: response?.ok,
+  });
   if (response === null || !response.ok) {
     return null;
   }
@@ -108,23 +132,46 @@ const graphql = async <T>(
 };
 
 const appRoute = async <T>(path: string, body: object): Promise<T | null> => {
-  if (token() === undefined) {
+  const hasToken = token() !== undefined;
+  waTrace('appRoute(): entry', { path, hasToken, body });
+  if (!hasToken) {
+    waTrace('appRoute(): BAILING — no token, fetch never fires', { path });
     return null;
   }
-  const response = await fetchWithRenewal(() =>
-    fetch(`${REACT_APP_SERVER_BASE_URL}/s${path}`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${token()}`,
-      },
-      body: JSON.stringify(body),
-    }),
-  );
+  const url = `${REACT_APP_SERVER_BASE_URL}/s${path}`;
+  const requestBody = JSON.stringify(body);
+  waTrace('appRoute(): about to fetch', { url, body: requestBody });
+  let response: Response | null;
+  try {
+    response = await fetchWithRenewal(() =>
+      fetch(url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${token()}`,
+        },
+        body: requestBody,
+      }),
+    );
+  } catch (err) {
+    // fetchWithRenewal already swallows fetch-level throws internally and
+    // returns null — this catch is belt-and-suspenders in case something
+    // upstream of it (token() re-read, JSON.stringify, etc.) throws instead.
+    waTrace('appRoute(): THREW before/around fetchWithRenewal', { path, error: err });
+    throw err;
+  }
+  waTrace('appRoute(): fetchWithRenewal resolved', {
+    path,
+    isNull: response === null,
+    status: response?.status,
+    ok: response?.ok,
+  });
   if (response === null || !response.ok) {
     return null;
   }
-  return (await response.json()) as T;
+  const json = (await response.json()) as T;
+  waTrace('appRoute(): response JSON', { path, json });
+  return json;
 };
 
 const personName = (person: PersonNode): string =>
@@ -184,6 +231,7 @@ export const searchPeopleByName = async (
 export const resolveWaTarget = async (
   person: WaPersonResult,
 ): Promise<WaTarget> => {
+  waTrace('resolveWaTarget(): entry', person);
   const base: WaTarget = {
     personId: person.id,
     name: person.name,
@@ -193,6 +241,7 @@ export const resolveWaTarget = async (
     lastInboundAt: null,
   };
   if (person.e164Digits.length < 5) {
+    waTrace('resolveWaTarget(): e164Digits too short, returning base (no conversation lookup)', base);
     return base;
   }
   const target = normDigits(person.e164Digits);
@@ -224,14 +273,17 @@ export const resolveWaTarget = async (
         new Date(a.lastInboundAt ?? 0).getTime(),
     )[0];
   if (match === undefined) {
+    waTrace('resolveWaTarget(): no matching conversation found, returning base', base);
     return base;
   }
-  return {
+  const resolved = {
     ...base,
     conversationId: match.id,
-    lineType: match.lineType === 'OFFICIAL' ? 'OFFICIAL' : 'EVERYDAY',
+    lineType: match.lineType === 'OFFICIAL' ? ('OFFICIAL' as const) : ('EVERYDAY' as const),
     lastInboundAt: match.lastInboundAt ?? null,
   };
+  waTrace('resolveWaTarget(): resolved with matched conversation', resolved);
+  return resolved;
 };
 
 const errorFrom = (raw: unknown, fallback: string): string => {
@@ -255,23 +307,31 @@ export const sendWaText = async (
   target: WaTarget,
   text: string,
 ): Promise<WaSendOutcome> => {
+  waTrace('sendWaText(): entry', { target, text });
   const body = text.trim();
   if (!body) {
+    waTrace('sendWaText(): empty body, returning early WITHOUT any fetch');
     return { ok: false, error: 'Type a message first.' };
   }
   if (target.conversationId) {
+    waTrace('sendWaText(): branch = EXISTING CONVERSATION → /marketing/inbox-reply', {
+      conversationId: target.conversationId,
+    });
     const res = await appRoute<Record<string, unknown>>('/marketing/inbox-reply', {
       id: target.conversationId,
       channel: 'WHATSAPP',
       body,
     });
+    waTrace('sendWaText(): /marketing/inbox-reply appRoute() returned', res);
     if (res === null) {
+      waTrace('sendWaText(): returning ok:false (appRoute returned null)');
       return { ok: false, error: 'Could not reach WhatsApp. Try again.' };
     }
     if ((res as { windowClosed?: boolean }).windowClosed === true) {
       const suggested = (res as {
         suggestedTemplate?: { name: string; languageCode: string; preview: string } | null;
       }).suggestedTemplate ?? null;
+      waTrace('sendWaText(): returning windowClosed outcome', { suggested });
       return {
         ok: false,
         windowClosed: true,
@@ -282,32 +342,51 @@ export const sendWaText = async (
       };
     }
     if ((res as { ok?: boolean }).ok === true) {
+      waTrace('sendWaText(): returning ok:true (existing-conversation branch)', {
+        conversationId: target.conversationId,
+      });
       return { ok: true, conversationId: target.conversationId };
     }
+    waTrace('sendWaText(): res.ok !== true, returning ok:false', res);
     return { ok: false, error: errorFrom(res, 'WhatsApp could not send this message.') };
   }
   // No thread yet → compose mode. wa-service resolves/creates the conversation.
+  waTrace('sendWaText(): branch = NO CONVERSATION YET (compose mode)', {
+    e164Digits: target.e164Digits,
+    e164Length: target.e164Digits.length,
+  });
   if (target.e164Digits.length < 5) {
+    waTrace('sendWaText(): e164Digits too short/empty, returning ok:false WITHOUT any fetch', {
+      e164Digits: target.e164Digits,
+    });
     return { ok: false, error: 'This contact has no WhatsApp number on file.' };
   }
+  waTrace('sendWaText(): calling /whatsapp/send (compose mode)', {
+    waPhoneNumber: `+${target.e164Digits}`,
+  });
   const res = await appRoute<Record<string, unknown>>('/whatsapp/send', {
     waPhoneNumber: `+${target.e164Digits}`,
     body,
   });
+  waTrace('sendWaText(): /whatsapp/send appRoute() returned', res);
   if (res === null) {
+    waTrace('sendWaText(): returning ok:false (appRoute returned null, compose mode)');
     return { ok: false, error: 'Could not reach WhatsApp. Try again.' };
   }
   const kind = (res as { kind?: string; result?: { kind?: string } }).kind ??
     (res as { result?: { kind?: string } }).result?.kind;
   if (kind === 'REJECTED') {
+    waTrace('sendWaText(): REJECTED by WhatsApp');
     return { ok: false, error: 'WhatsApp declined this send. The number may not be on WhatsApp.' };
   }
   if ('error' in (res as object)) {
+    waTrace('sendWaText(): error field in response (compose mode)', res);
     return { ok: false, error: errorFrom(res, 'WhatsApp could not send this message.') };
   }
   const conversationId =
     (res as { conversationId?: string }).conversationId ??
     (res as { result?: { conversationId?: string } }).result?.conversationId;
+  waTrace('sendWaText(): returning ok:true (compose-mode branch)', { conversationId });
   return { ok: true, ...(conversationId ? { conversationId } : {}) };
 };
 
