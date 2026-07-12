@@ -188,14 +188,17 @@ const LastTouch = styled.span<{ $hidden: boolean }>`
   transition: opacity ${DUR.tooltip}ms ${EASE.out};
 `;
 
-const ActionTray = styled.div<{ $visible: boolean }>`
+const ActionTray = styled.div<{ $visible: boolean; $urgent?: boolean }>`
   position: absolute;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 4px;
-  background: var(--p-surface);
+  /* Match the row's hovered background so the tray never shows a mismatched
+     block on urgent (red-wash) rows — same color-mix the RowEl :hover uses. */
+  background: ${({ $urgent }) =>
+    $urgent ? 'color-mix(in srgb, var(--p-bad) 12%, var(--p-surface))' : 'var(--p-surface)'};
   opacity: ${({ $visible }) => ($visible ? 1 : 0)};
   pointer-events: ${({ $visible }) => ($visible ? 'auto' : 'none')};
   transform: translate3d(${({ $visible }) => ($visible ? 0 : 4)}px, 0, 0);
@@ -965,7 +968,7 @@ export const BoardTable = ({
                     {cold ? ' — going cold' : ''}
                   </LastTouch>
                 )}
-                <ActionTray $visible={actionRowId === row.id}>
+                <ActionTray $visible={actionRowId === row.id} $urgent={urgent}>
                   <RowAction
                     type="button"
                     aria-label={`Call ${row.name}`}
