@@ -2,16 +2,15 @@
 // (mockup L897–1127, spec §3.2–3.3). Lifted out of index.tsx's inline
 // BoardList/BoardRow per Task 12.
 //
-// SCOPE NOTE (read this before adding urgency colors): row-level band
-// TREATMENTS — red wash on slaAtRisk/overdue, the brass "today" tick on
-// next-action, the amber "N ago — going cold" stamp + faded lane bar — are
-// Task 14 scope ("The SLA draining ring + triage treatments"), not this
-// file's. Task 12 only needs the STRUCTURE (columns, chips, lane
-// recognition, sort order as given) plus the "Going cold" chip's FILTER
-// (banding.ts's isGoingCold) and the "Needs you now" strip-filter pass-
-// through (banding.ts's bandOf) — both filters work today; the paint that
-// would visually distinguish a going-cold row from any other lands in Task 14.
-// Don't preempt that task's diff by inventing band-driven colors here.
+// TRIAGE TREATMENTS (Task 14 — "the SLA draining ring + triage paint") live
+// here: the row's band (banding.ts's bandOf/isGoingCold/needsAttentionToday —
+// the ONE classifier, never reinvented) drives a subtle red wash on
+// slaAtRisk/overdue rows, a brass "today" tick + full-ink next action on rows
+// that need the agent today, an amber "N ago — going cold" stamp + a 35%-faded
+// lane bar on going-cold rows, and the live SlaRing countdown in the last column
+// of SLA-at-risk lead rows. At a squint the top of the table reads hotter than
+// the bottom (rows arrive pre-sorted needs-you-first). Per-stage seal COLOR
+// comes from stageTone.ts (shared with the peek drawer).
 
 import { useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import styled from '@emotion/styled';
@@ -21,6 +20,8 @@ import { DUR, EASE, SPACE } from '../_pulse/pulse-tokens';
 import { FONT_DISPLAY, FONT_MONO, FONT_UI, P, Seal } from '../_pulse/pulse';
 
 import { bandOf, isGoingCold, needsAttentionToday } from './banding';
+import { SlaRing } from './SlaRing';
+import { stageTone } from './stageTone';
 import type { StripFilter } from './TodayStrip';
 import { formatAedTotal, formatRelative, formatStageLabel, friendlyError } from './format';
 import { SkeletonStack, Text } from './shared';
@@ -43,16 +44,26 @@ import type { StagePickerAnchor } from './StagePicker';
 //                           dedicated --lane-lead var, a lead isn't in a
 //                           lane yet)
 //   institutionalOpportunity → --p-warn      (nearest to mockup's --lane-inst
-//                           #b58a4c — no exact _pulse token)
-//   listing              → --p-bad           (nearest to mockup's --lane-listing
-//                           #c07a56 — no exact _pulse token; reuses the
-//                           "bad"/urgent hue family, flagged for design review)
+//                           #b58a4c — no exact _pulse token; re-checked Task 14,
+//                           amber reads as institutional weight, not an alarm)
+//   listing              → --p-accent        (Task 14 fix: was --p-bad, which
+//                           painted every listing row like an alarm. The mockup's
+//                           --lane-listing is terracotta/clay #c07a56, and NO
+//                           _pulse var is a true terracotta — the only orange-red
+//                           match is --p-bad itself, which we're deliberately
+//                           leaving. Among the non-red tokens, brass --p-accent
+//                           is both the nearest by hex AND the least-alarming
+//                           (calm brand tone). FLAGGED: it shares brass with
+//                           secondaryOpportunity/Resale — the lane LABEL keeps
+//                           them apart, same as the mockup already lets lead +
+//                           off-plan share --seal-new. A true clay token would
+//                           need DESIGN.md to add one.)
 //   sellOpportunity      → --seal-nurt        (no mockup precedent for this
 //                           lane at all — lifecycles.md's ④ Mandate/Supply;
 //                           picked the one remaining distinct, unused token)
-// CONCERN for design review: lead and offplanOpportunity share a dot color
-// (matches the mockup's own choice), and institutional/listing are
-// approximations, not exact swatches. Flagged in the Task 12 report.
+// CONCERN for design review: lead+offplan share --seal-new and listing+resale
+// share --p-accent (both match/extend the mockup's own shared-dot choices); the
+// lane LABEL carries the real distinction. institutional is an approximation.
 const LANE_COLOR: Record<DeskLane, string> = {
   lead: 'var(--seal-new)',
   secondaryOpportunity: 'var(--p-accent)',
@@ -60,7 +71,7 @@ const LANE_COLOR: Record<DeskLane, string> = {
   offplanOpportunity: 'var(--seal-new)',
   rcbiOpportunity: 'var(--p-good)',
   institutionalOpportunity: 'var(--p-warn)',
-  listing: 'var(--p-bad)',
+  listing: 'var(--p-accent)',
   deal: 'var(--p-accent-strong)',
 };
 
@@ -148,7 +159,11 @@ const ResizeHandle = styled.div`
   }
 `;
 
-const RowEl = styled.div`
+// $urgent = slaAtRisk/overdue → a subtle red wash (mockup .row.urgent,
+// --urgent-tint = --p-bad at 12%). Rebuilt from --p-bad via color-mix so it
+// re-tones in both themes without a new local token. Non-urgent rows stay
+// transparent (they sit over the panel's own --p-bg).
+const RowEl = styled.div<{ $urgent?: boolean }>`
   display: grid;
   align-items: center;
   column-gap: 16px;
@@ -157,9 +172,12 @@ const RowEl = styled.div`
   border-bottom: 1px solid var(--p-line);
   cursor: pointer;
   position: relative;
+  background: ${({ $urgent }) =>
+    $urgent ? 'color-mix(in srgb, var(--p-bad) 12%, transparent)' : 'transparent'};
   transition: background ${DUR.tooltip}ms ${EASE.out};
   &:hover {
-    background: var(--p-surface);
+    background: ${({ $urgent }) =>
+      $urgent ? 'color-mix(in srgb, var(--p-bad) 12%, var(--p-surface))' : 'var(--p-surface)'};
   }
 `;
 
@@ -630,9 +648,17 @@ export const BoardTable = ({
           </div>
         )}
         {status === 'ready' &&
-          visibleRows.map((row) => (
+          visibleRows.map((row) => {
+            // The ONE classifier (banding.ts) drives every row treatment below —
+            // never reinvented here.
+            const band = bandOf(row, nowMs);
+            const urgent = band === 'slaAtRisk' || band === 'overdue';
+            const today = needsAttentionToday(row, nowMs);
+            const cold = isGoingCold(row, nowMs);
+            return (
             <RowEl
               key={row.id}
+              $urgent={urgent}
               style={{ gridTemplateColumns: colsTemplate, minWidth: TABLE_MIN_WIDTH }}
               onMouseEnter={() => setActionRowId(row.id)}
               onMouseLeave={() => setActionRowId(null)}
@@ -649,6 +675,8 @@ export const BoardTable = ({
                   width: 3,
                   borderRadius: 3,
                   background: LANE_COLOR[row.laneObject],
+                  // going cold → lane bar fades back (mockup .row.cold::before)
+                  opacity: cold ? 0.35 : 1,
                 }}
               />
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
@@ -713,14 +741,13 @@ export const BoardTable = ({
               </div>
 
               <div style={{ minWidth: 0 }}>
-                {/* Stage seal tone is a FLAT neutral ('new') for every row in
-                    Task 12 — no per-lane stage→tone config has shipped to
-                    this hero, and inventing a band-driven tone here would
-                    duplicate/conflict with Task 14's row-treatment work.
-                    Label is the raw native enum, humanized (never
-                    UPPER_CASE, never a pill). */}
+                {/* Per-stage seal COLOR from stageTone.ts (Task 14) — red for a
+                    lead's reply-now urgency, gold for money-hot stages, green for
+                    live, amber for pending, blue for early, grey otherwise. Label
+                    is the raw native enum, humanized (never UPPER_CASE, never a
+                    pill). */}
                 {row.laneObject === 'lead' ? (
-                  <Seal tone="new" label={formatStageLabel(row.stage)} />
+                  <Seal tone={stageTone(row.stage, row.laneObject)} label={formatStageLabel(row.stage)} />
                 ) : (
                   <StageSealButton
                     type="button"
@@ -732,7 +759,7 @@ export const BoardTable = ({
                       onStagePick(row, { x: rect.left, y: rect.bottom + 6 });
                     }}
                   >
-                    <Seal tone="new" label={formatStageLabel(row.stage)} />
+                    <Seal tone={stageTone(row.stage, row.laneObject)} label={formatStageLabel(row.stage)} />
                   </StageSealButton>
                 )}
               </div>
@@ -755,28 +782,61 @@ export const BoardTable = ({
                 )}
               </div>
 
-              <Ellipsis
-                style={{ fontFamily: FONT_UI, fontSize: 12.5, color: P.ink2 }}
-                onMouseEnter={(e) => handleTruncateEnter(e, row.nextAction ?? '')}
-                onMouseLeave={handleTruncateLeave}
-              >
-                {row.nextAction ?? '—'}
-              </Ellipsis>
+              {/* Needs-you-today → brass tick + full-ink next action (mockup
+                  .row.today .next). The tick sits OUTSIDE the ellipsizing span
+                  so truncation still works on the text. */}
+              <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+                {today && (
+                  <span
+                    style={{
+                      width: 5,
+                      height: 5,
+                      borderRadius: 999,
+                      flex: 'none',
+                      background: P.accent,
+                      marginRight: 7,
+                    }}
+                  />
+                )}
+                <Ellipsis
+                  style={{
+                    fontFamily: FONT_UI,
+                    fontSize: 12.5,
+                    color: today ? P.ink : P.ink2,
+                    fontWeight: today ? 500 : 400,
+                  }}
+                  onMouseEnter={(e) => handleTruncateEnter(e, row.nextAction ?? '')}
+                  onMouseLeave={handleTruncateLeave}
+                >
+                  {row.nextAction ?? '—'}
+                </Ellipsis>
+              </div>
 
               {/* Last column stays fixed at 132px so the four hover actions
                   never bleed into the next-action copy. */}
               <div style={{ textAlign: 'right', minWidth: 0, position: 'relative', height: 28, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-                <LastTouch
-                  $hidden={actionRowId === row.id}
-                  style={{
-                    fontFamily: FONT_MONO,
-                    fontSize: 11.5,
-                    color: P.ink2,
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {formatRelative(row.lastTouchAt) ?? 'no touch yet'}
-                </LastTouch>
+                {band === 'slaAtRisk' ? (
+                  // SLA-at-risk lead (slaDeadline in the future) → the live
+                  // draining ring + countdown, in place of the last-touch stamp.
+                  // Crossfades to the row actions on hover, same as LastTouch.
+                  <LastTouch $hidden={actionRowId === row.id} style={{ display: 'inline-flex' }}>
+                    <SlaRing deadline={row.slaDeadline} nowMs={nowMs} />
+                  </LastTouch>
+                ) : (
+                  <LastTouch
+                    $hidden={actionRowId === row.id}
+                    style={{
+                      fontFamily: FONT_MONO,
+                      fontSize: 11.5,
+                      // going cold → amber stamp (mockup .row.cold .touch)
+                      color: cold ? 'var(--p-warn)' : P.ink2,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {formatRelative(row.lastTouchAt) ?? 'no touch yet'}
+                    {cold ? ' — going cold' : ''}
+                  </LastTouch>
+                )}
                 <ActionTray $visible={actionRowId === row.id}>
                   <RowAction
                     type="button"
@@ -811,7 +871,8 @@ export const BoardTable = ({
                 </ActionTray>
               </div>
             </RowEl>
-          ))}
+            );
+          })}
 
         {status === 'ready' && partial && (
           <div style={{ padding: `${SPACE[3]}px ${SPACE[6]}px`, minWidth: TABLE_MIN_WIDTH }}>

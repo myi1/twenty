@@ -16,6 +16,7 @@ import { DUR, EASE, SPACE } from '../_pulse/pulse-tokens';
 import { FONT_DISPLAY, FONT_MONO, FONT_UI, P, Seal } from '../_pulse/pulse';
 import { fetchTimeline, fetchWaContext, runDeskAction, sendDeskWhatsApp } from './deskApi';
 import { formatAedTotal, formatRelative, formatStageLabel } from './format';
+import { stageTone } from './stageTone';
 import type { DeskRow, DeskTimelineEvent, DeskWaContextResponse } from './types';
 
 export type DrawerMode = 'overview' | 'note' | 'whatsapp' | 'more' | 'task' | 'viewing' | 'snooze' | 'postCall';
@@ -253,7 +254,7 @@ export const PeekDrawer = ({
             <div style={{ font: `500 21px ${FONT_DISPLAY}`, color: P.ink }}>{row.name}</div>
             <div style={{ font: `12px ${FONT_UI}`, color: P.ink2, marginTop: 3 }}>{row.meta}</div>
             <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              {row.laneObject === 'lead' ? <Seal tone="new" label={formatStageLabel(row.stage)} /> : (
+              {row.laneObject === 'lead' ? <Seal tone={stageTone(row.stage, row.laneObject)} label={formatStageLabel(row.stage)} /> : (
                 <button
                   type="button"
                   aria-label={`Move ${row.name} to another stage`}
@@ -264,7 +265,7 @@ export const PeekDrawer = ({
                   }}
                   style={{ all: 'unset', display: 'inline-flex', borderRadius: 999, cursor: 'pointer' }}
                 >
-                  <Seal tone="new" label={formatStageLabel(row.stage)} />
+                  <Seal tone={stageTone(row.stage, row.laneObject)} label={formatStageLabel(row.stage)} />
                 </button>
               )}
               {row.valueAed !== null && <span style={{ font: `500 12px ${FONT_MONO}`, color: P.accent }}>~{formatAedTotal(row.valueAed)}</span>}

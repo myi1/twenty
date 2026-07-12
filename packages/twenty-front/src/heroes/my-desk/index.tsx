@@ -315,7 +315,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
               }}
               onStagePick={(row, anchor) => setStagePicker({ rowId: row.id, anchor })}
             />
-            <RightRail status={railStatus} rail={rail} error={railError} />
+            <RightRail status={railStatus} rail={rail} error={railError} nowMs={nowMs} />
           </div>
           {drawer && (() => {
             const row = boardRows.find((candidate) => candidate.id === drawer.rowId);

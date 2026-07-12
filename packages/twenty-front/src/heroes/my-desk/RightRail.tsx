@@ -16,6 +16,8 @@ import type { ReactNode } from 'react';
 import { SPACE } from '../_pulse/pulse-tokens';
 import { FONT_MONO, FONT_UI, P, Seal } from '../_pulse/pulse';
 
+import { bandOf } from './banding';
+import { SlaRing } from './SlaRing';
 import { formatClock, formatRelative, friendlyError } from './format';
 import { SkeletonStack, Text } from './shared';
 import type {
@@ -113,10 +115,13 @@ export const RightRail = ({
   status,
   rail,
   error,
+  nowMs,
 }: {
   status: 'loading' | 'ready' | 'error';
   rail: DeskRailOk | null;
   error: string | null;
+  /** The hero's re-ticked clock — drives the priority-lead SLA ring. */
+  nowMs: number;
 }) => {
   const navigate = useNavigate();
 
@@ -188,31 +193,35 @@ export const RightRail = ({
         seeAllLabel="All leads"
         onSeeAll={() => navigate('/objects/people')}
       >
-        {rail?.priorityLeads.map((r) => (
-          <div
-            key={r.id}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: SPACE[2],
-              padding: `${SPACE[2]}px 0`,
-            }}
-          >
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontFamily: FONT_UI, fontSize: 12.5, color: P.ink }}>{r.name}</div>
-              <div style={{ fontFamily: FONT_UI, fontSize: 11, color: P.ink2, marginTop: 2 }}>
-                {r.meta}
+        {rail?.priorityLeads.map((r) => {
+          // In-window (SLA reply clock still running) → the live red draining
+          // ring + countdown; warm leads keep the amber "Reply soon" seal.
+          const inWindow = bandOf(r, nowMs) === 'slaAtRisk';
+          return (
+            <div
+              key={r.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: SPACE[2],
+                padding: `${SPACE[2]}px 0`,
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontFamily: FONT_UI, fontSize: 12.5, color: P.ink }}>{r.name}</div>
+                <div style={{ fontFamily: FONT_UI, fontSize: 11, color: P.ink2, marginTop: 2 }}>
+                  {r.meta}
+                </div>
               </div>
+              {inWindow ? (
+                <SlaRing deadline={r.slaDeadline} nowMs={nowMs} />
+              ) : (
+                <Seal tone="warn" label="Reply soon" style={{ flex: 'none' }} />
+              )}
             </div>
-            {/* Flat "Reply soon" seal for every priority lead in Task 12 —
-                the live countdown (red "Reply now" ring vs. amber "Reply
-                soon") is SlaRing's job, and SlaRing arrives Task 14. Don't
-                hand-roll an urgency distinction here that Task 14 will
-                replace wholesale. */}
-            <Seal tone="warn" label="Reply soon" style={{ flex: 'none' }} />
-          </div>
-        ))}
+          );
+        })}
       </RailPanelShell>
     </aside>
   );
