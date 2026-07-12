@@ -149,15 +149,31 @@ const initial = (name: string): string => (name.trim()[0] ?? '?').toUpperCase();
 type ChatListViewProps = {
   onOpenChat: (target: WaTarget) => void;
   onPickPerson: (person: WaPersonResult) => void;
+  // Bumped by the header's "+" new-chat button so the search box grabs focus
+  // even when the list view is already mounted (autoFocus only fires once, on
+  // mount) — lets "+" actually do something rather than sit there decorative.
+  focusSearchSignal?: number;
 };
 
-export const ChatListView = ({ onOpenChat, onPickPerson }: ChatListViewProps) => {
+export const ChatListView = ({
+  onOpenChat,
+  onPickPerson,
+  focusSearchSignal,
+}: ChatListViewProps) => {
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<WaPersonResult[]>([]);
   const [recentChats, setRecentChats] = useState<WaChatRow[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(true);
   const searchSeqRef = useRef(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (focusSearchSignal !== undefined) {
+      searchInputRef.current?.focus();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusSearchSignal]);
 
   const loadRecentChats = useCallback(async () => {
     setLoadingRecent(true);
@@ -209,6 +225,7 @@ export const ChatListView = ({ onOpenChat, onPickPerson }: ChatListViewProps) =>
           autoFocus
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search a contact by name…"
+          ref={searchInputRef}
           value={query}
         />
       </StyledSearchBar>

@@ -176,7 +176,10 @@ type ComposerProps = {
   suggestedTemplate: WaApprovedTemplate | null;
   sending: boolean;
   errorMessage: string | null;
-  onSendText: (text: string) => void;
+  // Resolves true once the send is CONFIRMED to have gone out, false on any
+  // failure (renewal failure, send failure, network error). The composer must
+  // never clear the typed text until this resolves true — see submitText.
+  onSendText: (text: string) => Promise<boolean>;
   onSendFile: (file: File) => void;
   onSendVoiceNote: (file: File) => void;
   onSendTemplate: (templateName: string) => void;
@@ -206,13 +209,20 @@ export const Composer = ({
     }
   };
 
-  const submitText = () => {
+  // Founder UX law: never fabricate a completed action. The text stays in the
+  // box until the send is CONFIRMED — on any failure (a renewal that didn't
+  // stick, a rejected send, a network error) the typed message stays put and
+  // the caller's errorMessage prop surfaces an honest, visible reason, so the
+  // user can just hit Send again instead of retyping a "lost" message.
+  const submitText = async () => {
     const trimmed = text.trim();
     if (!trimmed || sending) {
       return;
     }
-    onSendText(trimmed);
-    setText('');
+    const sent = await onSendText(trimmed);
+    if (sent) {
+      setText('');
+    }
   };
 
   const handleFilePicked = (fileList: FileList | null) => {
@@ -322,7 +332,7 @@ export const Composer = ({
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault();
-              submitText();
+              void submitText();
             }
           }}
           placeholder="Message…"
@@ -340,7 +350,7 @@ export const Composer = ({
             🎙
           </StyledIconButton>
         ) : (
-          <StyledSendButton disabled={sending} onClick={submitText} type="button">
+          <StyledSendButton disabled={sending} onClick={() => void submitText()} type="button">
             {sending ? '…' : 'Send'}
           </StyledSendButton>
         )}

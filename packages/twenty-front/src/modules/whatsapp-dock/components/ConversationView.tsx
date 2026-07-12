@@ -196,11 +196,16 @@ export const ConversationView = ({ target, onBack, onTargetUpdate }: Conversatio
     setSendError(outcome.error);
   };
 
-  const handleSendText = async (text: string) => {
+  // Returns true only once the send is CONFIRMED to have gone out — the
+  // Composer relies on this to decide whether it's safe to clear the typed
+  // text (never fabricate a completed action; see Composer.tsx submitText).
+  const handleSendText = async (text: string): Promise<boolean> => {
     setSending(true);
     setSendError(null);
-    await applyOutcome(await sendWaText(target, text));
+    const outcome = await sendWaText(target, text);
+    await applyOutcome(outcome);
     setSending(false);
+    return outcome.ok === true;
   };
 
   const handleAttachment = async (file: File, isVoiceNote: boolean) => {
@@ -278,7 +283,7 @@ export const ConversationView = ({ target, onBack, onTargetUpdate }: Conversatio
         errorMessage={errorMessage}
         onSendFile={(file) => void handleAttachment(file, false)}
         onSendTemplate={(name) => void handleSendTemplate(name)}
-        onSendText={(text) => void handleSendText(text)}
+        onSendText={(text) => handleSendText(text)}
         onSendVoiceNote={(file) => void handleAttachment(file, true)}
         sending={sending}
         sessionWindowOpen={sessionWindowOpen}

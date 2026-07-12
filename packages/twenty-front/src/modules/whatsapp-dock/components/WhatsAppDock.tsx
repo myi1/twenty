@@ -5,6 +5,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
+import { IconBrandWhatsapp, IconPlus } from 'twenty-ui/display';
 
 import { dockColor } from '@/ui/theme/dockColorTokens';
 import { resolveWaTarget, type WaPersonResult, type WaTarget } from '@/whatsapp-dock/utils/whatsAppComposeBridge';
@@ -117,6 +118,47 @@ const StyledHeaderDot = styled.span`
   margin-right: 6px;
 `;
 
+// Approved-mockup header: a WhatsApp brand glyph (green) + "WhatsApp" title on
+// the left, replacing the plain green-dot bullet used on the pill launcher.
+const StyledHeaderBrand = styled.span`
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+`;
+
+const StyledHeaderIcon = styled.span`
+  align-items: center;
+  color: ${dockColor.accentGreen};
+  display: inline-flex;
+`;
+
+const StyledHeaderActions = styled.span`
+  align-items: center;
+  display: inline-flex;
+  gap: 2px;
+`;
+
+// "+" new-chat/compose button — top-right of the list-view header, per the
+// founder-approved mockup (was missing from the build; see the redesign spec).
+const StyledNewChatButton = styled.button`
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: ${dockColor.radiusSm};
+  color: ${dockColor.textSecondary};
+  cursor: pointer;
+  display: flex;
+  height: 20px;
+  justify-content: center;
+  padding: 0;
+  width: 20px;
+
+  &:hover {
+    background: ${dockColor.bgTertiary};
+    color: ${dockColor.textPrimary};
+  }
+`;
+
 const StyledCollapseButton = styled.button`
   background: transparent;
   border: 0;
@@ -160,6 +202,10 @@ export const WhatsAppDock = () => {
   );
   const [position, setPosition] = useState<DockPosition>(readStoredDockPosition);
   const [target, setTarget] = useState<WaTarget | null>(null);
+  // Bumps on every "+" click so ChatListView refocuses its search box even
+  // when the list is already the visible view (see ChatListView's
+  // focusSearchSignal prop).
+  const [newChatSignal, setNewChatSignal] = useState(0);
 
   const dragStateRef = useRef<{
     pointerId: number;
@@ -253,6 +299,13 @@ export const WhatsAppDock = () => {
     onPointerCancel: handleDragPointerEnd,
   };
 
+  // "+" starts a new chat: jump back to the list view (if a conversation was
+  // open) and focus the search box so the user can immediately type a name.
+  const handleNewChat = () => {
+    setTarget(null);
+    setNewChatSignal((previous) => previous + 1);
+  };
+
   if (!WA_DOCK_ENABLED) {
     return null;
   }
@@ -271,20 +324,38 @@ export const WhatsAppDock = () => {
         }
       >
         <StyledPanelHeader {...dragHandleProps}>
-          <span>
-            <StyledHeaderDot>●</StyledHeaderDot>WhatsApp
-          </span>
-          <StyledCollapseButton
-            aria-label="Collapse WhatsApp"
-            onClick={toggleExpanded}
-            onPointerDown={(event) => event.stopPropagation()}
-          >
-            —
-          </StyledCollapseButton>
+          <StyledHeaderBrand>
+            <StyledHeaderIcon>
+              <IconBrandWhatsapp size={14} />
+            </StyledHeaderIcon>
+            WhatsApp
+          </StyledHeaderBrand>
+          <StyledHeaderActions>
+            <StyledNewChatButton
+              aria-label="New chat"
+              onClick={handleNewChat}
+              onPointerDown={(event) => event.stopPropagation()}
+              title="New chat"
+              type="button"
+            >
+              <IconPlus size={14} />
+            </StyledNewChatButton>
+            <StyledCollapseButton
+              aria-label="Collapse WhatsApp"
+              onClick={toggleExpanded}
+              onPointerDown={(event) => event.stopPropagation()}
+            >
+              —
+            </StyledCollapseButton>
+          </StyledHeaderActions>
         </StyledPanelHeader>
 
         {target === null ? (
-          <ChatListView onOpenChat={setTarget} onPickPerson={(person) => void handlePickPerson(person)} />
+          <ChatListView
+            focusSearchSignal={newChatSignal}
+            onOpenChat={setTarget}
+            onPickPerson={(person) => void handlePickPerson(person)}
+          />
         ) : (
           <ConversationView
             onBack={() => setTarget(null)}
