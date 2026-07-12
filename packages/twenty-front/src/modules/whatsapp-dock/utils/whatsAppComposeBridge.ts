@@ -206,19 +206,18 @@ export const resolveWaTarget = async (
      }`,
     { filter: { waPhoneNumber: { ilike: `%${person.e164Digits.slice(-7)}%` } } },
   );
+  // Exact match only. A loose "shared 8+ digit suffix" fallback used to live
+  // here, intended to tolerate storage-format drift (leading zeros, missing
+  // country code) — but normDigits() already normalizes both sides for that,
+  // and the loose fallback could wrongly resolve a genuinely NEW contact onto
+  // an unrelated EXISTING conversation whose number happens to share a long
+  // digit tail (e.g. two numbers differing only in country/area code). That
+  // would silently reroute a "first message to a new contact" send into a
+  // stranger's real thread — worth hardening even though it wasn't confirmed
+  // as this round's reported symptom.
   const match = (data?.whatsAppConversations?.edges ?? [])
     .map((edge) => edge.node)
-    .filter((node) => {
-      const candidate = normDigits(node.waPhoneNumber ?? '');
-      if (candidate.length === 0) {
-        return false;
-      }
-      if (candidate === target) {
-        return true;
-      }
-      const shorter = Math.min(candidate.length, target.length);
-      return shorter >= 8 && (candidate.endsWith(target) || target.endsWith(candidate));
-    })
+    .filter((node) => normDigits(node.waPhoneNumber ?? '') === target)
     .sort(
       (a, b) =>
         new Date(b.lastInboundAt ?? 0).getTime() -
