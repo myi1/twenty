@@ -20,9 +20,11 @@ import { DUR, EASE, SPACE } from '../_pulse/pulse-tokens';
 import { FONT_DISPLAY, FONT_MONO, FONT_UI, P, Seal } from '../_pulse/pulse';
 
 import { bandOf, isGoingCold, needsAttentionToday } from './banding';
+import { BoardKanban } from './BoardKanban';
 import { SlaRing } from './SlaRing';
 import { stageTone } from './stageTone';
 import type { StripFilter } from './TodayStrip';
+import type { LadderStep } from './gates';
 import { formatAedTotal, formatRelative, formatStageLabel, friendlyError } from './format';
 import { SkeletonStack, Text } from './shared';
 import type { DeskLane, DeskRow } from './types';
@@ -64,7 +66,7 @@ import type { StagePickerAnchor } from './StagePicker';
 // CONCERN for design review: lead+offplan share --seal-new and listing+resale
 // share --p-accent (both match/extend the mockup's own shared-dot choices); the
 // lane LABEL carries the real distinction. institutional is an approximation.
-const LANE_COLOR: Record<DeskLane, string> = {
+export const LANE_COLOR: Record<DeskLane, string> = {
   lead: 'var(--seal-new)',
   secondaryOpportunity: 'var(--p-accent)',
   sellOpportunity: 'var(--seal-nurt)',
@@ -75,7 +77,7 @@ const LANE_COLOR: Record<DeskLane, string> = {
   deal: 'var(--p-accent-strong)',
 };
 
-const LANE_LABEL: Record<DeskLane, string> = {
+export const LANE_LABEL: Record<DeskLane, string> = {
   lead: 'Lead',
   secondaryOpportunity: 'Resale',
   sellOpportunity: 'Seller',
@@ -296,6 +298,40 @@ const Chip = styled.button<{ $on: boolean; $cold?: boolean }>`
   ${({ $cold }) => ($cold ? 'margin-left: auto;' : '')}
 `;
 
+// ── View toggle (mockup .vtoggle L306–318) — a pill group in the opps header.
+// Table is the default and the centerpiece; Kanban is the secondary glance. The
+// active segment fills brass; the choice persists via deskState's `view` slot.
+const Vtoggle = styled.div`
+  display: inline-flex;
+  flex: none;
+  padding: 3px;
+  gap: 2px;
+  background: var(--p-surface);
+  border: 1px solid var(--p-line);
+  border-radius: 999px;
+`;
+
+const VtoggleBtn = styled.button<{ $on: boolean }>`
+  all: unset;
+  box-sizing: border-box;
+  font-family: ${FONT_MONO};
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: ${({ $on }) => ($on ? 'var(--primary-ink)' : 'var(--p-ink-2)')};
+  background: ${({ $on }) => ($on ? 'var(--p-accent)' : 'transparent')};
+  padding: 6px 13px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color ${DUR.tooltip}ms ${EASE.out}, background ${DUR.tooltip}ms ${EASE.out};
+  &:hover { color: ${({ $on }) => ($on ? 'var(--primary-ink)' : 'var(--p-ink)')}; }
+  &:focus-visible { box-shadow: var(--p-focus-ring); }
+  svg { width: 12px; height: 12px; }
+`;
+
 // ── Measured-truncation tooltip — appears only when a cell is actually cut
 // (el.scrollWidth > el.clientWidth), matching mockup L1716–1741. ───────────
 type TooltipState = { text: string; x: number; y: number } | null;
@@ -336,9 +372,12 @@ export const BoardTable = ({
   nowMs,
   stripFilter,
   focusToday,
+  view,
+  onViewChange,
   onRowClick,
   onRowAction,
   onStagePick,
+  onCardDrop,
   initialColWidths,
   initialLaneFilter,
   onColWidthsChange,
@@ -350,6 +389,10 @@ export const BoardTable = ({
   /** Later pages failed AFTER rows were already painted — keep them on screen. */
   partial: boolean;
   nowMs: number;
+  /** Board layout — table (default centerpiece) or the secondary kanban. The
+   *  header + filter chips are shared; only the body below them swaps. */
+  view: 'table' | 'kanban';
+  onViewChange: (view: 'table' | 'kanban') => void;
   /** Active Today Strip tile, if any — ANDed with the lane/cold chip below. */
   stripFilter: StripFilter | null;
   /** Top bar's "Today's plan" focus mode — ANDs a "needs you today" pass over
@@ -359,6 +402,9 @@ export const BoardTable = ({
   onRowClick: (row: DeskRow) => void;
   onRowAction: (action: 'call' | 'whatsapp' | 'note' | 'task' | 'viewing' | 'snooze' | 'open', row: DeskRow) => void;
   onStagePick: (row: DeskRow, anchor: StagePickerAnchor) => void;
+  /** Kanban drop → index.tsx resolves the column to the card's real target stage
+   *  and drives the existing move / gate / undo flow. */
+  onCardDrop: (row: DeskRow, step: LadderStep, anchor: { x: number; y: number }) => void;
   // ── Per-agent persistence (spec §4.3/§8.3) ──────────────────────────────────
   // These are OPTIONAL so BoardTable still renders identically when unwired
   // (defensive — a bad restore can never leave the table stateless). Column
@@ -563,41 +609,72 @@ export const BoardTable = ({
       <div
         style={{
           display: 'flex',
-          alignItems: 'baseline',
-          gap: SPACE[2],
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: SPACE[4],
           padding: `${SPACE[5]}px ${SPACE[6]}px ${SPACE[4]}px`,
         }}
       >
-        <span style={{ fontFamily: FONT_DISPLAY, fontSize: 20, fontWeight: 500, color: P.ink }}>
-          All my opportunities
-        </span>
-        {status === 'ready' && (
-          <span style={{ fontFamily: FONT_MONO, fontSize: 12, color: P.ink2, fontWeight: 400 }}>
-            {focusToday
-              ? `${focusCount} need you today · of ${rows.length} open`
-              : `${rows.length} open${totalValue > 0 ? ` · ~${formatAedTotal(totalValue)} in play` : ''}`}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: SPACE[2], minWidth: 0, flexWrap: 'wrap' }}>
+          <span style={{ fontFamily: FONT_DISPLAY, fontSize: 20, fontWeight: 500, color: P.ink }}>
+            All my opportunities
           </span>
-        )}
-        {status === 'ready' && focusToday && (
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              fontFamily: FONT_UI,
-              fontSize: 11.5,
-              fontWeight: 500,
-              color: P.ink,
-              padding: '3px 10px',
-              borderRadius: 999,
-              border: '1px solid var(--p-accent)',
-              background: 'var(--p-accent-tint)',
-            }}
+          {status === 'ready' && (
+            <span style={{ fontFamily: FONT_MONO, fontSize: 12, color: P.ink2, fontWeight: 400 }}>
+              {focusToday
+                ? `${focusCount} need you today · of ${rows.length} open`
+                : `${rows.length} open${totalValue > 0 ? ` · ~${formatAedTotal(totalValue)} in play` : ''}`}
+            </span>
+          )}
+          {status === 'ready' && focusToday && (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                fontFamily: FONT_UI,
+                fontSize: 11.5,
+                fontWeight: 500,
+                color: P.ink,
+                padding: '3px 10px',
+                borderRadius: 999,
+                border: '1px solid var(--p-accent)',
+                background: 'var(--p-accent-tint)',
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: 999, background: P.accent, flex: 'none' }} />
+              Focus: today
+            </span>
+          )}
+        </div>
+        <Vtoggle role="group" aria-label="Board view">
+          <VtoggleBtn
+            type="button"
+            $on={view === 'table'}
+            aria-pressed={view === 'table'}
+            title="Table view"
+            onClick={() => onViewChange('table')}
           >
-            <span style={{ width: 6, height: 6, borderRadius: 999, background: P.accent, flex: 'none' }} />
-            Focus: today
-          </span>
-        )}
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden>
+              <path d="M2 3.5h12M2 8h12M2 12.5h12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            </svg>
+            Table
+          </VtoggleBtn>
+          <VtoggleBtn
+            type="button"
+            $on={view === 'kanban'}
+            aria-pressed={view === 'kanban'}
+            title="Kanban view"
+            onClick={() => onViewChange('kanban')}
+          >
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden>
+              <rect x="2" y="2.5" width="3.4" height="11" rx="1" stroke="currentColor" strokeWidth="1.3" />
+              <rect x="6.3" y="2.5" width="3.4" height="7.5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+              <rect x="10.6" y="2.5" width="3.4" height="9" rx="1" stroke="currentColor" strokeWidth="1.3" />
+            </svg>
+            Kanban
+          </VtoggleBtn>
+        </Vtoggle>
       </div>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: `4px ${SPACE[6]}px ${SPACE[4]}px` }}>
@@ -629,6 +706,17 @@ export const BoardTable = ({
         </Chip>
       </div>
 
+      {view === 'kanban' ? (
+        <BoardKanban
+          status={status}
+          rows={visibleRows}
+          error={error}
+          partial={partial}
+          nowMs={nowMs}
+          onRowClick={onRowClick}
+          onCardDrop={onCardDrop}
+        />
+      ) : (
       <div style={{ overflowX: 'auto' }}>
         <div
           style={{
@@ -920,6 +1008,7 @@ export const BoardTable = ({
           </div>
         )}
       </div>
+      )}
 
       {overflow && (
         <>

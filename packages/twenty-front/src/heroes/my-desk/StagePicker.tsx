@@ -90,27 +90,40 @@ export type StagePickerAnchor = { x: number; y: number };
 
 type ActiveGate = { toStage: string; requirements: DeskGate[] };
 
-export const StagePicker = ({ row, anchor, host, onClose, onMoved }: {
+export const StagePicker = ({ row, anchor, host, onClose, onMoved, restrictTo, initialGate }: {
   row: DeskRow;
   anchor: StagePickerAnchor;
   host: PropelHeroHost;
   onClose: () => void;
   onMoved: (result: Extract<DeskMoveResponse, { ok: true }>, toStage: string) => void;
+  // ── Kanban drag reuse (Batch 5) ─────────────────────────────────────────────
+  // A kanban drop onto a column that maps to 2+ real stages opens this picker
+  // SCOPED to just those stages (restrictTo). A single-stage drop that the server
+  // gate rejected opens it with the gate ALREADY surfaced (initialGate) so the
+  // agent lands straight on the reason/fix. Absent both, the picker behaves
+  // exactly as the table's inline "move stage" always has (full ladder).
+  /** When set, the ladder shows ONLY these native stages (the target column's). */
+  restrictTo?: readonly string[];
+  /** When set, open straight on the gate sheet for this move (server said blocked). */
+  initialGate?: ActiveGate;
 }) => {
   const [busy, setBusy] = useState(false);
   const [loadingGates, setLoadingGates] = useState(true);
   const [gatesByStage, setGatesByStage] = useState<Record<string, DeskGate[]>>({});
-  const [activeGate, setActiveGate] = useState<ActiveGate | null>(null);
-  const [view, setView] = useState<'ladder' | 'gate'>('ladder');
+  const [activeGate, setActiveGate] = useState<ActiveGate | null>(initialGate ?? null);
+  const [view, setView] = useState<'ladder' | 'gate'>(initialGate ? 'gate' : 'ladder');
   const [fading, setFading] = useState(true);
   const [nudgeSent, setNudgeSent] = useState(false);
   const swapTimer = useRef<number | undefined>(undefined);
   const stages = isStageLane(row.laneObject) ? STAGES_BY_LANE[row.laneObject] : [];
   const currentIndex = stages.indexOf(row.stage);
+  // The rows actually rendered in the ladder — the whole lane, or just the
+  // target column's stages when a kanban drop scoped us (restrictTo).
+  const visibleStages = restrictTo ? stages.filter((stage) => restrictTo.includes(stage)) : stages;
   const position = useMemo(() => ({
     left: Math.max(8, Math.min(anchor.x, window.innerWidth - 262)),
-    top: Math.max(8, Math.min(anchor.y, window.innerHeight - Math.min(560, stages.length * 48 + 82))),
-  }), [anchor.x, anchor.y, stages.length]);
+    top: Math.max(8, Math.min(anchor.y, window.innerHeight - Math.min(560, visibleStages.length * 48 + 82))),
+  }), [anchor.x, anchor.y, visibleStages.length]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setFading(false));
@@ -258,9 +271,10 @@ export const StagePicker = ({ row, anchor, host, onClose, onMoved }: {
               {LANE_LABEL[row.laneObject]} · move stage
             </div>
             <StageList>
-              {stages.map((stage, index) => {
+              {visibleStages.map((stage) => {
+                const fullIndex = stages.indexOf(stage);
                 const current = stage === row.stage;
-                const next = index === currentIndex + 1;
+                const next = fullIndex === currentIndex + 1;
                 const requirements = gatesByStage[stage] ?? [];
                 // A WARN gate must not paint the row as hard-blocked — only block-severity dims it.
                 const blocking = requirements.filter((gate) => gate.severity !== 'warn');

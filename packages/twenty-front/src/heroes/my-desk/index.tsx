@@ -34,6 +34,13 @@ import { fetchBoard, fetchRail, fetchTimeline, runDeskAction } from './deskApi';
 import { StagePicker, type StagePickerAnchor } from './StagePicker';
 import { formatStageLabel } from './format';
 import {
+  isStageLane,
+  ladderStepOf,
+  LADDER_LABEL,
+  stagesForLadderStep,
+  type LadderStep,
+} from './gates';
+import {
   deskStateKey,
   loadDeskState,
   migrateDeskStateKey,
@@ -41,7 +48,20 @@ import {
   type DeskPersistedState,
   type RailArrangement,
 } from './deskState';
-import type { DeskMoveResponse, DeskRailOk, DeskRow, DeskUndoResponse } from './types';
+import type { DeskGate, DeskMoveResponse, DeskRailOk, DeskRow, DeskUndoResponse } from './types';
+
+// Lane → plain label, for the "no such column in this lane" drop hint (kanban).
+// Mirrors BoardTable/StagePicker's own label maps — small enough to keep local.
+const LANE_LABEL: Record<DeskRow['laneObject'], string> = {
+  lead: 'Lead',
+  secondaryOpportunity: 'Resale',
+  sellOpportunity: 'Seller',
+  offplanOpportunity: 'Off-plan',
+  rcbiOpportunity: 'RCBI',
+  institutionalOpportunity: 'Institutional',
+  listing: 'Listing',
+  deal: 'Deal',
+};
 
 // "Now", re-snapshotted periodically so band classification (SLA windows,
 // going-cold thresholds) doesn't silently go stale on a desk left open for
@@ -148,8 +168,20 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
   // lane/going-cold chip filter — set by TodayStrip, consumed by BoardTable.
   // Seeded from the persisted blob (one of the two remembered filter chips).
   const [stripFilter, setStripFilter] = useState<StripFilter | null>(persistedRef.current.stripFilter);
+  // Board layout — table (default) or the secondary kanban. Seeded from + saved
+  // to the persisted blob (the `view` slot reserved in Batch 2).
+  const [view, setView] = useState<'table' | 'kanban'>(persistedRef.current.view);
   const [drawer, setDrawer] = useState<{ rowId: string; mode: DrawerMode } | null>(null);
-  const [stagePicker, setStagePicker] = useState<{ rowId: string; anchor: StagePickerAnchor } | null>(null);
+  // The stage picker can be opened three ways now: the table's inline "move
+  // stage" (full ladder), a kanban drop onto a multi-stage column (restrictTo =
+  // just those stages), or a single-stage kanban drop the server gate rejected
+  // (initialGate = open straight on the gate sheet).
+  const [stagePicker, setStagePicker] = useState<{
+    rowId: string;
+    anchor: StagePickerAnchor;
+    restrictTo?: readonly string[];
+    initialGate?: { toStage: string; requirements: DeskGate[] };
+  } | null>(null);
   const [undoMove, setUndoMove] = useState<{
     rowId: string;
     previousStage: string;
@@ -261,6 +293,91 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
     return true;
   };
 
+  // Optimistically reflect a completed stage move on the board + arm the undo
+  // toast — shared by the table's StagePicker (onMoved) AND the kanban's direct
+  // drop path (Batch 5) so both write the row + undo identically.
+  const applyMove = (
+    rowId: string,
+    result: Extract<DeskMoveResponse, { ok: true }>,
+    toStage: string,
+  ) => {
+    setBoardRows((current) =>
+      current.map((candidate) =>
+        candidate.id === rowId
+          ? {
+              ...candidate,
+              stage: toStage,
+              meta: candidate.meta.replace(/ · [^·]+$/, ` · ${formatStageLabel(toStage)}`),
+              lastTouchAt: result.touchedAt ?? candidate.lastTouchAt,
+            }
+          : candidate,
+      ),
+    );
+    setUndoMove({
+      rowId,
+      previousStage: result.previousStage,
+      toStage,
+      noteId: result.noteId,
+      sideEffects: result.sideEffects,
+    });
+  };
+
+  // A kanban drop that resolved to exactly ONE target stage → move directly via
+  // the EXISTING moveStage action (spec §4.4). Gates still apply: a server
+  // GATE_BLOCKED opens the scoped StagePicker straight on the gate sheet (reusing
+  // GateSheet + its complete/save/nudge/move-anyway handlers), cleared exactly as
+  // from the table; a rejected drop leaves the board unchanged = the card snaps back.
+  const moveStageDirect = async (row: DeskRow, toStage: string, anchor: StagePickerAnchor) => {
+    const result = (await runDeskAction('moveStage', {
+      laneObject: row.laneObject,
+      recordId: row.recordId,
+      toStage,
+    })) as DeskMoveResponse | null;
+    if (!result) {
+      host.notify("The stage didn't move. Please try again.", 'error');
+      return;
+    }
+    if (!result.ok) {
+      if (result.error === 'GATE_BLOCKED' && result.gate) {
+        setStagePicker({
+          rowId: row.id,
+          anchor,
+          restrictTo: [toStage],
+          initialGate: { toStage, requirements: [{ ...result.gate, done: false }] },
+        });
+      } else {
+        host.notify("The stage didn't move. Please try again.", 'error');
+      }
+      return;
+    }
+    if (result.warnings?.length) {
+      host.notify(result.warnings.map((warning) => warning.label).join(' · '), 'info');
+    }
+    applyMove(row.id, result, toStage);
+  };
+
+  // Kanban drag-drop entry point (spec §4.4). Resolve the dropped-on ladder
+  // COLUMN to the card's real target stage(s) via LADDER_MAP — never a guess:
+  //   • same column           → nothing to do (the card snaps back)
+  //   • lane has no such column → a plain-language hint; card snaps back
+  //   • exactly one stage      → move directly (gates still apply)
+  //   • two or more stages     → open the picker SCOPED to just those stages so
+  //                              the agent chooses which real stage they mean
+  const handleKanbanDrop = (row: DeskRow, step: LadderStep, anchor: StagePickerAnchor) => {
+    if (row.laneObject === 'lead' || !isStageLane(row.laneObject)) return; // leads convert, they don't move
+    if (ladderStepOf(row.laneObject, row.stage) === step) return; // already in this column
+    const targets = stagesForLadderStep(row.laneObject, step);
+    if (targets.length === 0) {
+      host.notify(`${LANE_LABEL[row.laneObject]} has no "${LADDER_LABEL[step]}" stage — nothing moved.`, 'info');
+      return;
+    }
+    if (targets.length === 1) {
+      void moveStageDirect(row, targets[0], anchor);
+      return;
+    }
+    setStagePicker({ rowId: row.id, anchor, restrictTo: targets });
+  };
+
   // Once the acting member id arrives (board first page), upgrade the persistence
   // key from the per-browser 'local' slot to the member-scoped one. The browser's
   // pre-login prefs carry over the first time; if the member already had saved
@@ -277,6 +394,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
     setRailArrangement({ order: state.order, folds: state.folds, collapsed: state.collapsed });
     setFocusToday(state.focusToday);
     setStripFilter(state.stripFilter);
+    setView(state.view);
   }, [memberId]);
 
   useEffect(() => {
@@ -429,9 +547,15 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
               nowMs={nowMs}
               stripFilter={stripFilter}
               focusToday={focusToday}
+              view={view}
+              onViewChange={(next) => {
+                setView(next);
+                persist({ view: next });
+              }}
               onRowClick={(row) => setDrawer({ rowId: row.id, mode: 'overview' })}
               onRowAction={handleRowAction}
               onStagePick={(row, anchor) => setStagePicker({ rowId: row.id, anchor })}
+              onCardDrop={handleKanbanDrop}
               initialColWidths={persistedRef.current.colWidths}
               initialLaneFilter={persistedRef.current.laneFilter}
               onColWidthsChange={(widths) => persist({ colWidths: widths })}
@@ -474,16 +598,12 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
                 row={row}
                 anchor={stagePicker.anchor}
                 host={host}
+                restrictTo={stagePicker.restrictTo}
+                initialGate={stagePicker.initialGate}
                 onClose={() => setStagePicker(null)}
-                onMoved={(result: Extract<DeskMoveResponse, { ok: true }>, toStage) => {
-                  setBoardRows((current) => current.map((candidate) => candidate.id === row.id ? {
-                    ...candidate,
-                    stage: toStage,
-                    meta: candidate.meta.replace(/ · [^·]+$/, ` · ${formatStageLabel(toStage)}`),
-                    lastTouchAt: result.touchedAt ?? candidate.lastTouchAt,
-                  } : candidate));
-                  setUndoMove({ rowId: row.id, previousStage: result.previousStage, toStage, noteId: result.noteId, sideEffects: result.sideEffects });
-                }}
+                onMoved={(result: Extract<DeskMoveResponse, { ok: true }>, toStage) =>
+                  applyMove(row.id, result, toStage)
+                }
               />
             ) : null;
           })()}

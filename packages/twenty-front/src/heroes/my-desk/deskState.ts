@@ -49,8 +49,8 @@ export type DeskPersistedState = {
   laneFilter: string;
   /** The Today-strip tile, or null when none is active. */
   stripFilter: StripFilter | null;
-  /** View toggle — only 'table' ships today; reserved so kanban can join later. */
-  view: 'table';
+  /** Board view toggle — table (default) or the secondary kanban board. */
+  view: 'table' | 'kanban';
   /** Top-bar "Today's plan" focus mode. */
   focusToday: boolean;
 } & RailArrangement;
@@ -110,6 +110,8 @@ const sanitize = (raw: unknown): DeskPersistedState => {
   ) {
     out.stripFilter = o.stripFilter as StripFilter;
   }
+
+  if (o.view === 'table' || o.view === 'kanban') out.view = o.view;
 
   if (isBool(o.focusToday)) out.focusToday = o.focusToday;
   if (isBool(o.collapsed)) out.collapsed = o.collapsed;
