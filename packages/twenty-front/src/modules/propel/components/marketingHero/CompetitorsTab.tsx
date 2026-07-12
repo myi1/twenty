@@ -50,6 +50,25 @@ type FeedRow = {
   engagementLabel: string;
 };
 
+// Sort options (founder-approved 2026-07-12). Mirrors FeedSort in the CRM
+// repo's competitor-feed-view.ts — 'engagement' is the existing default.
+type FeedSort = 'engagement' | 'recent' | 'likes' | 'comments';
+
+const SORT_OPTIONS: { value: FeedSort; label: string }[] = [
+  { value: 'engagement', label: 'Most engagement' },
+  { value: 'recent', label: 'Most recent' },
+  { value: 'likes', label: 'Most liked' },
+  { value: 'comments', label: 'Most commented' },
+];
+
+// Plain-language phrase for the intro copy — no raw sort value shown to the user.
+const SORT_INTRO_PHRASE: Record<FeedSort, string> = {
+  engagement: 'sorted by engagement',
+  recent: 'sorted by most recent',
+  likes: 'sorted by most liked',
+  comments: 'sorted by most commented',
+};
+
 type FeedResponse =
   | { blocked: true }
   | {
@@ -164,10 +183,15 @@ const cardInReduced = keyframes`
 
 // Masonry feel: single-column scroll on narrow, 2–3 columns on wide.
 // CSS multi-columns would fill COLUMN-major (rank #159 lands at the top of
-// column 2), which breaks the "sorted by engagement" promise — so the live
+// column 2), which breaks the "sorted by <current sort>" promise — so the live
 // feed distributes cards round-robin into flex columns (row-major reading
 // order) via useFeedColumnCount below. The CSS-columns Masonry stays only
 // for the loading skeleton, where order is meaningless.
+//
+// This distribution never inspects WHAT the rows are sorted by — it just
+// preserves whatever order `rows` arrives in — so the same row-major logic
+// holds for all four sort modes (engagement/recent/likes/comments), not
+// just the original engagement default.
 const Masonry = styled.div`
   column-count: 1;
   column-gap: 16px;
@@ -336,8 +360,11 @@ const Metric = styled.span`
   color: var(--p-ink-2);
 `;
 
-// The ranking seal — the feed is sorted by engagement, this is the rank
-// signal. Quiet by design: mono figure, hairline pill, no fill.
+// The engagement seal — always shows the post's likes+comments count as a
+// reference stat, regardless of which sort is active (it is only the actual
+// "rank" signal when sort === 'engagement'; under the other three sorts it's
+// just informational, same as the like/comment counts beside it). Quiet by
+// design: mono figure, hairline pill, no fill.
 const RankSeal = styled.span`
   margin-left: auto;
   flex: none;
@@ -471,11 +498,12 @@ export const CompetitorsTab = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [competitor, setCompetitor] = useState<string>('ALL');
   const [format, setFormat] = useState<string>('ALL');
+  const [sort, setSort] = useState<FeedSort>('engagement');
   const colorScheme = useComputedColorScheme('dark');
 
   const load = useCallback(async () => {
     setIsLoading(true);
-    const first = await callFeedPage({ offset: 0, limit: PAGE_LIMIT });
+    const first = await callFeedPage({ offset: 0, limit: PAGE_LIMIT, sort });
     if (first === null || first.blocked) {
       setData(first);
       setFailed(first === null);
@@ -483,12 +511,14 @@ export const CompetitorsTab = () => {
       return;
     }
     // Follow the pages (see FeedResponse paging note). A mid-loop failure
-    // keeps what we have rather than discarding the loaded rows.
+    // keeps what we have rather than discarding the loaded rows. Sort is
+    // applied server-side before paging, so every page stays contiguous
+    // under the requested sort.
     let rows = [...first.rows];
     let next = first.nextOffset ?? null;
     let pages = 1;
     while (next !== null && pages < MAX_PAGES) {
-      const page = await callFeedPage({ offset: next, limit: PAGE_LIMIT });
+      const page = await callFeedPage({ offset: next, limit: PAGE_LIMIT, sort });
       if (page === null || page.blocked) break;
       rows = rows.concat(page.rows);
       next = page.nextOffset ?? null;
@@ -497,7 +527,7 @@ export const CompetitorsTab = () => {
     setData({ ...first, rows });
     setFailed(false);
     setIsLoading(false);
-  }, []);
+  }, [sort]);
 
   useEffect(() => {
     void load();
@@ -531,7 +561,7 @@ export const CompetitorsTab = () => {
   const intro = (
     <SurfaceIntro
       eyebrow="The competitor watch"
-      title="What Dubai brokerages are posting — sorted by engagement."
+      title={`What Dubai brokerages are posting — ${SORT_INTRO_PHRASE[sort]}.`}
       icon={<IconBrandInstagram size={20} />}
       actions={
         <Button
@@ -621,6 +651,17 @@ export const CompetitorsTab = () => {
           </StaleNotice>
         ) : null}
 
+        <PillRow>
+          {SORT_OPTIONS.map((opt) => (
+            <Pill
+              key={opt.value}
+              $active={sort === opt.value}
+              onClick={() => setSort(opt.value)}
+            >
+              {opt.label}
+            </Pill>
+          ))}
+        </PillRow>
         <PillRow>
           <Pill
             $active={competitor === 'ALL'}
