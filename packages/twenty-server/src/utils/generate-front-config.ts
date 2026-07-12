@@ -48,6 +48,15 @@ export function generateFrontConfig(): void {
       process.env.REACT_APP_HEROES_BASE_URL;
   }
 
+  // Propel floating WhatsApp dock (founder feature #2) — runtime toggle. The FE
+  // (WhatsAppDock) renders only when window._env_.REACT_APP_WA_DOCK_ENABLED ===
+  // 'true', so the flag must be surfaced here or the dock can never turn on at
+  // runtime. Set "true" to enable (staging first); leave unset to dark-ship.
+  if (process.env.REACT_APP_WA_DOCK_ENABLED) {
+    envForFront.REACT_APP_WA_DOCK_ENABLED =
+      process.env.REACT_APP_WA_DOCK_ENABLED;
+  }
+
   const configString = `<!-- BEGIN: Twenty Config -->
     <script id="twenty-env-config">
       window._env_ = ${JSON.stringify(envForFront, null, 2)};
