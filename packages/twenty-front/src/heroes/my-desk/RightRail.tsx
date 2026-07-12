@@ -41,6 +41,7 @@ import { DUR, EASE, SPACE } from '../_pulse/pulse-tokens';
 import { FONT_MONO, FONT_UI, P, Seal } from '../_pulse/pulse';
 
 import { bandOf } from './banding';
+import { ReidinRailPanel } from './ReidinRailPanel';
 import { SlaRing } from './SlaRing';
 import { formatClock, formatRelative, friendlyError } from './format';
 import { SkeletonStack, Text } from './shared';
@@ -752,6 +753,18 @@ export const RightRail = ({
         );
       }),
     },
+    // REIDIN login helper (Batch 3). An ACTION panel — no live count, no
+    // "see all" (empty seeAllLabel hides the header link), and its body owns its
+    // own state machine, so it renders regardless of the rail's load status (the
+    // generic loading/error/empty gating is skipped for it below).
+    reidin: {
+      title: 'REIDIN login',
+      count: null,
+      seeAllLabel: '',
+      onSeeAll: () => {},
+      emptyLabel: '',
+      body: null,
+    },
   };
 
   // ── Collapsed: the slim count strip ──────────────────────────────────────────
@@ -893,15 +906,17 @@ export const RightRail = ({
                   )}
                 </PhTitle>
                 <PhSide>
-                  <SeeAll
-                    type="button"
-                    onMouseDown={() => {
-                      skipFoldRef.current = true;
-                    }}
-                    onClick={panel.onSeeAll}
-                  >
-                    {panel.seeAllLabel}
-                  </SeeAll>
+                  {panel.seeAllLabel ? (
+                    <SeeAll
+                      type="button"
+                      onMouseDown={() => {
+                        skipFoldRef.current = true;
+                      }}
+                      onClick={panel.onSeeAll}
+                    >
+                      {panel.seeAllLabel}
+                    </SeeAll>
+                  ) : null}
                   <Fold $show={hoverHeadId === id} $folded={folded} title="Fold panel">
                     <Chevron />
                   </Fold>
@@ -909,10 +924,17 @@ export const RightRail = ({
               </PanelHead>
               <PanelBody $folded={folded}>
                 <PanelItems>
-                  {status === 'loading' && <SkeletonStack rows={2} height={RAIL_ITEM_HEIGHT} />}
-                  {status === 'error' && <Text muted>{friendlyError(error ?? 'DESK_LOAD_FAILED')}</Text>}
-                  {status === 'ready' && count === 0 && <Text muted>{panel.emptyLabel}</Text>}
-                  {status === 'ready' && count !== null && count > 0 && panel.body}
+                  {id === 'reidin' ? (
+                    // Action panel — self-contained state; never gated on rail load.
+                    <ReidinRailPanel />
+                  ) : (
+                    <>
+                      {status === 'loading' && <SkeletonStack rows={2} height={RAIL_ITEM_HEIGHT} />}
+                      {status === 'error' && <Text muted>{friendlyError(error ?? 'DESK_LOAD_FAILED')}</Text>}
+                      {status === 'ready' && count === 0 && <Text muted>{panel.emptyLabel}</Text>}
+                      {status === 'ready' && count !== null && count > 0 && panel.body}
+                    </>
+                  )}
                 </PanelItems>
               </PanelBody>
             </Panel>

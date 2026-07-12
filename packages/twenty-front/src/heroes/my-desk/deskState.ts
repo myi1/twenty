@@ -22,13 +22,18 @@
 
 import type { StripFilter } from './TodayStrip';
 
-// The four rail panels, in default (top-to-bottom) order.
-export type RailPanelId = 'tasks' | 'viewings' | 'unreadWa' | 'priorityLeads';
+// The rail panels, in default (top-to-bottom) order. 'reidin' (the REIDIN login
+// helper, Batch 3) is a 5th, ACTION panel — it carries no live count and rides
+// the same order/fold/collapse arrangement as the four data panels, so a stored
+// 4-panel arrangement transparently gains it at the end (sanitize appends any
+// missing id).
+export type RailPanelId = 'tasks' | 'viewings' | 'unreadWa' | 'priorityLeads' | 'reidin';
 export const RAIL_PANEL_IDS: readonly RailPanelId[] = [
   'tasks',
   'viewings',
   'unreadWa',
   'priorityLeads',
+  'reidin',
 ];
 
 export type RailArrangement = {
@@ -66,7 +71,7 @@ export const makeDefaultDeskState = (): DeskPersistedState => ({
   view: 'table',
   focusToday: false,
   order: [...RAIL_PANEL_IDS],
-  folds: { tasks: false, viewings: false, unreadWa: false, priorityLeads: false },
+  folds: { tasks: false, viewings: false, unreadWa: false, priorityLeads: false, reidin: false },
   collapsed: false,
 });
 
@@ -148,6 +153,39 @@ export const loadDeskState = (key: string): DeskPersistedState => {
     // storage disabled / JSON.parse threw / anything else — defaults are safe.
     return makeDefaultDeskState();
   }
+};
+
+/** Read the RAW stored blob for `key` WITHOUT the defaults fallback — `null`
+ *  means "nothing is saved under this key yet" (vs loadDeskState, which can't
+ *  distinguish an absent key from a stored-defaults one). Never throws. */
+const readRawDeskState = (key: string): DeskPersistedState | null => {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    return sanitize(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+};
+
+/** Re-point persistence from the pre-login 'local' key to the member-scoped key
+ *  once the signed-in member id reaches the hero (Batch 3 — the /my-desk board
+ *  now returns it). If the member already has saved prefs, those WIN; otherwise
+ *  the current (local) state is carried over so a browser's pre-login
+ *  customisations aren't lost on first sign-in. Returns the key to write to and
+ *  the state to adopt. Never throws — a storage failure just keeps the old key.
+ *  Falls back gracefully when `memberId` is absent (returns the current key). */
+export const migrateDeskStateKey = (
+  currentKey: string,
+  memberId: string | null,
+  currentState: DeskPersistedState,
+): { key: string; state: DeskPersistedState } => {
+  const key = deskStateKey(memberId);
+  if (key === currentKey) return { key, state: currentState };
+  const existing = readRawDeskState(key);
+  if (existing) return { key, state: existing };
+  saveDeskState(key, currentState); // carry the local prefs over the first time
+  return { key, state: currentState };
 };
 
 // Debounced writes, one pending timer per key. saveDeskState may be called on

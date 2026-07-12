@@ -35,6 +35,7 @@ import { formatStageLabel } from './format';
 import {
   deskStateKey,
   loadDeskState,
+  migrateDeskStateKey,
   saveDeskState,
   type DeskPersistedState,
   type RailArrangement,
@@ -109,16 +110,21 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   // ── Per-agent UI state (spec §4.3/§8.3) ──────────────────────────────────────
-  // ONE small localStorage blob, keyed per agent. There's no clean runtime-hero
-  // source for the signed-in member id yet (same reason the greeting is
-  // name-less — see below), so the key falls back to a stable per-browser 'local'
-  // slot; when a member id ever reaches the host it upgrades transparently. Load
-  // ONCE on mount; every change merges in and writes debounced. A malformed/stale
-  // blob silently falls back to defaults (loadDeskState never throws) — losing
-  // this state can never break the desk.
-  const memberId: string | null = null;
-  const stateKeyRef = useRef(deskStateKey(memberId));
+  // ONE small localStorage blob, keyed per agent. At mount there's no member id
+  // yet, so the key starts at the stable per-browser 'local' slot; the /my-desk
+  // board now returns the acting member id (Batch 3), and when it arrives the key
+  // UPGRADES transparently to the member-scoped slot (migrateDeskStateKey — the
+  // browser's pre-login prefs carry over the first time). Load ONCE on mount;
+  // every change merges in and writes debounced. A malformed/stale blob silently
+  // falls back to defaults (loadDeskState never throws) — losing this state can
+  // never break the desk.
+  const stateKeyRef = useRef(deskStateKey(null));
   const persistedRef = useRef<DeskPersistedState>(loadDeskState(stateKeyRef.current));
+  // The signed-in agent, from the board response (first page). firstName drives
+  // the greeting; memberId keys the persistence blob. Both null until the board
+  // lands — we NEVER hardcode a name or an id.
+  const [firstName, setFirstName] = useState<string | null>(null);
+  const [memberId, setMemberId] = useState<string | null>(null);
   const persist = useCallback((patch: Partial<DeskPersistedState>) => {
     persistedRef.current = { ...persistedRef.current, ...patch };
     saveDeskState(stateKeyRef.current, persistedRef.current);
@@ -133,15 +139,10 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
     folds: persistedRef.current.folds,
     collapsed: persistedRef.current.collapsed,
   }));
-  // Greeting first name: NO clean runtime-hero source exists today. The signed-in
-  // member lives in the host's jotai store (currentWorkspaceMemberState), but that
-  // atom is NOT an externalized hero shim — importing it bundles a *second* jotai
-  // instance (empty store → always null, and +600KB), so we don't. The /my-desk
-  // route DOES resolve the acting member (actingMemberName) but doesn't return it
-  // on any read response, and adding that is a CRM/app deploy (out of scope for a
-  // hero-only change). Until one of those lands we greet name-lessly (never a
-  // hardcoded name). Follow-up options in the ship report.
-  const greeting = buildGreeting(nowMs, null);
+  // Greeting first name: the /my-desk board response now carries it (Batch 3 —
+  // actingMemberName, resolved server-side from the acting member). We greet
+  // name-lessly until it lands and if it's ever absent — never a hardcoded name.
+  const greeting = buildGreeting(nowMs, firstName);
   // The Today Strip's active filter tile, ANDed against BoardTable's own
   // lane/going-cold chip filter — set by TodayStrip, consumed by BoardTable.
   // Seeded from the persisted blob (one of the two remembered filter chips).
@@ -255,6 +256,24 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
     return true;
   };
 
+  // Once the acting member id arrives (board first page), upgrade the persistence
+  // key from the per-browser 'local' slot to the member-scoped one. The browser's
+  // pre-login prefs carry over the first time; if the member already had saved
+  // prefs those win, and we reflect the adopted arrangement/filters into live
+  // state. BoardTable's column widths (mounted with the local key's initials) keep
+  // their current values and re-persist under the new key on the next drag — a
+  // storage detail, never a visible reset. Graceful when memberId stays null.
+  useEffect(() => {
+    if (!memberId) return;
+    const { key, state } = migrateDeskStateKey(stateKeyRef.current, memberId, persistedRef.current);
+    if (key === stateKeyRef.current) return;
+    stateKeyRef.current = key;
+    persistedRef.current = state;
+    setRailArrangement({ order: state.order, folds: state.folds, collapsed: state.collapsed });
+    setFocusToday(state.focusToday);
+    setStripFilter(state.stripFilter);
+  }, [memberId]);
+
   useEffect(() => {
     cancelledRef.current = false;
 
@@ -263,12 +282,19 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
     // incl. deskApi's stuck-cursor/page-cap bails) degrades to a partial board
     // instead of erasing rows the agent is already reading.
     let boardRowsReceived = 0;
-    fetchBoard((rows) => {
-      if (cancelledRef.current) return;
-      boardRowsReceived = rows.length;
-      setBoardRows(rows);
-      setBoardStatus('ready');
-    })
+    fetchBoard(
+      (rows) => {
+        if (cancelledRef.current) return;
+        boardRowsReceived = rows.length;
+        setBoardRows(rows);
+        setBoardStatus('ready');
+      },
+      (meta) => {
+        if (cancelledRef.current) return;
+        setFirstName(meta.actingMemberName);
+        setMemberId(meta.memberId);
+      },
+    )
       .catch((err: unknown) => {
         if (cancelledRef.current) return;
         if (boardRowsReceived > 0) {

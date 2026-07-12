@@ -53,8 +53,17 @@ export type DeskRow = {
 export type DeskErrorResponse = { ok: false; error: string };
 
 // board — rows come pre-sorted needs-you-first (sortRows, server-side).
+// actingMemberName (first name, or null) + memberId ride EVERY board page
+// (Batch 3): the hero reads them off the first page for the greeting and the
+// per-agent persistence key. Optional so an older route (pre-Batch-3) still types.
 export type DeskBoardResponse =
-  | { ok: true; rows: DeskRow[]; nextCursor: string | null }
+  | {
+      ok: true;
+      rows: DeskRow[];
+      nextCursor: string | null;
+      actingMemberName?: string | null;
+      memberId?: string | null;
+    }
   | DeskErrorResponse;
 
 // rail — tasks/viewings/unreadWa/priorityLeads, each capped at RAIL_CAP (10).
@@ -165,3 +174,31 @@ export type DeskMoveResponse =
 export type DeskUndoResponse =
   | { ok: true; touchedAt: string; sideEffectsStay: string[] }
   | DeskErrorResponse;
+
+// ── REIDIN login helper (Batch 3 rail panel) ─────────────────────────────────
+// Mirror the shapes emitted by the standalone /reidin/otp/start + /reidin/otp/poll
+// routes (propel-crm-integration src/logic-functions/reidin-otp-*-route.ts). The
+// sidecar owns the single-session lock + IMAP poll; the start route reveals the
+// shared login ONLY through the gated call (never embedded in this bundle).
+export type ReidinLogin = { username: string; password: string; insightUrl: string; cmaUrl: string };
+
+export type ReidinSessionStatus = 'PENDING' | 'OTP_RECEIVED' | 'EXPIRED' | 'FAILED' | 'CANCELLED';
+
+export type ReidinSession = {
+  id: string;
+  requesterRole: string;
+  status: ReidinSessionStatus;
+  createdAt: string;
+  expiresAt: string;
+  otpCode: string | null;
+  otpReceivedAt: string | null;
+  sourceSubject: string | null;
+  forwardedToEmail: string | null;
+  errorMessage: string | null;
+};
+
+export type ReidinStartResponse =
+  | { ok: true; session: ReidinSession; login: ReidinLogin }
+  | { ok?: false; code?: string; error?: string; holderRole?: string; forbidden?: boolean };
+
+export type ReidinPollResponse = { ok: true; session: ReidinSession } | { ok?: false; error?: string };

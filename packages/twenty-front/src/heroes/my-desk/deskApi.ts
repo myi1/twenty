@@ -20,6 +20,8 @@ import type {
   DeskTimelineResponse,
   DeskWaContextResponse,
   DeskWriteResponse,
+  ReidinPollResponse,
+  ReidinStartResponse,
 } from './types';
 
 const ROUTE = '/my-desk';
@@ -31,17 +33,24 @@ const ROUTE = '/my-desk';
 // personal book).
 const MAX_BOARD_PAGES = 40;
 
+/** Small per-session facts the board response carries alongside the rows
+ *  (Batch 3): the acting agent's first name (greeting) + member id (persistence
+ *  key). Delivered once, from the FIRST board page. */
+export type DeskBoardMeta = { actingMemberName: string | null; memberId: string | null };
+
 /**
  * Pages through the board (route caps each page at 50 rows / 25 per lane — the
  * 64KB IPC ceiling gotcha — so a real book needs several round-trips). `onPage`
  * is called with the growing accumulator after every page lands, so the caller
  * can paint rows as they arrive instead of showing a blank desk until the last
- * page resolves. Throws on any failure — including a stuck/runaway cursor —
- * AFTER the pages that did land were already delivered via `onPage`, so the
- * caller can keep the partial board on screen and flag the gap.
+ * page resolves. `onMeta` (optional) fires once, on the first page, with the
+ * acting member's first name + id. Throws on any failure — including a
+ * stuck/runaway cursor — AFTER the pages that did land were already delivered
+ * via `onPage`, so the caller can keep the partial board on screen and flag the gap.
  */
 export const fetchBoard = async (
   onPage: (rows: DeskRow[]) => void,
+  onMeta?: (meta: DeskBoardMeta) => void,
 ): Promise<DeskRow[]> => {
   const all: DeskRow[] = [];
   let cursor: string | null = null;
@@ -58,6 +67,9 @@ export const fetchBoard = async (
       throw new Error(page.error || 'DESK_LOAD_FAILED');
     }
     all.push(...page.rows);
+    if (pages === 0 && onMeta) {
+      onMeta({ actingMemberName: page.actingMemberName ?? null, memberId: page.memberId ?? null });
+    }
     onPage(all); // stream pages into the table — no blank desk while later pages load
     pages += 1;
     const previousCursor: string | null = cursor;
@@ -116,6 +128,18 @@ export const fetchStageGateStatus = (
     recordId,
     toStage,
   });
+
+// ── REIDIN login helper (Batch 3 rail panel) ─────────────────────────────────
+// The SAME gated start/poll routes the standalone REIDIN page used. callPropelRoute
+// posts a flat body under `${base}/s<path>` (so '/reidin/otp/start' → /s/reidin/otp/start)
+// and returns the parsed JSON (both the ok + the IN_USE/error shapes) or null on a
+// transport failure. Not role-restricted — any signed-in agent (same access the
+// standalone had).
+export const startReidinOtp = (): Promise<ReidinStartResponse | null> =>
+  callPropelRoute<ReidinStartResponse>('/reidin/otp/start', {});
+
+export const pollReidinOtp = (sessionId: string): Promise<ReidinPollResponse | null> =>
+  callPropelRoute<ReidinPollResponse>('/reidin/otp/poll', { sessionId });
 
 export const sendDeskWhatsApp = (
   conversationId: string,
