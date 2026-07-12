@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import styled from '@emotion/styled';
 import {
   IconComment,
@@ -8,13 +8,23 @@ import {
   IconExternalLink,
   IconNotes,
   IconPhone,
+  IconRefresh,
+  IconSparkles,
   IconX,
 } from 'twenty-ui/display';
 
 import type { PropelHeroHost } from '@/propel/runtime/heroHost';
-import { DUR, EASE, SPACE } from '../_pulse/pulse-tokens';
+import { DUR, EASE, RADIUS, SPACE } from '../_pulse/pulse-tokens';
 import { FONT_DISPLAY, FONT_MONO, FONT_UI, P, Seal } from '../_pulse/pulse';
-import { fetchTimeline, fetchWaContext, runDeskAction, sendDeskWhatsApp } from './deskApi';
+import {
+  assistCallNote,
+  assistNextAction,
+  assistWaDraft,
+  fetchTimeline,
+  fetchWaContext,
+  runDeskAction,
+  sendDeskWhatsApp,
+} from './deskApi';
 import { formatAedTotal, formatRelative, formatStageLabel } from './format';
 import { stageTone } from './stageTone';
 import type { DeskRow, DeskTimelineEvent, DeskWaContextResponse } from './types';
@@ -120,6 +130,103 @@ const Section = ({ title, children }: { title: string; children: React.ReactNode
   </section>
 );
 
+// ── AI assist (My Desk AI v1) presentational bits ────────────────────────────
+// AI PROPOSES, agent DISPOSES: every draft is editable and the agent always
+// sends/saves through the existing note/waSend/createTask actions. Each draft
+// shows its RECEIPT (the plain-language "why"); a failed/absent draft degrades
+// to a quiet "write it yourself" line and never blocks the manual flow.
+
+type AiStatus = 'idle' | 'loading' | 'ready' | 'unavailable';
+
+// Subtle shimmer while a draft streams in — a moving sheen, never a spinner
+// lock. Honors reduced-motion (falls back to a static tint).
+const AiShimmer = styled.div`
+  height: 13px;
+  border-radius: ${RADIUS.sm}px;
+  background: linear-gradient(
+    90deg,
+    var(--p-surface) 0%,
+    var(--p-surface-2) 50%,
+    var(--p-surface) 100%
+  );
+  background-size: 200% 100%;
+  animation: desk-ai-shimmer 1.3s ${EASE.inOut} infinite;
+  @keyframes desk-ai-shimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    opacity: 0.6;
+  }
+`;
+
+// The receipt — the one-line "why" grounded in real record data, so the agent
+// can trust (or dismiss) the draft. An optional Regenerate re-asks for a fresh one.
+const WhyReceipt = ({ text, onRegenerate }: { text: string; onRegenerate?: () => void }) => (
+  <div
+    style={{
+      display: 'flex',
+      gap: 7,
+      alignItems: 'flex-start',
+      marginBottom: 10,
+      padding: '8px 10px',
+      borderRadius: RADIUS.sm,
+      background: P.surface,
+      border: '1px solid var(--p-line)',
+    }}
+  >
+    <IconSparkles size={13} color={P.accent} style={{ flex: 'none', marginTop: 1 }} />
+    <div style={{ flex: 1, font: `11px/1.45 ${FONT_UI}`, color: P.ink2 }}>
+      <span style={{ color: P.accent }}>Suggested because</span> {text}
+    </div>
+    {onRegenerate && (
+      <button
+        type="button"
+        onClick={onRegenerate}
+        aria-label="Regenerate the suggestion"
+        title="Regenerate"
+        style={{
+          all: 'unset',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+          flex: 'none',
+          cursor: 'pointer',
+          color: P.ink2,
+          font: `10px ${FONT_MONO}`,
+          letterSpacing: '.05em',
+          textTransform: 'uppercase',
+        }}
+      >
+        <IconRefresh size={12} /> Redo
+      </button>
+    )}
+  </div>
+);
+
+const AiUnavailable = () => (
+  <div style={{ font: `11px ${FONT_UI}`, fontStyle: 'italic', color: P.ink2, marginBottom: 10 }}>
+    AI draft unavailable — write it yourself.
+  </div>
+);
+
+// A follow-up accepted from an AI suggestion needs a due date (the create-task
+// route requires one). Default to tomorrow 9am local — a sensible follow-up slot
+// the agent can adjust on the record.
+const defaultFollowUpDueIso = (): string => {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  d.setHours(9, 0, 0, 0);
+  return d.toISOString();
+};
+
+const isTodayIso = (iso: string): boolean => {
+  const d = new Date(iso);
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+};
+
 const OBJECT_SINGULAR: Record<DeskRow['laneObject'], string> = {
   lead: 'person',
   secondaryOpportunity: 'secondaryOpportunity',
@@ -166,6 +273,16 @@ export const PeekDrawer = ({
   const [viewingLabel, setViewingLabel] = useState('');
   const [viewingAt, setViewingAt] = useState('');
 
+  // ── AI assist state (My Desk AI v1) ────────────────────────────────────────
+  // Three independent draft flows, each non-blocking: the compose/prompt opens
+  // instantly (empty + editable) and the draft fills in when it lands.
+  const [waAi, setWaAi] = useState<{ status: AiStatus; why: string | null }>({ status: 'idle', why: null });
+  const [nextAi, setNextAi] = useState<{ status: AiStatus; suggestion: string | null; why: string | null; taskTitle: string | null }>({ status: 'idle', suggestion: null, why: null, taskTitle: null });
+  const [callAi, setCallAi] = useState<{ status: AiStatus; why: string | null }>({ status: 'idle', why: null });
+  const waRequested = useRef<string | null>(null);
+  const nextRequested = useRef<string | null>(null);
+  const callRequested = useRef<string | null>(null);
+
   const target = useMemo(() => ({ laneObject: row.laneObject, recordId: row.recordId }), [row.laneObject, row.recordId]);
   const latestCall = useMemo(() => timeline.find((event) => event.type === 'CALL') ?? null, [timeline]);
   const latestWa = useMemo(() => timeline.find((event) => event.type === 'WHATSAPP') ?? null, [timeline]);
@@ -183,6 +300,13 @@ export const PeekDrawer = ({
     setMessage('');
     reloadTimeline();
     setWa(null);
+    // Reset every AI draft flow so a new row never shows a stale receipt/draft.
+    setWaAi({ status: 'idle', why: null });
+    setNextAi({ status: 'idle', suggestion: null, why: null, taskTitle: null });
+    setCallAi({ status: 'idle', why: null });
+    waRequested.current = null;
+    nextRequested.current = null;
+    callRequested.current = null;
     if (row.personId) fetchWaContext(row.personId).then(setWa);
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
@@ -240,6 +364,112 @@ export const PeekDrawer = ({
     }
   };
 
+  // ── AI: drafted WhatsApp reply (§7.1) ──────────────────────────────────────
+  // When the WhatsApp compose is open and a conversation exists, ask for a draft
+  // ONCE. In-window → pre-fill the free-text input (only if the agent hasn't
+  // typed). Out-of-window → don't touch the template picker (send rides the
+  // template path); just show the receipt so the pick is explained. The compose
+  // is usable the instant it opens — the draft is additive.
+  useEffect(() => {
+    if (activeMode !== 'whatsapp') return;
+    if (!wa?.ok || !wa.conversationId) return;
+    if (waRequested.current === row.id) return;
+    waRequested.current = row.id;
+    setWaAi({ status: 'loading', why: null });
+    let cancelled = false;
+    assistWaDraft(row.laneObject, row.recordId, row.personId ?? undefined).then((res) => {
+      if (cancelled) return;
+      if (res?.ok) {
+        setWaAi({ status: 'ready', why: res.why });
+        if (res.withinWindow) setMessage((current) => (current.trim() === '' ? res.draft : current));
+      } else {
+        setWaAi({ status: 'unavailable', why: null });
+      }
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMode, wa, row.id]);
+
+  const regenerateWa = () => {
+    setWaAi({ status: 'loading', why: null });
+    assistWaDraft(row.laneObject, row.recordId, row.personId ?? undefined).then((res) => {
+      if (res?.ok) {
+        setWaAi({ status: 'ready', why: res.why });
+        if (res.withinWindow) setMessage(res.draft);
+      } else {
+        setWaAi({ status: 'unavailable', why: null });
+      }
+    });
+  };
+
+  // ── AI: maintained Next action (§7.2) ──────────────────────────────────────
+  // Only fill BLANKS — never overwrite an agent-set or accepted action. Fetch on
+  // drawer open (independent of mode) so the suggestion is ready in the Next-action
+  // block; Accept turns it into a real task via the existing createTask action.
+  useEffect(() => {
+    if (row.nextAction) return;
+    if (nextRequested.current === row.id) return;
+    nextRequested.current = row.id;
+    setNextAi({ status: 'loading', suggestion: null, why: null, taskTitle: null });
+    let cancelled = false;
+    assistNextAction(row.laneObject, row.recordId).then((res) => {
+      if (cancelled) return;
+      if (res?.ok) setNextAi({ status: 'ready', suggestion: res.suggestion, why: res.why, taskTitle: res.acceptAsTaskTitle });
+      else setNextAi({ status: 'unavailable', suggestion: null, why: null, taskTitle: null });
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [row.id, row.nextAction]);
+
+  const acceptNext = async () => {
+    if (!nextAi.taskTitle) return;
+    setBusy(true);
+    try {
+      const dueAt = defaultFollowUpDueIso();
+      const res = await runDeskAction('createTask', { ...target, title: nextAi.taskTitle, dueAt });
+      if (!res?.ok) {
+        host.notify("That didn't save. Please try again.", 'error');
+        return;
+      }
+      host.notify('Next action added', 'success');
+      if (res.touchedAt) onRowPatch({ lastTouchAt: res.touchedAt });
+      onRowPatch({
+        nextAction: nextAi.taskTitle,
+        nextActionTaskId: res.taskId ?? null,
+        nextActionDueAt: dueAt,
+        nextActionSource: 'task',
+        taskDueToday: isTodayIso(dueAt),
+      });
+      setNextAi({ status: 'idle', suggestion: null, why: null, taskTitle: null });
+      reloadTimeline();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // ── AI: auto-drafted post-call note (§7.3) ─────────────────────────────────
+  // When the post-call prompt opens, ask for a draft ONCE and pre-fill the note
+  // (only if the agent hasn't typed). No draft → the prompt stays blank exactly
+  // as the base flow; the agent saves through the existing note action.
+  useEffect(() => {
+    if (activeMode !== 'postCall') return;
+    if (callRequested.current === row.id) return;
+    callRequested.current = row.id;
+    setCallAi({ status: 'loading', why: null });
+    let cancelled = false;
+    assistCallNote(row.laneObject, row.recordId).then((res) => {
+      if (cancelled) return;
+      if (res?.ok) {
+        setCallAi({ status: 'ready', why: res.why });
+        setNote((current) => (current.trim() === '' ? res.draft : current));
+      } else {
+        setCallAi({ status: 'unavailable', why: null });
+      }
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMode, row.id]);
+
   const openFullRecord = () => host.navigate(deskRecordPath(row));
 
   return (
@@ -286,6 +516,9 @@ export const PeekDrawer = ({
               <div style={{ font: `13px/1.5 ${FONT_UI}`, color: P.ink, marginBottom: 10 }}>
                 {latestCall ? `${row.name} · ${latestCall.durationSeconds ? `${Math.max(1, Math.round(latestCall.durationSeconds / 60))} min` : 'call ended'} · ${formatRelative(latestCall.occurredAt) ?? 'just now'}` : `Call with ${row.name}`}
               </div>
+              {callAi.status === 'loading' && <div style={{ marginBottom: 10 }}><AiShimmer /></div>}
+              {callAi.status === 'ready' && callAi.why && <WhyReceipt text={callAi.why} />}
+              {callAi.status === 'unavailable' && <AiUnavailable />}
               <Textarea autoFocus value={note} onChange={(e) => setNote(e.target.value)} placeholder="What happened? What is the next step?" />
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}><Button $primary disabled={busy || !note.trim()} onClick={saveNote}><IconCheck size={14} /> Save outcome</Button></div>
             </Section>
@@ -308,12 +541,18 @@ export const PeekDrawer = ({
                 <div style={{ font: `12.5px ${FONT_UI}`, color: P.ink2 }}>WhatsApp is unavailable right now.</div>
               ) : wa.withinWindow ? (
                 <>
+                  {waAi.status === 'loading' && <div style={{ marginBottom: 10 }}><AiShimmer /></div>}
+                  {waAi.status === 'ready' && waAi.why && <WhyReceipt text={waAi.why} onRegenerate={busy ? undefined : regenerateWa} />}
+                  {waAi.status === 'unavailable' && <AiUnavailable />}
                   <Textarea autoFocus value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Write a personal message…" />
                   <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}><Button $primary disabled={busy || !message.trim()} onClick={() => sendWa()}><IconComment size={14} /> Send</Button></div>
                 </>
               ) : (
                 <div>
                   <div style={{ font: `12.5px/1.5 ${FONT_UI}`, color: P.ink2, marginBottom: 10 }}>The 24-hour reply window is closed. Choose an approved template:</div>
+                  {waAi.status === 'loading' && <div style={{ marginBottom: 10 }}><AiShimmer /></div>}
+                  {waAi.status === 'ready' && waAi.why && <WhyReceipt text={waAi.why} />}
+                  {waAi.status === 'unavailable' && <AiUnavailable />}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {wa.templates.map((template) => <Button key={template.name} disabled={busy} onClick={() => sendWa(template.name)}>{template.bodyText}</Button>)}
                     {wa.templates.length === 0 && <div style={{ font: `12px ${FONT_UI}`, color: P.ink2 }}>No approved re-engagement template is available yet.</div>}
@@ -367,6 +606,22 @@ export const PeekDrawer = ({
                 ) : (
                   <Button onClick={openFullRecord}>Open record <IconExternalLink size={14} /></Button>
                 )}
+              </div>
+            ) : nextAi.status === 'loading' ? (
+              <AiShimmer />
+            ) : nextAi.status === 'ready' && nextAi.suggestion ? (
+              // A quiet SUGGESTION — dashed border marks it as not-yet-agent-set.
+              // Accept turns it into a real task (owner = agent) via createTask.
+              <div style={{ border: '1px dashed var(--p-accent)', borderRadius: RADIUS.sm, padding: `${SPACE[3]}px ${SPACE[4]}px`, background: P.surface }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                  <IconSparkles size={12} color={P.accent} />
+                  <span style={{ font: `9.5px ${FONT_MONO}`, letterSpacing: '.12em', textTransform: 'uppercase', color: P.accent }}>Suggested</span>
+                </div>
+                <div style={{ font: `500 13px ${FONT_UI}`, color: P.ink, marginBottom: 8 }}>{nextAi.suggestion}</div>
+                {nextAi.why && <div style={{ font: `11px/1.45 ${FONT_UI}`, color: P.ink2, marginBottom: 10 }}><span style={{ color: P.accent }}>Suggested because</span> {nextAi.why}</div>}
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button $primary disabled={busy} onClick={acceptNext}><IconCheck size={14} /> Accept</Button>
+                </div>
               </div>
             ) : <div style={{ font: `12.5px ${FONT_UI}`, color: P.ink2 }}>No follow-up task is set.</div>}
           </Section>

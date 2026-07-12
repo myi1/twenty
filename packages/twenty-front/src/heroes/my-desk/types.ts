@@ -163,6 +163,35 @@ export type DeskGateStatusResponse =
   | { ok: true; requirements: DeskGate[] }
   | DeskErrorResponse;
 
+// ── AI assist (My Desk AI v1) ────────────────────────────────────────────────
+// Mirror the shapes emitted by POST /my-desk/assist (drafts only, never sends):
+//   /Users/yahyaismail/dev/_wt/my-desk/src/logic-functions/my-desk-assist-route.ts
+// Failure carries a `code` for the honest degrade signals (AI_UNAVAILABLE = key
+// not wired, AI_PARSE_FAILED = model returned garbage, NO_CONTACT = no linked
+// person to draft to) or a generic `error` for auth/not-found. The hero treats
+// ANY non-ok (or a null transport failure) as "no draft — write it yourself".
+export type DeskAssistError = {
+  ok: false;
+  code?: 'AI_UNAVAILABLE' | 'AI_PARSE_FAILED' | 'NO_CONTACT';
+  error?: string;
+};
+
+/** waDraft — a WhatsApp reply grounded in the deal + last inbound. `withinWindow`
+ *  false ⇒ the draft is an approved-template fill (send rides the template path). */
+export type DeskWaDraftResponse =
+  | { ok: true; draft: string; why: string; withinWindow: boolean }
+  | DeskAssistError;
+
+/** nextAction — a proposed next move + a one-click task title (owner = agent). */
+export type DeskNextActionResponse =
+  | { ok: true; suggestion: string; why: string; acceptAsTaskTitle: string }
+  | DeskAssistError;
+
+/** callNote — a factual post-call note draft the agent edits and saves. */
+export type DeskCallNoteResponse =
+  | { ok: true; draft: string; why: string }
+  | DeskAssistError;
+
 export type DeskNudgeResponse =
   | { ok: true; sent: number; skipped: number }
   | DeskErrorResponse;

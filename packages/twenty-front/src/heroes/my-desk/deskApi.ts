@@ -14,17 +14,21 @@
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import type {
   DeskBoardResponse,
+  DeskCallNoteResponse,
   DeskGateStatusResponse,
+  DeskNextActionResponse,
   DeskRailResponse,
   DeskRow,
   DeskTimelineResponse,
   DeskWaContextResponse,
+  DeskWaDraftResponse,
   DeskWriteResponse,
   ReidinPollResponse,
   ReidinStartResponse,
 } from './types';
 
 const ROUTE = '/my-desk';
+const ASSIST = '/my-desk/assist';
 
 // Paging safety rails: the loop must terminate even against a misbehaving
 // server. A non-advancing nextCursor (the same value echoed back) would
@@ -140,6 +144,50 @@ export const startReidinOtp = (): Promise<ReidinStartResponse | null> =>
 
 export const pollReidinOtp = (sessionId: string): Promise<ReidinPollResponse | null> =>
   callPropelRoute<ReidinPollResponse>('/reidin/otp/poll', { sessionId });
+
+// ── AI assist wrappers (My Desk AI v1) ───────────────────────────────────────
+// All three post a FLAT body to /my-desk/assist and return the parsed JSON (the
+// ok draft/suggestion OR the honest {ok:false,code} degrade envelope) — or null
+// on a transport failure. Every caller treats null / non-ok as "no draft" and
+// keeps the manual flow fully working; the AI is additive, never a gate.
+
+/** A pre-drafted WhatsApp reply grounded in the deal + last inbound message. */
+export const assistWaDraft = (
+  laneObject: string,
+  recordId: string,
+  contactId?: string,
+): Promise<DeskWaDraftResponse | null> =>
+  callPropelRoute<DeskWaDraftResponse>(ASSIST, {
+    action: 'waDraft',
+    laneObject,
+    recordId,
+    ...(contactId ? { contactId } : {}),
+  });
+
+/** A proposed next action (+ a one-click task title) built from the timeline. */
+export const assistNextAction = (
+  laneObject: string,
+  recordId: string,
+): Promise<DeskNextActionResponse | null> =>
+  callPropelRoute<DeskNextActionResponse>(ASSIST, {
+    action: 'nextAction',
+    laneObject,
+    recordId,
+  });
+
+/** A factual post-call note draft (falls back to the contact's most recent call
+ *  when no callId is given — the call that just ended). */
+export const assistCallNote = (
+  laneObject: string,
+  recordId: string,
+  callId?: string,
+): Promise<DeskCallNoteResponse | null> =>
+  callPropelRoute<DeskCallNoteResponse>(ASSIST, {
+    action: 'callNote',
+    laneObject,
+    recordId,
+    ...(callId ? { callId } : {}),
+  });
 
 export const sendDeskWhatsApp = (
   conversationId: string,
