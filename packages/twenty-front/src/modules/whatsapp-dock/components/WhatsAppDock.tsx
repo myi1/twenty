@@ -1,27 +1,24 @@
 import styled from '@emotion/styled';
 import {
   useCallback,
-  useEffect,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 
-import {
-  resolveWaTarget,
-  searchPeopleByName,
-  sendWaTemplate,
-  sendWaText,
-  type WaPersonResult,
-  type WaSendOutcome,
-  type WaTarget,
-} from '@/whatsapp-dock/utils/whatsAppComposeBridge';
+import { dockColor } from '@/ui/theme/dockColorTokens';
+import { resolveWaTarget, type WaPersonResult, type WaTarget } from '@/whatsapp-dock/utils/whatsAppComposeBridge';
 
-// Floating WhatsApp dock — the message-from-anywhere sibling of the DialerDock.
-// Same shell contract: mounted once in App.tsx OUTSIDE the router and outside
-// BaseThemeProvider, so it must not read the emotion theme — styling is
-// self-contained and theme-neutral dark (Nocturne-adjacent), matching the
-// dialer, with WhatsApp's green as the accent.
+import { ChatListView } from './ChatListView';
+import { ConversationView } from './ConversationView';
+
+// Floating WhatsApp dock — a familiar WhatsApp-style panel: a contact/recent-
+// chats list + a full conversation view (real history, composer, attachments,
+// voice notes, 24h-window handling). Mounted once in App.tsx, OUTSIDE the
+// router and OUTSIDE BaseThemeProvider's React tree — same shell contract as
+// the DialerDock (see SPIKE-DOCK.md). Theming works anyway: see
+// modules/ui/theme/dockColorTokens.ts for why `var(--t-*)` resolves correctly
+// here without being inside the provider's React subtree.
 //
 // Gated on a flag so it can dark-ship: absent flag => renders nothing, exactly
 // like DIALER_DOCK_URL gates the dialer. Set REACT_APP_WA_DOCK_ENABLED=true to
@@ -78,13 +75,13 @@ const StyledDockContainer = styled.div`
 `;
 
 const StyledPanel = styled.div<{ isExpanded: boolean }>`
-  background: #17171c;
-  border: 1px solid #2a2a31;
-  border-radius: 12px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  background: ${dockColor.bgPrimary};
+  border: 1px solid ${dockColor.borderMedium};
+  border-radius: ${dockColor.radiusMd};
+  box-shadow: ${dockColor.shadowStrong};
   display: flex;
   flex-direction: column;
-  height: ${({ isExpanded }) => (isExpanded ? '460px' : '0')};
+  height: ${({ isExpanded }) => (isExpanded ? '480px' : '0')};
   margin-bottom: ${({ isExpanded }) => (isExpanded ? '8px' : '0')};
   opacity: ${({ isExpanded }) => (isExpanded ? '1' : '0')};
   overflow: hidden;
@@ -97,9 +94,9 @@ const StyledPanel = styled.div<{ isExpanded: boolean }>`
 
 const StyledPanelHeader = styled.div`
   align-items: center;
-  background: #101014;
-  border-bottom: 1px solid #2a2a31;
-  color: #9a9aa2;
+  background: ${dockColor.bgSecondary};
+  border-bottom: 1px solid ${dockColor.borderLight};
+  color: ${dockColor.textSecondary};
   cursor: grab;
   display: flex;
   flex-shrink: 0;
@@ -116,172 +113,31 @@ const StyledPanelHeader = styled.div`
 `;
 
 const StyledHeaderDot = styled.span`
-  color: #25d366;
+  color: ${dockColor.accentGreen};
   margin-right: 6px;
 `;
 
 const StyledCollapseButton = styled.button`
   background: transparent;
   border: 0;
-  color: #9a9aa2;
+  color: ${dockColor.textSecondary};
   cursor: pointer;
   font: inherit;
   padding: 2px 4px;
 
   &:hover {
-    color: #f2f2f7;
+    color: ${dockColor.textPrimary};
   }
-`;
-
-const StyledBody = styled.div`
-  color: #e6e6ea;
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 10px;
-  overflow-y: auto;
-  padding: 12px;
-`;
-
-const StyledInput = styled.input`
-  background: #0d0d11;
-  border: 1px solid #2a2a31;
-  border-radius: 8px;
-  color: #f2f2f7;
-  font: 400 13px/1.3 ui-sans-serif, system-ui, sans-serif;
-  outline: none;
-  padding: 9px 11px;
-  width: 100%;
-
-  &:focus {
-    border-color: #25d366;
-  }
-
-  &::placeholder {
-    color: #6b6b73;
-  }
-`;
-
-const StyledResultRow = styled.button`
-  align-items: center;
-  background: transparent;
-  border: 0;
-  border-radius: 8px;
-  color: #e6e6ea;
-  cursor: pointer;
-  display: flex;
-  font: 400 13px/1.3 ui-sans-serif, system-ui, sans-serif;
-  gap: 8px;
-  justify-content: space-between;
-  padding: 9px 10px;
-  text-align: left;
-  transition: background 120ms ease;
-  width: 100%;
-
-  &:hover {
-    background: #22222a;
-  }
-`;
-
-const StyledResultMeta = styled.span`
-  color: #8a8a92;
-  font-size: 11px;
-`;
-
-const StyledHint = styled.div`
-  color: #8a8a92;
-  font: 400 12px/1.4 ui-sans-serif, system-ui, sans-serif;
-  padding: 4px 2px;
-`;
-
-const StyledSelectedName = styled.div`
-  align-items: center;
-  color: #f2f2f7;
-  display: flex;
-  font: 600 13px/1.2 ui-sans-serif, system-ui, sans-serif;
-  gap: 8px;
-  justify-content: space-between;
-`;
-
-const StyledBackButton = styled.button`
-  background: transparent;
-  border: 0;
-  color: #8a8a92;
-  cursor: pointer;
-  font: 400 12px/1 ui-sans-serif, system-ui, sans-serif;
-  padding: 2px 4px;
-
-  &:hover {
-    color: #f2f2f7;
-  }
-`;
-
-const StyledTextarea = styled.textarea`
-  background: #0d0d11;
-  border: 1px solid #2a2a31;
-  border-radius: 8px;
-  color: #f2f2f7;
-  font: 400 13px/1.4 ui-sans-serif, system-ui, sans-serif;
-  min-height: 96px;
-  outline: none;
-  padding: 10px 11px;
-  resize: vertical;
-  width: 100%;
-
-  &:focus {
-    border-color: #25d366;
-  }
-`;
-
-const StyledSendButton = styled.button`
-  align-items: center;
-  background: #25d366;
-  border: 0;
-  border-radius: 8px;
-  color: #08130c;
-  cursor: pointer;
-  display: flex;
-  font: 600 13px/1 ui-sans-serif, system-ui, sans-serif;
-  gap: 6px;
-  justify-content: center;
-  padding: 11px 14px;
-  transition: background 120ms ease;
-  width: 100%;
-
-  &:hover:not(:disabled) {
-    background: #2ee574;
-  }
-
-  &:disabled {
-    background: #2a2a31;
-    color: #6b6b73;
-    cursor: not-allowed;
-  }
-`;
-
-const StyledTemplateCard = styled.div`
-  background: #1d1a10;
-  border: 1px solid #4a3f16;
-  border-radius: 8px;
-  color: #e8dba8;
-  font: 400 12px/1.45 ui-sans-serif, system-ui, sans-serif;
-  padding: 10px 11px;
-`;
-
-const StyledStatus = styled.div<{ tone: 'ok' | 'error' }>`
-  color: ${({ tone }) => (tone === 'ok' ? '#25d366' : '#ff8f8f')};
-  font: 500 12px/1.4 ui-sans-serif, system-ui, sans-serif;
-  padding: 2px 2px;
 `;
 
 const StyledPill = styled.button`
   align-items: center;
   align-self: flex-end;
-  background: #128c4b;
+  background: ${dockColor.accentGreen};
   border: 0;
-  border-radius: 999px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.32);
-  color: #fff;
+  border-radius: ${dockColor.radiusPill};
+  box-shadow: ${dockColor.shadowStrong};
+  color: ${dockColor.textInverted};
   cursor: pointer;
   display: flex;
   font:
@@ -291,36 +147,19 @@ const StyledPill = styled.button`
   gap: 6px;
   padding: 10px 16px;
   touch-action: none;
-  transition: background 120ms ease, transform 120ms ease;
+  transition: transform 120ms ease;
 
   &:hover {
-    background: #16a557;
     transform: translateY(-1px);
   }
 `;
-
-type ComposeState =
-  | { phase: 'idle' }
-  | { phase: 'sending' }
-  | { phase: 'sent' }
-  | { phase: 'error'; message: string }
-  | {
-      phase: 'windowClosed';
-      suggestedTemplate: { name: string; languageCode: string; preview: string } | null;
-      message: string;
-    };
 
 export const WhatsAppDock = () => {
   const [isExpanded, setIsExpanded] = useState(
     () => localStorage.getItem(WA_DOCK_EXPANDED_STORAGE_KEY) === 'true',
   );
   const [position, setPosition] = useState<DockPosition>(readStoredDockPosition);
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<WaPersonResult[]>([]);
-  const [searching, setSearching] = useState(false);
   const [target, setTarget] = useState<WaTarget | null>(null);
-  const [message, setMessage] = useState('');
-  const [compose, setCompose] = useState<ComposeState>({ phase: 'idle' });
 
   const dragStateRef = useRef<{
     pointerId: number;
@@ -331,7 +170,6 @@ export const WhatsAppDock = () => {
     moved: boolean;
   } | null>(null);
   const suppressClickRef = useRef(false);
-  const searchSeqRef = useRef(0);
 
   const toggleExpanded = () => {
     setIsExpanded((previous) => {
@@ -340,35 +178,9 @@ export const WhatsAppDock = () => {
     });
   };
 
-  // Debounced name search. A monotonic sequence guards against out-of-order
-  // responses overwriting a newer query's results.
-  useEffect(() => {
-    const term = query.trim();
-    if (term.length < 2) {
-      setResults([]);
-      setSearching(false);
-      return;
-    }
-    setSearching(true);
-    const seq = ++searchSeqRef.current;
-    const timer = window.setTimeout(() => {
-      void searchPeopleByName(term).then((people) => {
-        if (seq === searchSeqRef.current) {
-          setResults(people);
-          setSearching(false);
-        }
-      });
-    }, 220);
-    return () => window.clearTimeout(timer);
-  }, [query]);
-
-  const pickPerson = useCallback(async (person: WaPersonResult) => {
-    setResults([]);
-    setQuery('');
-    setCompose({ phase: 'idle' });
-    setMessage('');
-    // Optimistic selection so the panel switches to compose immediately; the
-    // thread/line resolution fills in behind it.
+  const handlePickPerson = useCallback(async (person: WaPersonResult) => {
+    // Optimistic selection so the panel switches to the conversation view
+    // immediately; the thread/line resolution fills in behind it.
     setTarget({
       personId: person.id,
       name: person.name,
@@ -380,50 +192,6 @@ export const WhatsAppDock = () => {
     const resolved = await resolveWaTarget(person);
     setTarget((current) => (current?.personId === person.id ? resolved : current));
   }, []);
-
-  const clearSelection = () => {
-    setTarget(null);
-    setMessage('');
-    setCompose({ phase: 'idle' });
-  };
-
-  const applyOutcome = (outcome: WaSendOutcome) => {
-    if (outcome.ok) {
-      setCompose({ phase: 'sent' });
-      setMessage('');
-      setTarget((current) =>
-        current && outcome.conversationId
-          ? { ...current, conversationId: outcome.conversationId }
-          : current,
-      );
-      return;
-    }
-    if ('windowClosed' in outcome) {
-      setCompose({
-        phase: 'windowClosed',
-        suggestedTemplate: outcome.suggestedTemplate,
-        message: outcome.message,
-      });
-      return;
-    }
-    setCompose({ phase: 'error', message: outcome.error });
-  };
-
-  const handleSendText = async () => {
-    if (target === null || message.trim().length === 0) {
-      return;
-    }
-    setCompose({ phase: 'sending' });
-    applyOutcome(await sendWaText(target, message));
-  };
-
-  const handleSendTemplate = async (templateName: string) => {
-    if (target === null) {
-      return;
-    }
-    setCompose({ phase: 'sending' });
-    applyOutcome(await sendWaTemplate(target, templateName));
-  };
 
   const handleDragPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.button !== 0) {
@@ -489,9 +257,6 @@ export const WhatsAppDock = () => {
     return null;
   }
 
-  const hasNoPhone = target !== null && target.e164Digits.length < 5;
-  const sending = compose.phase === 'sending';
-
   return (
     <StyledDockContainer
       data-testid="whatsapp-dock"
@@ -518,100 +283,15 @@ export const WhatsAppDock = () => {
           </StyledCollapseButton>
         </StyledPanelHeader>
 
-        <StyledBody>
-          {target === null ? (
-            <>
-              <StyledInput
-                autoFocus
-                placeholder="Search a contact by name…"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-              {searching && <StyledHint>Searching…</StyledHint>}
-              {!searching && query.trim().length >= 2 && results.length === 0 && (
-                <StyledHint>No contacts match “{query.trim()}”.</StyledHint>
-              )}
-              {results.map((person) => (
-                <StyledResultRow key={person.id} onClick={() => void pickPerson(person)}>
-                  <span>{person.name}</span>
-                  <StyledResultMeta>
-                    {person.e164Digits ? `+${person.e164Digits}` : 'No number'}
-                  </StyledResultMeta>
-                </StyledResultRow>
-              ))}
-              {query.trim().length < 2 && (
-                <StyledHint>
-                  Find anyone in the CRM and send them a WhatsApp without leaving this
-                  page.
-                </StyledHint>
-              )}
-            </>
-          ) : (
-            <>
-              <StyledSelectedName>
-                <span>{target.name}</span>
-                <StyledBackButton onClick={clearSelection}>Change</StyledBackButton>
-              </StyledSelectedName>
-
-              {hasNoPhone ? (
-                <StyledHint>
-                  This contact has no phone number on file, so there is nobody to
-                  message. Add a number to their record first.
-                </StyledHint>
-              ) : compose.phase === 'sent' ? (
-                <>
-                  <StyledStatus tone="ok">Message sent.</StyledStatus>
-                  <StyledSendButton onClick={() => setCompose({ phase: 'idle' })}>
-                    Send another
-                  </StyledSendButton>
-                </>
-              ) : compose.phase === 'windowClosed' ? (
-                <>
-                  <StyledHint>{compose.message}</StyledHint>
-                  {compose.suggestedTemplate ? (
-                    <>
-                      <StyledTemplateCard>{compose.suggestedTemplate.preview}</StyledTemplateCard>
-                      <StyledSendButton
-                        disabled={sending}
-                        onClick={() =>
-                          void handleSendTemplate(compose.suggestedTemplate!.name)
-                        }
-                      >
-                        Send approved template
-                      </StyledSendButton>
-                    </>
-                  ) : (
-                    <StyledHint>
-                      No approved re-engagement template is available yet — it may still
-                      be awaiting WhatsApp approval.
-                    </StyledHint>
-                  )}
-                  <StyledBackButton onClick={() => setCompose({ phase: 'idle' })}>
-                    Back to message
-                  </StyledBackButton>
-                </>
-              ) : (
-                <>
-                  <StyledTextarea
-                    autoFocus
-                    placeholder={`Message ${target.name.split(' ')[0] || 'contact'}…`}
-                    value={message}
-                    onChange={(event) => setMessage(event.target.value)}
-                  />
-                  {compose.phase === 'error' && (
-                    <StyledStatus tone="error">{compose.message}</StyledStatus>
-                  )}
-                  <StyledSendButton
-                    disabled={sending || message.trim().length === 0}
-                    onClick={() => void handleSendText()}
-                  >
-                    {sending ? 'Sending…' : 'Send WhatsApp'}
-                  </StyledSendButton>
-                </>
-              )}
-            </>
-          )}
-        </StyledBody>
+        {target === null ? (
+          <ChatListView onOpenChat={setTarget} onPickPerson={(person) => void handlePickPerson(person)} />
+        ) : (
+          <ConversationView
+            onBack={() => setTarget(null)}
+            onTargetUpdate={setTarget}
+            target={target}
+          />
+        )}
       </StyledPanel>
 
       {!isExpanded && (

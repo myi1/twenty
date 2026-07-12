@@ -8,12 +8,14 @@ import {
 
 import { REACT_APP_SERVER_BASE_URL } from '~/config';
 import { getTokenPair } from '@/apollo/utils/getTokenPair';
+import { fetchWithRenewal } from '@/apollo/utils/renewAndRetryFetch';
 import {
   createPersonWithPhone,
   lookupPeopleByNumbers,
   navigateCrm,
   openWhatsAppInCrm,
 } from '@/dialer-dock/utils/dialerCrmBridge';
+import { dialerAccent, dockColor } from '@/ui/theme/dockColorTokens';
 
 // Resolved once at module load, same dual mechanism as REACT_APP_SERVER_BASE_URL
 // (src/config/index.ts): window._env_ for the Docker runtime injection,
@@ -86,9 +88,15 @@ const readStoredDockPosition = (): DockPosition => {
 // RootModalBackDrop (39) so modals and dialogs still cover the dock.
 const DIALER_DOCK_Z_INDEX = 30;
 
-// The dock lives OUTSIDE the router AND outside BaseThemeProvider (which is
-// mounted inside the router tree), so it must not read the emotion theme.
-// Styling is intentionally self-contained and theme-neutral.
+// The dock lives OUTSIDE the router AND outside BaseThemeProvider's React
+// tree — but it is themed anyway, the same way the WhatsApp dock is: Twenty's
+// real `--t-*` CSS custom properties cascade via the DOM (a class on <html>),
+// not via React context, so they resolve correctly here regardless of where
+// in the component tree this renders. See
+// modules/ui/theme/dockColorTokens.ts for the full explanation. (Note: this
+// only re-skins the dock's own CHROME — the softphone UI itself lives inside
+// a cross-origin <iframe>, a separate app this repo doesn't own, so it can't
+// be retheme'd from here.)
 // right/bottom offsets come from the drag position (inline style) — the dock is
 // user-movable and the position persists per browser.
 const StyledDockContainer = styled.div`
@@ -99,10 +107,10 @@ const StyledDockContainer = styled.div`
 `;
 
 const StyledPanel = styled.div<{ isExpanded: boolean }>`
-  background: #17171c;
-  border: 1px solid #2a2a31;
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  background: ${dockColor.bgPrimary};
+  border: 1px solid ${dockColor.borderMedium};
+  border-radius: ${dockColor.radiusMd};
+  box-shadow: ${dockColor.shadowStrong};
   display: flex;
   flex-direction: column;
   height: ${({ isExpanded }) => (isExpanded ? '560px' : '0')};
@@ -115,9 +123,9 @@ const StyledPanel = styled.div<{ isExpanded: boolean }>`
 // The header doubles as the drag handle while the panel is expanded.
 const StyledPanelHeader = styled.div`
   align-items: center;
-  background: #101014;
-  border-bottom: 1px solid #2a2a31;
-  color: #9a9aa2;
+  background: ${dockColor.bgSecondary};
+  border-bottom: 1px solid ${dockColor.borderLight};
+  color: ${dockColor.textSecondary};
   cursor: grab;
   display: flex;
   flex-shrink: 0;
@@ -136,13 +144,13 @@ const StyledPanelHeader = styled.div`
 const StyledCollapseButton = styled.button`
   background: transparent;
   border: 0;
-  color: #9a9aa2;
+  color: ${dockColor.textSecondary};
   cursor: pointer;
   font: inherit;
   padding: 2px 4px;
 
   &:hover {
-    color: #f2f2f7;
+    color: ${dockColor.textPrimary};
   }
 `;
 
@@ -158,11 +166,11 @@ const StyledIframe = styled.iframe`
 const StyledPill = styled.button`
   align-items: center;
   align-self: flex-end;
-  background: #2a5cab;
+  background: ${dialerAccent.pillBg};
   border: 0;
-  border-radius: 999px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  color: #fff;
+  border-radius: ${dockColor.radiusPill};
+  box-shadow: ${dockColor.shadowStrong};
+  color: ${dockColor.textInverted};
   cursor: pointer;
   display: flex;
   font:
@@ -174,7 +182,7 @@ const StyledPill = styled.button`
   touch-action: none;
 
   &:hover {
-    background: #3a6cbb;
+    background: ${dialerAccent.pillBgHover};
   }
 `;
 
@@ -440,12 +448,20 @@ export const DialerDock = () => {
 
     // Fetch THIS agent's line. The route requires auth — send the CRM session's
     // access token; identity is derived server-side from it (never sent by us).
-    const token = getTokenPair()?.accessOrWorkspaceAgnosticToken?.token;
-    if (token) {
-      void fetch(WEBPHONE_CONFIG_URL, {
-        headers: { authorization: `Bearer ${token}` },
-      })
-        .then((res) => (res.ok ? res.json() : null))
+    // Renew-and-retry: on an expired token (401) this now attempts the same
+    // renewal the main app's Apollo client does and retries once, instead of
+    // leaving the dialer stuck "Connecting…" until a hard reload (founder-
+    // confirmed hardening, WhatsApp dock redesign 2026-07-12 — bundled here,
+    // same class of gap as the two bridge files).
+    if (getTokenPair()?.accessOrWorkspaceAgnosticToken?.token) {
+      void fetchWithRenewal(() =>
+        fetch(WEBPHONE_CONFIG_URL, {
+          headers: {
+            authorization: `Bearer ${getTokenPair()?.accessOrWorkspaceAgnosticToken?.token ?? ''}`,
+          },
+        }),
+      )
+        .then((res) => (res && res.ok ? res.json() : null))
         .then((json) => {
           if (json && typeof json === 'object' && !('error' in json)) {
             credentialRef.current = json;

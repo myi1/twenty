@@ -1,4 +1,5 @@
 import { getTokenPair } from '@/apollo/utils/getTokenPair';
+import { fetchWithRenewal } from '@/apollo/utils/renewAndRetryFetch';
 import { REACT_APP_SERVER_BASE_URL } from '~/config';
 
 // CRM-side half of the dialer ⇄ dock bridge. The embedded dialer never calls
@@ -60,31 +61,34 @@ const personMatchesNumber = (person: PersonNode, number: string): boolean => {
 const personDisplayName = (person: PersonNode): string =>
   `${person.name?.firstName ?? ''} ${person.name?.lastName ?? ''}`.trim();
 
+// Renew-and-retry hardening (founder-confirmed, WhatsApp dock redesign
+// 2026-07-12, bundled here since it's the same class of gap on the same fork
+// shell layer as the WhatsApp dock's bridge): this raw-fetch bridge had no
+// renewal on an expired access token — unlike the main app's Apollo client.
+// See modules/apollo/utils/renewAndRetryFetch.ts for the mechanics.
 const graphql = async <T>(
   query: string,
   variables: Record<string, unknown>,
 ): Promise<T | null> => {
-  const token = getTokenPair()?.accessOrWorkspaceAgnosticToken?.token;
-  if (token === undefined) {
+  const token = () => getTokenPair()?.accessOrWorkspaceAgnosticToken?.token;
+  if (token() === undefined) {
     return null;
   }
-  try {
-    const response = await fetch(`${REACT_APP_SERVER_BASE_URL}/graphql`, {
+  const response = await fetchWithRenewal(() =>
+    fetch(`${REACT_APP_SERVER_BASE_URL}/graphql`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        authorization: `Bearer ${token}`,
+        authorization: `Bearer ${token()}`,
       },
       body: JSON.stringify({ query, variables }),
-    });
-    if (!response.ok) {
-      return null;
-    }
-    const json = (await response.json()) as { data?: T };
-    return json.data ?? null;
-  } catch {
+    }),
+  );
+  if (response === null || !response.ok) {
     return null;
   }
+  const json = (await response.json()) as { data?: T };
+  return json.data ?? null;
 };
 
 /**
