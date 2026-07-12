@@ -16,13 +16,14 @@
 // Reads use the shared route wrapper; host supplies navigation, dialer and toasts.
 
 import { useEffect, useRef, useState } from 'react';
+import styled from '@emotion/styled';
 import { IconLayoutDashboard } from 'twenty-ui/display';
 import { PropelMantineProvider } from '@/propel/components/PropelMantineProvider';
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { type PropelHeroHost } from '@/propel/runtime/heroHost';
 
-import { FONT_DISPLAY, PulseFonts, PulseNocturne } from '../_pulse/pulse';
+import { Btn, FONT_DISPLAY, FONT_UI, PulseFonts, PulseNocturne } from '../_pulse/pulse';
 
 import { BoardTable } from './BoardTable';
 import { deskRecordPath, PeekDrawer, type DrawerMode } from './PeekDrawer';
@@ -39,6 +40,52 @@ import type { DeskMoveResponse, DeskRailOk, DeskRow, DeskUndoResponse } from './
 // SLA countdown itself is SlaRing's job (Task 14), not this clock's.
 const NOW_TICK_MS = 30_000;
 
+// Twenty's People index (RecordIndexPage = '/objects/:objectNamePlural'). Twenty
+// has NO dedicated record-CREATE URL — new records are made in-place via an
+// in-shell hook (useCreateNewIndexRecord) that a runtime hero can't reach, and
+// host.navigate only takes a path. So "+ New lead" lands the agent on the People
+// list, where the "+ Add" affordance is one click away. A "LEAD" here is a
+// Person with contactType=LEAD (see my-desk-route.ts's board query), so People
+// is the correct destination. (If a create deep-link ever ships, point here.)
+const NEW_LEAD_PATH = '/objects/people';
+
+// The top bar's greeting: "<Weekday, D Month> · Good <part>, <FirstName>".
+// Date + part-of-day are computed client-side off the live clock (nowMs, which
+// the hero already re-ticks every 30s) so the line stays correct across the
+// noon/6pm boundaries on a desk left open. `firstName` comes from the real
+// signed-in workspace member; when it's absent we drop the name (and its comma)
+// rather than ever hardcoding one.
+const buildGreeting = (nowMs: number, firstName: string | null): { date: string; lead: string; name: string | null } => {
+  const now = new Date(nowMs);
+  const weekday = now.toLocaleDateString('en-GB', { weekday: 'long' });
+  const month = now.toLocaleDateString('en-GB', { month: 'long' });
+  const hour = now.getHours();
+  const part = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
+  return {
+    date: `${weekday}, ${now.getDate()} ${month}`,
+    lead: `Good ${part}`,
+    name: firstName && firstName.trim() ? firstName.trim() : null,
+  };
+};
+
+// Header row above the Today Strip (mockup .topbar, L853–862). space-between so
+// the greeting sits left and the actions right; the right padding reserves the
+// top-right corner for the shell's own theme toggle (mockup keeps it clear at
+// ≤1500px — we reserve it always, since the toggle is viewport-fixed) so the
+// two buttons never slide under it.
+const TopBarRow = styled.div`
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 22px 172px 18px 24px;
+  border-bottom: 1px solid var(--p-line);
+  @media (max-width: 720px) {
+    flex-wrap: wrap;
+    padding-right: 24px;
+  }
+`;
+
 export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
   const [boardStatus, setBoardStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [boardRows, setBoardRows] = useState<DeskRow[]>([]);
@@ -53,6 +100,19 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
   const [railError, setRailError] = useState<string | null>(null);
 
   const [nowMs, setNowMs] = useState(() => Date.now());
+  // "Today's plan" focus mode — client-side only; narrows the board to rows that
+  // need the agent today (banding.needsAttentionToday), reflected in the button
+  // and the board header count.
+  const [focusToday, setFocusToday] = useState(false);
+  // Greeting first name: NO clean runtime-hero source exists today. The signed-in
+  // member lives in the host's jotai store (currentWorkspaceMemberState), but that
+  // atom is NOT an externalized hero shim — importing it bundles a *second* jotai
+  // instance (empty store → always null, and +600KB), so we don't. The /my-desk
+  // route DOES resolve the acting member (actingMemberName) but doesn't return it
+  // on any read response, and adding that is a CRM/app deploy (out of scope for a
+  // hero-only change). Until one of those lands we greet name-lessly (never a
+  // hardcoded name). Follow-up options in the ship report.
+  const greeting = buildGreeting(nowMs, null);
   // The Today Strip's active filter tile, ANDed against BoardTable's own
   // lane/going-cold chip filter — set by TodayStrip, consumed by BoardTable.
   const [stripFilter, setStripFilter] = useState<StripFilter | null>(null);
@@ -185,6 +245,42 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
             overflowY: 'auto',
           }}
         >
+          <TopBarRow>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontFamily: FONT_UI, fontSize: 13, color: 'var(--p-ink-2)', marginTop: 2 }}>
+                {greeting.date} · {greeting.lead}
+                {greeting.name ? (
+                  <>
+                    , <b style={{ color: 'var(--p-ink)', fontWeight: 500 }}>{greeting.name}</b>
+                  </>
+                ) : null}
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 'none' }}>
+              <Btn
+                type="button"
+                variant="secondary"
+                aria-pressed={focusToday}
+                title="Show only what needs you today"
+                onClick={() => setFocusToday((on) => !on)}
+                style={
+                  focusToday
+                    ? { borderColor: 'var(--p-accent)', background: 'var(--p-accent-tint)' }
+                    : undefined
+                }
+              >
+                {focusToday ? 'Focus: today' : "Today's plan"}
+              </Btn>
+              <Btn
+                type="button"
+                variant="primary"
+                title="Add a new lead"
+                onClick={() => host.navigate(NEW_LEAD_PATH)}
+              >
+                + New lead
+              </Btn>
+            </div>
+          </TopBarRow>
           <TodayStrip
             boardStatus={boardStatus}
             rows={boardRows}
@@ -204,6 +300,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
               partial={boardPartial}
               nowMs={nowMs}
               stripFilter={stripFilter}
+              focusToday={focusToday}
               onRowClick={(row) => setDrawer({ rowId: row.id, mode: 'overview' })}
               onRowAction={(action, row) => {
                 if (action === 'call' && row.phoneE164) {

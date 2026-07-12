@@ -20,7 +20,7 @@ import { IconComment, IconNotes, IconPhone } from 'twenty-ui/display';
 import { DUR, EASE, SPACE } from '../_pulse/pulse-tokens';
 import { FONT_DISPLAY, FONT_MONO, FONT_UI, P, Seal } from '../_pulse/pulse';
 
-import { bandOf, isGoingCold } from './banding';
+import { bandOf, isGoingCold, needsAttentionToday } from './banding';
 import type { StripFilter } from './TodayStrip';
 import { formatAedTotal, formatRelative, formatStageLabel, friendlyError } from './format';
 import { SkeletonStack, Text } from './shared';
@@ -317,6 +317,7 @@ export const BoardTable = ({
   partial,
   nowMs,
   stripFilter,
+  focusToday,
   onRowClick,
   onRowAction,
   onStagePick,
@@ -329,6 +330,9 @@ export const BoardTable = ({
   nowMs: number;
   /** Active Today Strip tile, if any — ANDed with the lane/cold chip below. */
   stripFilter: StripFilter | null;
+  /** Top bar's "Today's plan" focus mode — ANDs a "needs you today" pass over
+   *  every other filter, and re-labels the header count to the focused subset. */
+  focusToday: boolean;
   /** Row click opens the peek drawer; action clicks are kept separate below. */
   onRowClick: (row: DeskRow) => void;
   onRowAction: (action: 'call' | 'whatsapp' | 'note' | 'task' | 'viewing' | 'snooze' | 'open', row: DeskRow) => void;
@@ -358,6 +362,14 @@ export const BoardTable = ({
     [rows],
   );
 
+  // How many of the open book needs the agent today — drives the header count
+  // when focus mode is on (independent of the lane/strip chips, so the number
+  // always reads "of everything, this many need you today").
+  const focusCount = useMemo(
+    () => rows.filter((r) => needsAttentionToday(r, nowMs)).length,
+    [rows, nowMs],
+  );
+
   const passesStripFilter = (row: DeskRow): boolean => {
     if (!stripFilter) return true;
     if (stripFilter === 'slaAtRisk') return bandOf(row, nowMs) === 'slaAtRisk';
@@ -373,9 +385,15 @@ export const BoardTable = ({
   };
 
   const visibleRows = useMemo(
-    () => rows.filter((r) => passesStripFilter(r) && passesLaneFilter(r)),
+    () =>
+      rows.filter(
+        (r) =>
+          passesStripFilter(r) &&
+          passesLaneFilter(r) &&
+          (!focusToday || needsAttentionToday(r, nowMs)),
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, stripFilter, laneFilter, nowMs],
+    [rows, stripFilter, laneFilter, nowMs, focusToday],
   );
 
   const startDrag = (i: number, e: ReactMouseEvent) => {
@@ -497,7 +515,29 @@ export const BoardTable = ({
         </span>
         {status === 'ready' && (
           <span style={{ fontFamily: FONT_MONO, fontSize: 12, color: P.ink2, fontWeight: 400 }}>
-            {rows.length} open{totalValue > 0 ? ` · ~${formatAedTotal(totalValue)} in play` : ''}
+            {focusToday
+              ? `${focusCount} need you today · of ${rows.length} open`
+              : `${rows.length} open${totalValue > 0 ? ` · ~${formatAedTotal(totalValue)} in play` : ''}`}
+          </span>
+        )}
+        {status === 'ready' && focusToday && (
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              fontFamily: FONT_UI,
+              fontSize: 11.5,
+              fontWeight: 500,
+              color: P.ink,
+              padding: '3px 10px',
+              borderRadius: 999,
+              border: '1px solid var(--p-accent)',
+              background: 'var(--p-accent-tint)',
+            }}
+          >
+            <span style={{ width: 6, height: 6, borderRadius: 999, background: P.accent, flex: 'none' }} />
+            Focus: today
           </span>
         )}
       </div>
@@ -582,7 +622,11 @@ export const BoardTable = ({
         )}
         {status === 'ready' && rows.length > 0 && visibleRows.length === 0 && (
           <div style={{ padding: SPACE[4], minWidth: TABLE_MIN_WIDTH }}>
-            <Text muted>Nothing matches this filter.</Text>
+            <Text muted>
+              {focusToday
+                ? 'Nothing needs you today — you are all caught up.'
+                : 'Nothing matches this filter.'}
+            </Text>
           </div>
         )}
         {status === 'ready' &&

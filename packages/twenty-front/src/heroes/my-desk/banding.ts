@@ -50,3 +50,15 @@ export const isGoingCold = (r: DeskRow, nowMs: number): boolean => {
   const t = ms(r.lastTouchAt);
   return t !== null && nowMs - t >= GOING_COLD_HOURS * 3_600_000;
 };
+
+// "Needs you TODAY" — the predicate behind the top bar's "Today's plan" focus
+// mode. Reuses bandOf (the ONE triage classifier above) rather than re-deriving
+// SLA/due windows: a row earns focus if it's SLA-at-risk, already overdue, or
+// has a task due today (all three fall out of bandOf), OR it has a viewing on
+// the calendar for today. Keep this in terms of bandOf so focus mode can never
+// drift from the strip tiles / row treatments that read the same bands.
+export const needsAttentionToday = (r: DeskRow, nowMs: number): boolean => {
+  const band = bandOf(r, nowMs);
+  if (band === 'slaAtRisk' || band === 'overdue' || band === 'dueToday') return true;
+  return r.viewingTodayAt !== null;
+};
