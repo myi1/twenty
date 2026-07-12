@@ -15,7 +15,7 @@
 //
 // Reads use the shared route wrapper; host supplies navigation, dialer and toasts.
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import styled from '@emotion/styled';
 import { IconLayoutDashboard } from 'twenty-ui/display';
 import { PropelMantineProvider } from '@/propel/components/PropelMantineProvider';
@@ -32,6 +32,13 @@ import { TodayStrip, type StripFilter } from './TodayStrip';
 import { fetchBoard, fetchRail, fetchTimeline, runDeskAction } from './deskApi';
 import { StagePicker, type StagePickerAnchor } from './StagePicker';
 import { formatStageLabel } from './format';
+import {
+  deskStateKey,
+  loadDeskState,
+  saveDeskState,
+  type DeskPersistedState,
+  type RailArrangement,
+} from './deskState';
 import type { DeskMoveResponse, DeskRailOk, DeskRow, DeskUndoResponse } from './types';
 
 // "Now", re-snapshotted periodically so band classification (SLA windows,
@@ -100,10 +107,32 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
   const [railError, setRailError] = useState<string | null>(null);
 
   const [nowMs, setNowMs] = useState(() => Date.now());
+
+  // ── Per-agent UI state (spec §4.3/§8.3) ──────────────────────────────────────
+  // ONE small localStorage blob, keyed per agent. There's no clean runtime-hero
+  // source for the signed-in member id yet (same reason the greeting is
+  // name-less — see below), so the key falls back to a stable per-browser 'local'
+  // slot; when a member id ever reaches the host it upgrades transparently. Load
+  // ONCE on mount; every change merges in and writes debounced. A malformed/stale
+  // blob silently falls back to defaults (loadDeskState never throws) — losing
+  // this state can never break the desk.
+  const memberId: string | null = null;
+  const stateKeyRef = useRef(deskStateKey(memberId));
+  const persistedRef = useRef<DeskPersistedState>(loadDeskState(stateKeyRef.current));
+  const persist = useCallback((patch: Partial<DeskPersistedState>) => {
+    persistedRef.current = { ...persistedRef.current, ...patch };
+    saveDeskState(stateKeyRef.current, persistedRef.current);
+  }, []);
+
   // "Today's plan" focus mode — client-side only; narrows the board to rows that
   // need the agent today (banding.needsAttentionToday), reflected in the button
-  // and the board header count.
-  const [focusToday, setFocusToday] = useState(false);
+  // and the board header count. Seeded from + saved to the persisted blob.
+  const [focusToday, setFocusToday] = useState(() => persistedRef.current.focusToday);
+  const [railArrangement, setRailArrangement] = useState<RailArrangement>(() => ({
+    order: persistedRef.current.order,
+    folds: persistedRef.current.folds,
+    collapsed: persistedRef.current.collapsed,
+  }));
   // Greeting first name: NO clean runtime-hero source exists today. The signed-in
   // member lives in the host's jotai store (currentWorkspaceMemberState), but that
   // atom is NOT an externalized hero shim — importing it bundles a *second* jotai
@@ -115,7 +144,8 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
   const greeting = buildGreeting(nowMs, null);
   // The Today Strip's active filter tile, ANDed against BoardTable's own
   // lane/going-cold chip filter — set by TodayStrip, consumed by BoardTable.
-  const [stripFilter, setStripFilter] = useState<StripFilter | null>(null);
+  // Seeded from the persisted blob (one of the two remembered filter chips).
+  const [stripFilter, setStripFilter] = useState<StripFilter | null>(persistedRef.current.stripFilter);
   const [drawer, setDrawer] = useState<{ rowId: string; mode: DrawerMode } | null>(null);
   const [stagePicker, setStagePicker] = useState<{ rowId: string; anchor: StagePickerAnchor } | null>(null);
   const [undoMove, setUndoMove] = useState<{
@@ -175,6 +205,54 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
     );
     setPendingCall({ rowId: row.id, startedAtMs: Date.now() });
     host.notify('Dialer ready — press Call when you are ready.', 'info');
+  };
+
+  // The ONE row-action handler — shared by the board rows AND the rail's inline
+  // mini-actions (which reach it with a joined DeskRow). Call → dialer; open →
+  // record page; everything else → the peek drawer in that mode.
+  const handleRowAction = (
+    action: 'call' | 'whatsapp' | 'note' | 'task' | 'viewing' | 'snooze' | 'open',
+    row: DeskRow,
+  ) => {
+    if (action === 'call' && row.phoneE164) {
+      startCall(row);
+      return;
+    }
+    if (action === 'open') {
+      host.navigate(deskRecordPath(row));
+      return;
+    }
+    setDrawer({ rowId: row.id, mode: action === 'call' ? 'overview' : action });
+  };
+
+  // Rail task checkbox → the EXISTING `completeTask` route write (never a new
+  // path); optimistically clears the row's next action on the board. Returns
+  // success so the rail can strike the item through.
+  const completeTaskFromRail = async (row: DeskRow, taskId: string): Promise<boolean> => {
+    const result = await runDeskAction('completeTask', {
+      laneObject: row.laneObject,
+      recordId: row.recordId,
+      taskId,
+    });
+    if (!result?.ok) {
+      host.notify("That task couldn't be completed. Please try again.", 'error');
+      return false;
+    }
+    setBoardRows((current) =>
+      current.map((candidate) =>
+        candidate.id === row.id
+          ? {
+              ...candidate,
+              ...(candidate.nextActionTaskId === taskId
+                ? { nextAction: null, nextActionTaskId: null, nextActionDueAt: null, taskDueToday: false }
+                : {}),
+              lastTouchAt: result.touchedAt ?? candidate.lastTouchAt,
+            }
+          : candidate,
+      ),
+    );
+    host.notify('Task completed', 'success');
+    return true;
   };
 
   useEffect(() => {
@@ -262,7 +340,13 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
                 variant="secondary"
                 aria-pressed={focusToday}
                 title="Show only what needs you today"
-                onClick={() => setFocusToday((on) => !on)}
+                onClick={() =>
+                  setFocusToday((on) => {
+                    const next = !on;
+                    persist({ focusToday: next });
+                    return next;
+                  })
+                }
                 style={
                   focusToday
                     ? { borderColor: 'var(--p-accent)', background: 'var(--p-accent-tint)' }
@@ -289,7 +373,11 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
             nowMs={nowMs}
             activeFilter={stripFilter}
             onToggleFilter={(filter) =>
-              setStripFilter((prev) => (prev === filter ? null : filter))
+              setStripFilter((prev) => {
+                const next = prev === filter ? null : filter;
+                persist({ stripFilter: next });
+                return next;
+              })
             }
           />
           <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
@@ -302,20 +390,27 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
               stripFilter={stripFilter}
               focusToday={focusToday}
               onRowClick={(row) => setDrawer({ rowId: row.id, mode: 'overview' })}
-              onRowAction={(action, row) => {
-                if (action === 'call' && row.phoneE164) {
-                  startCall(row);
-                  return;
-                }
-                if (action === 'open') {
-                  host.navigate(deskRecordPath(row));
-                  return;
-                }
-                setDrawer({ rowId: row.id, mode: action === 'call' ? 'overview' : action });
-              }}
+              onRowAction={handleRowAction}
               onStagePick={(row, anchor) => setStagePicker({ rowId: row.id, anchor })}
+              initialColWidths={persistedRef.current.colWidths}
+              initialLaneFilter={persistedRef.current.laneFilter}
+              onColWidthsChange={(widths) => persist({ colWidths: widths })}
+              onLaneFilterChange={(laneFilter) => persist({ laneFilter })}
             />
-            <RightRail status={railStatus} rail={rail} error={railError} nowMs={nowMs} />
+            <RightRail
+              status={railStatus}
+              rail={rail}
+              error={railError}
+              nowMs={nowMs}
+              boardRows={boardRows}
+              onRowAction={handleRowAction}
+              onCompleteTask={completeTaskFromRail}
+              arrangement={railArrangement}
+              onArrangementChange={(next) => {
+                setRailArrangement(next);
+                persist({ order: next.order, folds: next.folds, collapsed: next.collapsed });
+              }}
+            />
           </div>
           {drawer && (() => {
             const row = boardRows.find((candidate) => candidate.id === drawer.rowId);

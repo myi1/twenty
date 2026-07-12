@@ -339,6 +339,10 @@ export const BoardTable = ({
   onRowClick,
   onRowAction,
   onStagePick,
+  initialColWidths,
+  initialLaneFilter,
+  onColWidthsChange,
+  onLaneFilterChange,
 }: {
   status: 'loading' | 'ready' | 'error';
   rows: DeskRow[];
@@ -355,10 +359,39 @@ export const BoardTable = ({
   onRowClick: (row: DeskRow) => void;
   onRowAction: (action: 'call' | 'whatsapp' | 'note' | 'task' | 'viewing' | 'snooze' | 'open', row: DeskRow) => void;
   onStagePick: (row: DeskRow, anchor: StagePickerAnchor) => void;
+  // ── Per-agent persistence (spec §4.3/§8.3) ──────────────────────────────────
+  // These are OPTIONAL so BoardTable still renders identically when unwired
+  // (defensive — a bad restore can never leave the table stateless). Column
+  // widths are otherwise lost on reload; the lane chip is one of the two
+  // "active filter chips" the desk remembers.
+  /** Restored column widths (6 entries; null = that column's default). */
+  initialColWidths?: (string | null)[];
+  /** Restored lane chip ('all' | 'goingCold' | a DeskLane); anything else → 'all'. */
+  initialLaneFilter?: string;
+  /** Fired at the END of a resize / on reset — never every drag frame. */
+  onColWidthsChange?: (widths: (string | null)[]) => void;
+  onLaneFilterChange?: (laneFilter: LaneFilter) => void;
 }) => {
-  const [laneFilter, setLaneFilter] = useState<LaneFilter>('all');
+  // Restore the lane chip only if it's a value this table actually knows.
+  const seededLaneFilter: LaneFilter =
+    initialLaneFilter === 'all' ||
+    initialLaneFilter === 'goingCold' ||
+    (initialLaneFilter && (ALL_LANES as string[]).includes(initialLaneFilter))
+      ? (initialLaneFilter as LaneFilter)
+      : 'all';
+  const seededColWidths =
+    Array.isArray(initialColWidths) && initialColWidths.length === COL_DEFAULTS.length
+      ? initialColWidths
+      : COL_DEFAULTS.map(() => null);
+
+  const [laneFilter, setLaneFilter] = useState<LaneFilter>(seededLaneFilter);
   const [actionRowId, setActionRowId] = useState<string | null>(null);
-  const [colWidths, setColWidths] = useState<(string | null)[]>(() => COL_DEFAULTS.map(() => null));
+  const [colWidths, setColWidths] = useState<(string | null)[]>(seededColWidths);
+
+  const changeLaneFilter = (next: LaneFilter) => {
+    setLaneFilter(next);
+    onLaneFilterChange?.(next);
+  };
   const [tooltip, setTooltip] = useState<TooltipState>(null);
   const [overflow, setOverflow] = useState<OverflowState>(null);
   const headerCellRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -437,6 +470,12 @@ export const BoardTable = ({
       document.body.style.userSelect = '';
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
+      // Persist ONCE, at drag end — the debounced save already coalesces, but
+      // emitting per-frame would be wasteful. Read the settled widths off state.
+      setColWidths((prev) => {
+        onColWidthsChange?.(prev);
+        return prev;
+      });
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
@@ -446,6 +485,7 @@ export const BoardTable = ({
     setColWidths((prev) => {
       const copy = [...prev];
       copy[i] = null;
+      onColWidthsChange?.(copy);
       return copy;
     });
   };
@@ -561,11 +601,11 @@ export const BoardTable = ({
       </div>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: `4px ${SPACE[6]}px ${SPACE[4]}px` }}>
-        <Chip type="button" $on={laneFilter === 'all'} onClick={() => setLaneFilter('all')}>
+        <Chip type="button" $on={laneFilter === 'all'} onClick={() => changeLaneFilter('all')}>
           All
         </Chip>
         {ALL_LANES.map((lane) => (
-          <Chip key={lane} type="button" $on={laneFilter === lane} onClick={() => setLaneFilter(lane)}>
+          <Chip key={lane} type="button" $on={laneFilter === lane} onClick={() => changeLaneFilter(lane)}>
             <span
               style={{
                 width: 7,
@@ -582,7 +622,7 @@ export const BoardTable = ({
           type="button"
           $on={laneFilter === 'goingCold'}
           $cold
-          onClick={() => setLaneFilter('goingCold')}
+          onClick={() => changeLaneFilter('goingCold')}
         >
           <span style={{ width: 7, height: 7, borderRadius: 999, flex: 'none', background: 'var(--p-warn)' }} />
           Going cold
