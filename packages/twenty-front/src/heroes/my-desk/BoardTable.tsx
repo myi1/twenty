@@ -15,7 +15,7 @@
 
 import { useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type MouseEvent as ReactMouseEvent } from 'react';
 import styled from '@emotion/styled';
-import { IconCalendar, IconChevronRight, IconClock, IconComment, IconExternalLink, IconNotes, IconPhone } from 'twenty-ui/display';
+import { IconComment, IconNotes, IconPhone } from 'twenty-ui/display';
 
 import { DUR, EASE, SPACE } from '../_pulse/pulse-tokens';
 import { FONT_DISPLAY, FONT_MONO, FONT_UI, P, Seal } from '../_pulse/pulse';
@@ -201,31 +201,36 @@ const RowAction = styled.button`
 const OverflowMenu = styled.div`
   position: fixed;
   z-index: 5000;
-  width: 214px;
-  padding: 6px;
+  min-width: 210px;
+  padding: 5px 0;
   border: 1px solid var(--p-line);
-  border-radius: var(--p-radius-sm);
-  background: var(--p-surface-2);
+  border-radius: var(--p-radius);
+  background: var(--p-surface);
   box-shadow: var(--p-shadow-pop);
+  transform-origin: top right;
+  animation: my-desk-pop-in ${DUR.dropdown}ms ${EASE.out} both;
+
+  @keyframes my-desk-pop-in {
+    from { opacity: 0; transform: translateY(-4px) scale(.98); }
+    to { opacity: 1; transform: none; }
+  }
 `;
 
-const OverflowItem = styled.button`
+const OverflowItem = styled.button<{ $go?: boolean }>`
   all: unset;
   box-sizing: border-box;
   width: 100%;
-  min-height: 36px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 10px;
-  border-radius: 6px;
-  color: var(--p-ink);
-  font: 500 12.5px ${FONT_UI};
+  padding: ${({ $go }) => ($go ? '11px 14px 9px' : '9px 14px')};
+  margin-top: ${({ $go }) => ($go ? '5px' : '0')};
+  border-top: ${({ $go }) => ($go ? '1px solid var(--p-line)' : '0')};
+  color: ${({ $go }) => ($go ? 'var(--p-accent)' : 'var(--p-ink)')};
+  font: 400 13px ${FONT_UI};
   cursor: pointer;
   transition: background ${DUR.tooltip}ms ${EASE.out};
-  svg { color: var(--p-ink-2); }
-  &:hover, &:focus-visible { background: var(--p-surface); }
-  &:disabled { cursor: not-allowed; opacity: .38; background: transparent; }
+  &:hover, &:focus-visible { background: var(--p-surface-2); }
+  &:disabled { cursor: default; opacity: .35; background: transparent; }
 `;
 
 const StageSealButton = styled.button`
@@ -444,10 +449,10 @@ export const BoardTable = ({
   const openOverflow = (event: ReactMouseEvent<HTMLButtonElement>, row: DeskRow) => {
     const rect = event.currentTarget.getBoundingClientRect();
     const itemCount = 5;
-    const menuHeight = itemCount * 36 + 12;
+    const menuHeight = itemCount * 36 + 10;
     setOverflow({
       row,
-      x: Math.max(8, Math.min(rect.right - 214, window.innerWidth - 222)),
+      x: Math.max(8, Math.min(rect.right - 210, window.innerWidth - 218)),
       y: rect.bottom + 6 + menuHeight > window.innerHeight
         ? Math.max(8, rect.top - menuHeight - 6)
         : rect.bottom + 6,
@@ -791,10 +796,10 @@ export const BoardTable = ({
               title={overflow.row.laneObject === 'secondaryOpportunity' ? 'Log a viewing' : 'Viewings are linked to buyer opportunities'}
               onClick={() => chooseOverflow('viewing')}
             >
-              <IconCalendar size={15} /> Log a viewing
+              Log a viewing
             </OverflowItem>
             <OverflowItem type="button" role="menuitem" onClick={() => chooseOverflow('task')}>
-              <IconClock size={15} /> Create a task
+              Create a task
             </OverflowItem>
             <OverflowItem
               type="button"
@@ -803,7 +808,7 @@ export const BoardTable = ({
               title={overflow.row.laneObject === 'lead' ? 'Convert this lead to a pipeline before moving its stage' : 'Move stage'}
               onClick={chooseStage}
             >
-              <IconChevronRight size={15} /> Move stage
+              Move stage
             </OverflowItem>
             <OverflowItem
               type="button"
@@ -812,10 +817,10 @@ export const BoardTable = ({
               title={overflow.row.laneObject === 'lead' ? 'Snooze' : 'Snooze is only available for unconverted leads'}
               onClick={() => chooseOverflow('snooze')}
             >
-              <IconClock size={15} /> Snooze
+              Snooze
             </OverflowItem>
-            <OverflowItem type="button" role="menuitem" onClick={() => chooseOverflow('open')}>
-              <IconExternalLink size={15} /> Open full record <span aria-hidden style={{ marginLeft: 'auto' }}>→</span>
+            <OverflowItem $go type="button" role="menuitem" onClick={() => chooseOverflow('open')}>
+              Open full record →
             </OverflowItem>
           </OverflowMenu>
         </>
