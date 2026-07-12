@@ -24,11 +24,13 @@ import { assistBriefing } from './deskApi';
 
 const Card = styled.div`
   position: relative;
-  margin: 14px 24px 0;
-  padding: 13px 40px 13px 16px;
-  border: 1px solid var(--p-line);
+  /* Full-bleed band — same horizontal rhythm as the top bar (24px) and flush
+     with the Today strip below, so the desk header reads as three aligned bands
+     rather than an inset card floating on a full-width strip. */
+  margin: 0;
+  padding: 13px 40px 14px 24px;
+  border-bottom: 1px solid var(--p-line);
   border-left: 2px solid var(--p-accent);
-  border-radius: var(--p-radius-sm);
   background: var(--p-surface-2);
   @media (prefers-reduced-motion: no-preference) {
     animation: briefingIn ${DUR.drawerIn}ms ${EASE.out};
