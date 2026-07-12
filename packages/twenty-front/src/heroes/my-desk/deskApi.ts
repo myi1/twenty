@@ -14,6 +14,7 @@
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import type {
   DeskBoardResponse,
+  DeskGateStatusResponse,
   DeskRailResponse,
   DeskRow,
   DeskTimelineResponse,
@@ -103,6 +104,18 @@ export const runDeskAction = (
   body: Record<string, unknown>,
 ): Promise<DeskWriteResponse | null> =>
   callPropelRoute<DeskWriteResponse>(ROUTE, { action, ...body });
+
+export const fetchStageGateStatus = (
+  laneObject: string,
+  recordId: string,
+  toStage: string,
+): Promise<DeskGateStatusResponse | null> =>
+  callPropelRoute<DeskGateStatusResponse>(ROUTE, {
+    action: 'gateStatus',
+    laneObject,
+    recordId,
+    toStage,
+  });
 
 export const sendDeskWhatsApp = (
   conversationId: string,

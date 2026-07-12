@@ -142,7 +142,17 @@ export type DeskGate = {
   label: string;
   fix: string;
   taskId?: string | null;
+  done?: boolean;
+  approverLabel?: string | null;
 };
+
+export type DeskGateStatusResponse =
+  | { ok: true; requirements: DeskGate[] }
+  | DeskErrorResponse;
+
+export type DeskNudgeResponse =
+  | { ok: true; sent: number; skipped: number }
+  | DeskErrorResponse;
 
 export type DeskMoveResponse =
   | { ok: true; previousStage: string; touchedAt: string | null; noteId: string | null; sideEffects: string[] }
