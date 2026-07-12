@@ -27,6 +27,7 @@ import { Btn, FONT_DISPLAY, FONT_UI, PulseFonts, PulseNocturne } from '../_pulse
 
 import { BoardTable } from './BoardTable';
 import { deskRecordPath, PeekDrawer, type DrawerMode } from './PeekDrawer';
+import { KeyGlyph, ReidinDrawer } from './ReidinDrawer';
 import { RightRail } from './RightRail';
 import { TodayStrip, type StripFilter } from './TodayStrip';
 import { fetchBoard, fetchRail, fetchTimeline, runDeskAction } from './deskApi';
@@ -157,6 +158,10 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
     sideEffects: string[];
   } | null>(null);
   const [pendingCall, setPendingCall] = useState<{ rowId: string; startedAtMs: number } | null>(null);
+  // REIDIN login is an occasional tool — opened on demand from the top bar
+  // (slide-in), not a permanent rail panel. Mount-on-demand so the flow resets
+  // each open.
+  const [reidinOpen, setReidinOpen] = useState(false);
 
   const cancelledRef = useRef(false);
 
@@ -364,6 +369,15 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
               <Btn
                 type="button"
                 variant="secondary"
+                title="Open the REIDIN login helper"
+                onClick={() => setReidinOpen(true)}
+              >
+                <KeyGlyph />
+                REIDIN
+              </Btn>
+              <Btn
+                type="button"
+                variant="secondary"
                 aria-pressed={focusToday}
                 title="Show only what needs you today"
                 onClick={() =>
@@ -438,6 +452,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
               }}
             />
           </div>
+          {reidinOpen && <ReidinDrawer onClose={() => setReidinOpen(false)} />}
           {drawer && (() => {
             const row = boardRows.find((candidate) => candidate.id === drawer.rowId);
             return row ? (

@@ -22,18 +22,18 @@
 
 import type { StripFilter } from './TodayStrip';
 
-// The rail panels, in default (top-to-bottom) order. 'reidin' (the REIDIN login
-// helper, Batch 3) is a 5th, ACTION panel — it carries no live count and rides
-// the same order/fold/collapse arrangement as the four data panels, so a stored
-// 4-panel arrangement transparently gains it at the end (sanitize appends any
-// missing id).
-export type RailPanelId = 'tasks' | 'viewings' | 'unreadWa' | 'priorityLeads' | 'reidin';
+// The rail panels, in default (top-to-bottom) order — the four data panels.
+// (The REIDIN login helper briefly rode here as a 5th ACTION panel in Batch 3;
+// it has since moved to an on-demand top-bar slide-in, so the rail is back to
+// four. A blob that still carries a stored 'reidin' id is handled gracefully by
+// sanitize() below: 'reidin' is no longer a recognised id, so it's dropped from
+// the stored order/folds field-by-field, never crashing the desk.)
+export type RailPanelId = 'tasks' | 'viewings' | 'unreadWa' | 'priorityLeads';
 export const RAIL_PANEL_IDS: readonly RailPanelId[] = [
   'tasks',
   'viewings',
   'unreadWa',
   'priorityLeads',
-  'reidin',
 ];
 
 export type RailArrangement = {
@@ -71,7 +71,7 @@ export const makeDefaultDeskState = (): DeskPersistedState => ({
   view: 'table',
   focusToday: false,
   order: [...RAIL_PANEL_IDS],
-  folds: { tasks: false, viewings: false, unreadWa: false, priorityLeads: false, reidin: false },
+  folds: { tasks: false, viewings: false, unreadWa: false, priorityLeads: false },
   collapsed: false,
 });
 
@@ -114,9 +114,9 @@ const sanitize = (raw: unknown): DeskPersistedState => {
   if (isBool(o.focusToday)) out.focusToday = o.focusToday;
   if (isBool(o.collapsed)) out.collapsed = o.collapsed;
 
-  // order — keep recognised ids in the stored order, drop unknown/duplicates,
-  // then append any panel the stored order was missing (so a future 5th panel
-  // slots in at the end instead of vanishing).
+  // order — keep recognised ids in the stored order, drop unknown/duplicates
+  // (a stale 'reidin' from Batch 3 is unrecognised now, so it falls out here),
+  // then append any recognised panel the stored order was missing.
   if (Array.isArray(o.order)) {
     const seen = new Set<RailPanelId>();
     const ordered: RailPanelId[] = [];

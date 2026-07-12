@@ -1,8 +1,14 @@
-// ReidinRailPanel.tsx — the REIDIN login helper as a My Desk rail panel (Batch 3,
-// plan Task 26b). The standalone REIDIN sidebar page is retired; this compact panel
-// takes its place, riding the same rail arrangement (order / fold / collapse) as the
-// four data panels. Available to ALL agents — the SAME access the standalone had
-// (the start/poll routes gate only on "is a real signed-in member").
+// ReidinDrawer.tsx — the REIDIN login helper as an ON-DEMAND top-bar slide-in.
+// REIDIN is an occasional tool, so it no longer takes permanent right-rail space
+// (it rode there as a 5th panel in Batch 3); a quiet "REIDIN" button in the top
+// bar opens this narrow right-side drawer when the agent actually needs it, and
+// Esc / scrim / × close it. Available to ALL agents — the SAME access the retired
+// standalone sidebar page had (the start/poll routes gate only on "is a real
+// signed-in member").
+//
+// The login FLOW is unchanged from the rail panel — same deskApi start/poll
+// wrappers, same state machine, same copy button. Only the chrome around it
+// changed (rail panel body → drawer scrim + slide-in panel).
 //
 // Flow (unchanged from the standalone): click "Get my REIDIN login code" → the gated
 // start route reveals the shared login (username / password / links) and opens a
@@ -23,6 +29,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import styled from '@emotion/styled';
+import { IconX } from 'twenty-ui/display';
 
 import { DUR, EASE } from '../_pulse/pulse-tokens';
 import { Btn, FONT_MONO, FONT_UI } from '../_pulse/pulse';
@@ -31,6 +38,19 @@ import { pollReidinOtp, startReidinOtp } from './deskApi';
 import type { ReidinLogin, ReidinSession } from './types';
 
 const POLL_MS = 3000;
+
+// A small key glyph, shared by the top-bar button and the drawer header so the
+// two read as the same affordance. Inherits `currentColor` (no hardcoded hue).
+export function KeyGlyph({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="8" cy="8" r="5" />
+      <path d="M11.5 11.5 L20 20" />
+      <path d="M16.5 16.5 L19 14" />
+      <path d="M19 19 L21.5 16.5" />
+    </svg>
+  );
+}
 
 // Copy that works in the hero's real-DOM context. Order:
 //   1. navigator.clipboard.writeText — the modern secure-context path.
@@ -212,7 +232,7 @@ const Waiting = styled.div`
   margin-top: 12px;
 `;
 
-export function ReidinRailPanel() {
+function ReidinLoginFlow() {
   const [login, setLogin] = useState<ReidinLogin | null>(null);
   const [session, setSession] = useState<ReidinSession | null>(null);
   const [starting, setStarting] = useState(false);
@@ -364,5 +384,124 @@ export function ReidinRailPanel() {
         </>
       )}
     </div>
+  );
+}
+
+// ── Drawer chrome ─────────────────────────────────────────────────────────────
+// A dedicated right-side slide-in, narrower than the 620px record peek drawer
+// (~400px is plenty for the login flow). Enter rides --ease-drawer over
+// DUR.drawerIn; reduced-motion drops the slide (instant). Close on Esc, scrim
+// click, or the × — parent unmounts us (so the flow resets each open, matching
+// the PeekDrawer mount-on-demand convention).
+
+const Scrim = styled.button`
+  all: unset;
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  background: color-mix(in srgb, var(--p-bg) 58%, transparent);
+`;
+
+const Panel = styled.aside`
+  position: fixed;
+  z-index: 40;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(400px, 92vw);
+  display: flex;
+  flex-direction: column;
+  color: var(--p-ink);
+  background: var(--p-bg);
+  border-left: 1px solid var(--p-line);
+  box-shadow: var(--p-shadow-pop);
+  animation: reidin-drawer-in ${DUR.drawerIn}ms ${EASE.drawer} both;
+  @keyframes reidin-drawer-in {
+    from { transform: translate3d(24px, 0, 0); opacity: 0; }
+    to { transform: translate3d(0, 0, 0); opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+`;
+
+const Head = styled.div`
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 14px;
+  border-bottom: 1px solid var(--p-line);
+`;
+const HeadTitle = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-family: ${FONT_UI};
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--p-ink);
+`;
+const CloseBtn = styled.button`
+  all: unset;
+  box-sizing: border-box;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: var(--p-ink-2);
+  border: 1px solid var(--p-line);
+  cursor: pointer;
+  @media (prefers-reduced-motion: no-preference) {
+    transition: color ${DUR.press}ms ${EASE.out}, border-color ${DUR.press}ms ${EASE.out};
+  }
+  &:hover {
+    color: var(--p-ink);
+    border-color: color-mix(in srgb, var(--p-accent) 35%, var(--p-line));
+  }
+  &:focus-visible {
+    outline: none;
+    box-shadow: var(--p-focus-ring);
+  }
+`;
+const DrawerBody = styled.div`
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px 22px;
+`;
+
+// Mount-on-demand: the parent renders <ReidinDrawer/> only while open, so each
+// open starts the login flow fresh. onClose fires on Esc, scrim, and ×.
+export function ReidinDrawer({ onClose }: { onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <>
+      <Scrim type="button" aria-label="Close REIDIN login" onClick={onClose} />
+      <Panel role="dialog" aria-modal="true" aria-label="REIDIN login">
+        <Head>
+          <HeadTitle>
+            <KeyGlyph size={15} />
+            REIDIN login
+          </HeadTitle>
+          <CloseBtn type="button" aria-label="Close" onClick={onClose}>
+            <IconX size={16} />
+          </CloseBtn>
+        </Head>
+        <DrawerBody>
+          <ReidinLoginFlow />
+        </DrawerBody>
+      </Panel>
+    </>
   );
 }
