@@ -159,7 +159,7 @@ export type DeskNudgeResponse =
   | DeskErrorResponse;
 
 export type DeskMoveResponse =
-  | { ok: true; previousStage: string; touchedAt: string | null; noteId: string | null; sideEffects: string[] }
+  | { ok: true; previousStage: string; touchedAt: string | null; noteId: string | null; sideEffects: string[]; warnings?: DeskGate[] }
   | { ok: false; error: string; gate?: DeskGate };
 
 export type DeskUndoResponse =

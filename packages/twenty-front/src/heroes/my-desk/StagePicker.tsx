@@ -172,6 +172,9 @@ export const StagePicker = ({ row, anchor, host, onClose, onMoved }: {
         else host.notify("The stage didn't move. Please try again.", 'error');
         return;
       }
+      if (result.warnings?.length) {
+        host.notify(result.warnings.map((warning) => warning.label).join(' · '), 'info');
+      }
       onMoved(result, toStage);
       onClose();
     } finally {
@@ -183,6 +186,26 @@ export const StagePicker = ({ row, anchor, host, onClose, onMoved }: {
     const requirements = gatesByStage[toStage] ?? [];
     if (requirements.length) showGate(toStage, requirements);
     else void move(toStage);
+  };
+
+  const applyFieldAndMove = async (gate: DeskGate, value: string | boolean) => {
+    if (!gate.setField || !activeGate) return;
+    setBusy(true);
+    try {
+      const saved = await runDeskAction('setLaneField', {
+        laneObject: row.laneObject,
+        recordId: row.recordId,
+        field: gate.setField,
+        value,
+      });
+      if (!saved?.ok) {
+        host.notify("That didn't save. The stage stayed where it was.", 'error');
+        return;
+      }
+      await move(activeGate.toStage);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const completeAndMove = async (gate: DeskGate) => {
@@ -239,8 +262,10 @@ export const StagePicker = ({ row, anchor, host, onClose, onMoved }: {
                 const current = stage === row.stage;
                 const next = index === currentIndex + 1;
                 const requirements = gatesByStage[stage] ?? [];
-                const gated = requirements.length > 0;
-                const firstGate = requirements[0];
+                // A WARN gate must not paint the row as hard-blocked — only block-severity dims it.
+                const blocking = requirements.filter((gate) => gate.severity !== 'warn');
+                const gated = blocking.length > 0;
+                const firstGate = blocking[0] ?? requirements[0];
                 return (
                   <StageRow
                     key={stage}
@@ -254,7 +279,7 @@ export const StagePicker = ({ row, anchor, host, onClose, onMoved }: {
                     <span className="stage-dot" />
                     <span className="stage-label">{formatStageLabel(stage)}</span>
                     {current && <span style={{ marginLeft: 8, font: `500 9px ${FONT_MONO}`, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--p-ink-2)' }}>current</span>}
-                    {gated && firstGate && (
+                    {firstGate && (
                       <GateReason>
                         {firstGate.label} <span className="gate-link">→ {firstGate.fix}</span>
                       </GateReason>
@@ -277,6 +302,8 @@ export const StagePicker = ({ row, anchor, host, onClose, onMoved }: {
             onCompleteActivity={(gate) => void completeAndMove(gate)}
             onNudge={() => void nudgeApproval()}
             onOpenRecord={() => host.navigate(deskRecordPath(row))}
+            onSaveField={(gate, value) => void applyFieldAndMove(gate, value)}
+            onMoveAnyway={() => { if (activeGate) void move(activeGate.toStage); }}
           />
         ) : null}
       </Shell>
