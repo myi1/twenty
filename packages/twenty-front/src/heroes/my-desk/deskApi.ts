@@ -13,7 +13,9 @@
 
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import type {
+  DeskAskPipelineResponse,
   DeskBoardResponse,
+  DeskBriefingResponse,
   DeskCallNoteResponse,
   DeskGateStatusResponse,
   DeskNextActionResponse,
@@ -188,6 +190,17 @@ export const assistCallNote = (
     recordId,
     ...(callId ? { callId } : {}),
   });
+
+/** The morning briefing — ≤3 grounded lines from the acting member's own book.
+ *  null / non-ok / AI_UNAVAILABLE ⇒ the hero hides the card (never a broken one). */
+export const assistBriefing = (): Promise<DeskBriefingResponse | null> =>
+  callPropelRoute<DeskBriefingResponse>(ASSIST, { action: 'briefing' });
+
+/** Ask-your-pipeline — a READ-ONLY natural-language answer + the records it cited. */
+export const assistAskPipeline = (
+  question: string,
+): Promise<DeskAskPipelineResponse | null> =>
+  callPropelRoute<DeskAskPipelineResponse>(ASSIST, { action: 'askPipeline', question });
 
 export const sendDeskWhatsApp = (
   conversationId: string,

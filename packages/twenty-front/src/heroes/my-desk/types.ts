@@ -70,20 +70,34 @@ export type DeskBoardResponse =
 // Each panel fails ALONE server-side (safeList) and degrades to `[]` — a panel
 // that had a lookup error is indistinguishable, on the wire, from a genuinely
 // empty one; only a `null`/`ok:false` response is a rail-wide failure.
+// Every rail item now carries its OWN record target + contact reachability
+// (my-desk-route.ts's rail enrichment, shared/my-desk-rail.ts) so the hero's
+// mini-actions are live for every item WITHOUT a board-row join. `laneObject` /
+// `recordId` may be null when the target couldn't be resolved (→ the action shows
+// disabled-with-reason, never a crash). These extend the base rail shapes.
+type RailTarget = {
+  laneObject: DeskLane | null;
+  recordId: string | null;
+  personId: string | null;
+  contactName: string | null;
+  phoneE164: string | null;
+  hasWhatsApp: boolean;
+};
+
 export type DeskTaskItem = {
   id: string;
   title: string | null;
   status: string | null; // Task.status — 'TODO' | 'IN_PROGRESS' | … (rail only requests TODO/IN_PROGRESS)
   slaDueAt: string | null;
   kind: string | null;
-};
+} & RailTarget;
 
 export type DeskViewingItem = {
   id: string;
   name: string | null;
   scheduledAt: string | null;
   status: string | null; // 'REQUESTED' | 'SCHEDULED' | … (rail only requests these two)
-};
+} & RailTarget;
 
 export type DeskUnreadWaItem = {
   id: string;
@@ -91,7 +105,7 @@ export type DeskUnreadWaItem = {
   unreadCount: number | null;
   lastMessageAt: string | null;
   contactId: string | null;
-};
+} & RailTarget;
 
 export type DeskRailResponse =
   | {
@@ -190,6 +204,20 @@ export type DeskNextActionResponse =
 /** callNote — a factual post-call note draft the agent edits and saves. */
 export type DeskCallNoteResponse =
   | { ok: true; draft: string; why: string }
+  | DeskAssistError;
+
+/** briefing — a morning day-setter, ≤3 plain-English lines grounded in the
+ *  acting member's own board+rail. An empty book comes back as one calm
+ *  "all caught up" line (ok:true). AI_UNAVAILABLE ⇒ the hero hides the card. */
+export type DeskBriefingResponse =
+  | { ok: true; lines: string[] }
+  | DeskAssistError;
+
+/** askPipeline — a read-only NL answer over the member's own leads+deals plus
+ *  the records it cited (clickable). `truncated` = the book was token-capped. */
+export type DeskPipelineRef = { laneObject: DeskLane; recordId: string; name: string };
+export type DeskAskPipelineResponse =
+  | { ok: true; answer: string; refs: DeskPipelineRef[]; truncated?: boolean }
   | DeskAssistError;
 
 export type DeskNudgeResponse =

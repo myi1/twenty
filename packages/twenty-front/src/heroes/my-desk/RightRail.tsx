@@ -10,16 +10,16 @@
 //        · Priority leads   → Call / WhatsApp, beside the Batch-1 SLA ring / seal
 //      Match the board's hover-reveal + :active press + disabled-with-reason.
 //
-//      A rail item only becomes actionable through the record behind it. The
-//      rail response is thin (no phone on a task/viewing, no full row), so each
-//      item JOINS to a board row we already hold:
-//        · task    → row.nextActionTaskId === task.id
-//        · viewing → row.viewingTodayAt === viewing.scheduledAt
-//        · unread  → row.personId === conversation.contactId
+//      Each rail item now carries its OWN record target + contact reachability
+//      (my-desk-route rail enrichment), so we build a synthetic DeskRow per item
+//      (railRows.ts) instead of joining to the open board — the mini-actions are
+//      live for EVERY item, not only those that happen to also be on screen:
+//        · task    → rowForTask(item)   (task → its target record + contact)
+//        · viewing → rowForViewing(item) (viewing → buyer opportunity + attendee)
+//        · unread  → rowForUnreadWa(item) (thread → the person behind it)
 //        · lead    → the item ALREADY IS a DeskRow (rail.priorityLeads)
-//      With a matched row the mini-actions run the board's exact rules; with no
-//      match they show disabled-with-reason (honest — the record isn't in the
-//      open book on screen).
+//      A null synthetic row (target didn't resolve) shows disabled-with-reason —
+//      honest, never a silent no-op. The board join is gone.
 //
 //   2. Rail arrangement (mockup L1571–1649): drag-reorder the panels (grip on
 //      header hover, brass drop indicator, HTML5 drag), per-panel collapse
@@ -31,7 +31,7 @@
 // (deskState.ts owns the localStorage write). Reduced-motion drops every
 // transition (widths, folds, presses) — layout still changes, just instantly.
 
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import styled from '@emotion/styled';
 import { useNavigate } from 'react-router-dom';
 import { AppPath } from 'twenty-shared/types';
@@ -43,6 +43,7 @@ import { FONT_MONO, FONT_UI, P, Seal } from '../_pulse/pulse';
 import { bandOf } from './banding';
 import { SlaRing } from './SlaRing';
 import { formatClock, formatRelative, friendlyError } from './format';
+import { rowForTask, rowForUnreadWa, rowForViewing } from './railRows';
 import { SkeletonStack, Text } from './shared';
 import type { RailArrangement, RailPanelId } from './deskState';
 import type {
@@ -526,7 +527,6 @@ export const RightRail = ({
   rail,
   error,
   nowMs,
-  boardRows,
   onRowAction,
   onCompleteTask,
   arrangement,
@@ -537,9 +537,8 @@ export const RightRail = ({
   error: string | null;
   /** The hero's re-ticked clock — drives the priority-lead SLA ring. */
   nowMs: number;
-  /** The open board — the join source that turns a thin rail item actionable. */
-  boardRows: DeskRow[];
-  /** The board's own action handler (dialer / drawer) — reused, never re-built. */
+  /** The board's own action handler (dialer / drawer) — reused, never re-built.
+   *  Rail items reach it with a synthetic DeskRow built from their own data. */
   onRowAction: (action: RowAction, row: DeskRow) => void;
   /** Existing `completeTask` route write; resolves true on success. */
   onCompleteTask: (row: DeskRow, taskId: string) => Promise<boolean>;
@@ -563,23 +562,6 @@ export const RightRail = ({
   // Grip / See-all press flag: consumed by the header click so those never fold
   // the panel (useRef flag rather than stopPropagation — that's unreliable here).
   const skipFoldRef = useRef(false);
-
-  // ── Board joins — thin rail item → the row that makes it actionable ──────────
-  const rowByTaskId = useMemo(() => {
-    const m = new Map<string, DeskRow>();
-    for (const r of boardRows) if (r.nextActionTaskId) m.set(r.nextActionTaskId, r);
-    return m;
-  }, [boardRows]);
-  const rowByPersonId = useMemo(() => {
-    const m = new Map<string, DeskRow>();
-    for (const r of boardRows) if (r.personId) m.set(r.personId, r);
-    return m;
-  }, [boardRows]);
-  const rowByViewingAt = useMemo(() => {
-    const m = new Map<string, DeskRow>();
-    for (const r of boardRows) if (r.viewingTodayAt) m.set(r.viewingTodayAt, r);
-    return m;
-  }, [boardRows]);
 
   const emit = (patch: Partial<RailArrangement>) =>
     onArrangementChange({ order, folds, collapsed, ...patch });
@@ -620,7 +602,7 @@ export const RightRail = ({
       onSeeAll: () => navigate(AppPath.TasksPage),
       emptyLabel: 'No tasks due today.',
       body: (rail?.tasks ?? []).map((t) => {
-        const row = rowByTaskId.get(t.id) ?? null;
+        const row = rowForTask(t);
         const done = completedTaskIds.has(t.id);
         const overdue = isTaskOverdue(t, nowMs);
         return (
@@ -667,7 +649,7 @@ export const RightRail = ({
       onSeeAll: () => navigate('/objects/viewings'),
       emptyLabel: 'No viewings today.',
       body: (rail?.viewings ?? []).map((v) => {
-        const row = v.scheduledAt ? rowByViewingAt.get(v.scheduledAt) ?? null : null;
+        const row = rowForViewing(v);
         return (
           <Item
             key={v.id}
@@ -693,7 +675,7 @@ export const RightRail = ({
       onSeeAll: () => navigate(AppPath.Inbox),
       emptyLabel: "You're all caught up.",
       body: (rail?.unreadWa ?? []).map((w) => {
-        const row = w.contactId ? rowByPersonId.get(w.contactId) ?? null : null;
+        const row = rowForUnreadWa(w);
         return (
           <Item
             key={w.id}

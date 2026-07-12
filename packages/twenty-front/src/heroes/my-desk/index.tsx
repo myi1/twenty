@@ -15,7 +15,7 @@
 //
 // Reads use the shared route wrapper; host supplies navigation, dialer and toasts.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styled from '@emotion/styled';
 import { IconLayoutDashboard } from 'twenty-ui/display';
 import { PropelMantineProvider } from '@/propel/components/PropelMantineProvider';
@@ -25,9 +25,12 @@ import { type PropelHeroHost } from '@/propel/runtime/heroHost';
 
 import { Btn, FONT_DISPLAY, FONT_UI, PulseFonts, PulseNocturne } from '../_pulse/pulse';
 
+import { AskPipeline } from './AskPipeline';
 import { BoardTable } from './BoardTable';
+import { BriefingCard } from './BriefingCard';
 import { deskRecordPath, PeekDrawer, type DrawerMode } from './PeekDrawer';
 import { KeyGlyph, ReidinDrawer } from './ReidinDrawer';
+import { railRowsFrom } from './railRows';
 import { RightRail } from './RightRail';
 import { TodayStrip, type StripFilter } from './TodayStrip';
 import { fetchBoard, fetchRail, fetchTimeline, runDeskAction } from './deskApi';
@@ -194,6 +197,15 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
   // each open.
   const [reidinOpen, setReidinOpen] = useState(false);
 
+  // Synthetic rows for the rail's items (built from their OWN enriched data) so a
+  // rail mini-action can open the peek drawer even when that record isn't on the
+  // open board. `resolveRow` prefers the (richer) board row on an id collision.
+  const railRows = useMemo(() => railRowsFrom(rail), [rail]);
+  const resolveRow = useCallback(
+    (id: string): DeskRow | null => boardRows.find((r) => r.id === id) ?? railRows.find((r) => r.id === id) ?? null,
+    [boardRows, railRows],
+  );
+
   const cancelledRef = useRef(false);
 
   useEffect(() => {
@@ -214,7 +226,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
         setPendingCall(null);
         return;
       }
-      const row = boardRows.find((candidate) => candidate.id === pendingCall.rowId);
+      const row = resolveRow(pendingCall.rowId);
       if (!row) return;
       const result = await fetchTimeline(row.laneObject, row.recordId);
       if (!result?.ok) return;
@@ -232,7 +244,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
     void check();
     const id = window.setInterval(() => void check(), 10_000);
     return () => window.clearInterval(id);
-  }, [pendingCall, boardRows]);
+  }, [pendingCall, resolveRow]);
 
   const startCall = (row: DeskRow) => {
     if (!row.phoneE164) return;
@@ -483,6 +495,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 'none' }}>
+              <AskPipeline host={host} />
               <Btn
                 type="button"
                 variant="secondary"
@@ -522,6 +535,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
               </Btn>
             </div>
           </TopBarRow>
+          <BriefingCard />
           <TodayStrip
             boardStatus={boardStatus}
             rows={boardRows}
@@ -565,7 +579,6 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
               rail={rail}
               error={railError}
               nowMs={nowMs}
-              boardRows={boardRows}
               onRowAction={handleRowAction}
               onCompleteTask={completeTaskFromRail}
               arrangement={railArrangement}
@@ -577,7 +590,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
           </div>
           {reidinOpen && <ReidinDrawer onClose={() => setReidinOpen(false)} />}
           {drawer && (() => {
-            const row = boardRows.find((candidate) => candidate.id === drawer.rowId);
+            const row = resolveRow(drawer.rowId);
             return row ? (
               <PeekDrawer
                 row={row}
@@ -591,7 +604,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
             ) : null;
           })()}
           {stagePicker && (() => {
-            const row = boardRows.find((candidate) => candidate.id === stagePicker.rowId);
+            const row = resolveRow(stagePicker.rowId);
             return row ? (
               <StagePicker
                 row={row}
@@ -607,7 +620,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
             ) : null;
           })()}
           {undoMove && (() => {
-            const row = boardRows.find((candidate) => candidate.id === undoMove.rowId);
+            const row = resolveRow(undoMove.rowId);
             if (!row) return null;
             return (
               <div style={{ position: 'fixed', right: 24, bottom: 24, zIndex: 5001, display: 'flex', alignItems: 'center', gap: 14, padding: '11px 12px 11px 14px', border: '1px solid var(--p-line)', borderRadius: 'var(--p-radius-sm)', background: 'var(--p-surface-2)', boxShadow: 'var(--p-shadow-pop)', color: 'var(--p-ink)', fontFamily: 'Hanken Grotesk, sans-serif', fontSize: 12.5 }}>
