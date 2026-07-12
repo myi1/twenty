@@ -134,16 +134,20 @@ export type DeskWaContextResponse =
   | DeskErrorResponse;
 
 export type DeskWriteResponse =
-  | ({ ok: true; touchedAt?: string; noteId?: string | null; taskId?: string; viewingId?: string; until?: string; auditWarning?: true })
+  | ({ ok: true; touchedAt?: string; noteId?: string | null; taskId?: string; viewingId?: string; until?: string; auditWarning?: true; warnings?: DeskGate[] })
   | DeskErrorResponse;
 
 export type DeskGate = {
   type: 'field' | 'document' | 'activity' | 'approval';
+  severity?: 'block' | 'warn';
   label: string;
   fix: string;
   taskId?: string | null;
   done?: boolean;
   approverLabel?: string | null;
+  inputKind?: 'boolean' | 'date' | 'number';
+  setField?: string;
+  setTo?: 'true' | null;
 };
 
 export type DeskGateStatusResponse =
