@@ -1,6 +1,7 @@
 import { AppRouter } from '@/app/components/AppRouter';
 import { ApolloDevLogEffect } from '@/debug/components/ApolloDevLogEffect';
 import { DialerDock } from '@/dialer-dock/components/DialerDock';
+import { WhatsAppDock } from '@/whatsapp-dock/components/WhatsAppDock';
 import { AppErrorBoundary } from '@/error-handler/components/AppErrorBoundary';
 import { AppRootErrorFallback } from '@/error-handler/components/AppRootErrorFallback';
 import { ExceptionHandlerProvider } from '@/error-handler/components/ExceptionHandlerProvider';
@@ -36,6 +37,7 @@ export const App = () => {
                   >
                     <AppRouter />
                     <DialerDock />
+                    <WhatsAppDock />
                   </ClickOutsideListenerContext.Provider>
                 </HelmetProvider>
               </ExceptionHandlerProvider>
