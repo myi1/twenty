@@ -98,20 +98,19 @@ const buildGreeting = (nowMs: number, firstName: string | null): { date: string;
 };
 
 // Header row above the Today Strip (mockup .topbar, L853–862). space-between so
-// the greeting sits left and the actions right; the right padding reserves the
-// top-right corner for the shell's own theme toggle (mockup keeps it clear at
-// ≤1500px — we reserve it always, since the toggle is viewport-fixed) so the
-// two buttons never slide under it.
+// the greeting sits left and the actions right, right-aligned to a normal 24px
+// edge margin. (The old 172px right reserve guarded the *mockup's* dark/light
+// toggle — a mockup-only element; the real Twenty shell has no floating toggle
+// there, so the corner is clear and the buttons right-align cleanly.)
 const TopBarRow = styled.div`
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 24px;
-  padding: 22px 172px 18px 24px;
+  padding: 22px 24px 18px 24px;
   border-bottom: 1px solid var(--p-line);
   @media (max-width: 720px) {
     flex-wrap: wrap;
-    padding-right: 24px;
   }
 `;
 
