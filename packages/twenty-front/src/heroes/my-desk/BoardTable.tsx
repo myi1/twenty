@@ -763,7 +763,7 @@ export const BoardTable = ({
                     title="More actions"
                     onMouseDown={() => { actionClickRef.current = true; }}
                     onClick={(event) => openOverflow(event, row)}
-                  ><span aria-hidden style={{ font: `600 17px/1 ${FONT_UI}`, transform: 'translateY(-2px)' }}>⋯</span></RowAction>
+                  ><svg width={13} height={13} viewBox="0 0 16 16" fill="none" aria-hidden><circle cx="3.5" cy="8" r="1.1" fill="currentColor" /><circle cx="8" cy="8" r="1.1" fill="currentColor" /><circle cx="12.5" cy="8" r="1.1" fill="currentColor" /></svg></RowAction>
                 </ActionTray>
               </div>
             </RowEl>
