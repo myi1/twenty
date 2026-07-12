@@ -5,39 +5,56 @@
 
     <link
       rel="icon"
-      type="image/x-icon"
-      href="/images/icons/android/android-launchericon-48-48.png"
+      type="image/svg+xml"
+      href="/images/icons/propel/favicon.svg"
       data-rh="true"
     />
-    <link rel="apple-touch-icon" href="/images/icons/ios/192.png" />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="32x32"
+      href="/images/icons/propel/favicon-32.png"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="16x16"
+      href="/images/icons/propel/favicon-16.png"
+    />
+    <link rel="apple-touch-icon" href="/images/icons/ios/180.png" />
     <link rel="manifest" href="/manifest.json" />
 
-    <meta name="theme-color" content="#000000" />
-    <meta name="description" content="A modern open-source CRM" />
+    <meta name="theme-color" content="#E41D2D" />
+    <meta
+      name="description"
+      content="Propel — the RE/MAX Hub CRM for real estate teams"
+    />
     <meta
       property="og:image"
-      content="https://raw.githubusercontent.com/twentyhq/twenty/main/docs/static/img/social-card.png"
+      content="/images/icons/propel/propel-icon.svg"
     />
-    <meta property="og:description" content="A modern open-source CRM" />
-    <meta property="og:title" content="Twenty" />
+    <meta
+      property="og:description"
+      content="Propel — the RE/MAX Hub CRM for real estate teams"
+    />
+    <meta property="og:title" content="Propel" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta
       name="twitter:image"
-      content="https://raw.githubusercontent.com/twentyhq/twenty/main/docs/static/img/social-card.png"
+      content="/images/icons/propel/propel-icon.svg"
     />
 
-    <meta name="twitter:description" content="A modern open-source CRM" />
-    <meta name="twitter:title" content="Twenty" />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
+    <meta
+      name="twitter:description"
+      content="Propel — the RE/MAX Hub CRM for real estate teams"
     />
+    <meta name="twitter:title" content="Propel" />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Hanken+Grotesk:wght@300;400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap"
     />
 
-    <title>Twenty</title>
+    <title>Propel</title>
     <!-- BEGIN: Twenty Config -->
     <script id="twenty-env-config">
       window._env_ = {
@@ -45,6 +62,40 @@
       };
     </script>
     <!-- END: Twenty Config -->
+
+    <!-- BEGIN: Propel Hero Runtime -->
+    <!-- Import map: a runtime-loaded hero's bare imports (built EXTERNAL) resolve to
+         the host's re-export shims, which read the host's singletons off
+         window.__propelShared (populated by /src/index.tsx → heroShared before the
+         tree mounts). Must precede /src/index.tsx so the map is registered before any
+         module graph (incl. a hero's dynamic import) is resolved. Keep in sync with
+         scripts/gen-hero-shims.mjs (it prints this exact block). -->
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "/propel-shims/react.js",
+          "react/jsx-runtime": "/propel-shims/react-jsx-runtime.js",
+          "react-dom": "/propel-shims/react-dom.js",
+          "react-dom/client": "/propel-shims/react-dom-client.js",
+          "@mantine/core": "/propel-shims/mantine-core.js",
+          "@mantine/hooks": "/propel-shims/mantine-hooks.js",
+          "@emotion/react": "/propel-shims/emotion-react.js",
+          "@emotion/styled": "/propel-shims/emotion-styled.js",
+          "react-router-dom": "/propel-shims/react-router-dom.js",
+          "framer-motion": "/propel-shims/framer-motion.js",
+          "twenty-ui/display": "/propel-shims/twenty-ui-display.js",
+          "twenty-ui/theme-constants": "/propel-shims/twenty-ui-theme-constants.js",
+          "@/apollo/utils/getTokenPair": "/propel-shims/at-apollo-utils-getTokenPair.js",
+          "@/propel/lib/callPropelRoute": "/propel-shims/at-propel-lib-callPropelRoute.js",
+          "@/ui/layout/page/components/PageContainer": "/propel-shims/at-ui-layout-page-components-PageContainer.js",
+          "@/ui/layout/page/components/PageHeader": "/propel-shims/at-ui-layout-page-components-PageHeader.js",
+          "@/ui/feedback/snack-bar-manager/hooks/useSnackBar": "/propel-shims/at-ui-feedback-snack-bar-manager-hooks-useSnackBar.js",
+          "@/dialer-dock/utils/dialerCrmBridge": "/propel-shims/at-dialer-dock-utils-dialerCrmBridge.js",
+          "~/config": "/propel-shims/tilde-config.js"
+        }
+      }
+    </script>
+    <!-- END: Propel Hero Runtime -->
 
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script type="module">
@@ -66,10 +117,10 @@
     </script>
     <style>
       :root {
-        /* THEME_DARK.background.tertiary */
-        --theme-dark-background-tertiary: #1d1d1d;
-        /* THEME_LIGHT.background.tertiary */
-        --theme-light-background-tertiary: #f1f1f1;
+        /* THEME_DARK.background.tertiary (Nocturne warm gray4) */
+        --theme-dark-background-tertiary: #211e15;
+        /* THEME_LIGHT.background.tertiary (Nocturne warm gray4) */
+        --theme-light-background-tertiary: #efe8d9;
       }
 
       @media (prefers-color-scheme: dark) {

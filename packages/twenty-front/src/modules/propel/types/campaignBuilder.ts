@@ -13,6 +13,59 @@
 export type RealChannel = 'EMAIL' | 'WHATSAPP';
 export type TemplateLanguage = 'EN' | 'AR';
 
+// ── A/B test config (S2) ─────────────────────────────────────────────────────
+// The marketingCampaign object already carries the full A/B schema and the
+// detail view already READS the result; S2 is purely the missing FRONT DOOR.
+// This is the wizard-local slice — composed into the wizard state orthogonally
+// so later slices merge cleanly. The field names below map 1:1 onto the
+// /marketing/save-campaign body keys (see marketing-save-campaign-route.ts):
+//   abEnabled · abSubjectB · abBodyB · abSlicePct · abWinnerMetric ·
+//   abDecideAfterHours · abMinEvents  (abTemplateBId reserved for WA A/B, S-later).
+export type AbWinnerMetric = 'OPENS' | 'REPLIES';
+
+export interface AbConfig {
+  enabled: boolean;
+  subjectB: string; // EMAIL variant B
+  bodyB: string; // EMAIL variant B
+  // WhatsApp variant B = a second approved template (the WA body IS the
+  // template; there's no free copy). Maps to save-campaign's abTemplateBId,
+  // which the route already accepts. null = no B template chosen yet.
+  templateBId: string | null;
+  slicePct: number; // 5–50; the % of the audience the A/B test samples
+  winnerMetric: AbWinnerMetric;
+  decideAfterHours: number; // > 0
+  minEvents: number; // >= 0
+}
+
+export const DEFAULT_AB_CONFIG: AbConfig = {
+  enabled: false,
+  subjectB: '',
+  bodyB: '',
+  templateBId: null,
+  slicePct: 20,
+  winnerMetric: 'OPENS',
+  decideAfterHours: 24,
+  minEvents: 50,
+};
+
+// ── marketingSendRule singleton (S3 — Review guardrails) ─────────────────────
+// The send governance the drain enforces on EVERY send: weekly caps (all-channel
+// + a stricter WhatsApp cap), a nightly quiet window, and a Friday pause. The
+// /marketing/hub route already returns this (sendRules) — S3 surfaces it in
+// Review so the user understands BEFORE launch why a blast might be throttled,
+// not after. Times are Asia/Dubai "HH:MM". Mirrors src/shared/marketing-hub-types
+// SendRulesPayload + DEFAULT_SEND_RULES_PAYLOAD in the CRM repo.
+export interface SendRulesPayload {
+  id?: string | null;
+  capPerWeek: number;
+  capPerWeekWhatsapp: number;
+  quietEnabled: boolean;
+  quietStart: string;
+  quietEnd: string;
+  fridayPauseEnabled: boolean;
+  fridayPauseUntil: string;
+}
+
 // ── /marketing/hub (the subset the builder needs for its pickers) ────────────
 export interface SegmentOption {
   id: string;
@@ -63,6 +116,9 @@ export interface CampaignBuilderHubPayload {
   waTemplates?: WaTemplateOption[];
   emailTemplates?: EmailTemplateOption[];
   customFields?: CustomFieldOption[];
+  // The send-rules singleton (S3 Review guardrails). The /marketing/hub route
+  // already includes this; it is optional/presence-guarded like every payload.
+  sendRules?: SendRulesPayload;
 }
 
 // ── Typed error envelope (marketing-io.envelope) ─────────────────────────────
@@ -90,6 +146,50 @@ export interface SaveCampaignResponse extends RouteEnvelopeError {
   status?: string;
 }
 
+// ── /marketing/campaign-edit (S6 — listing-aware draft re-edit) ──────────────
+// Loads a DRAFT campaign's editable fields back into the builder. S6 makes the
+// builder listing-aware on reopen: a listing-backed draft re-hydrates the
+// listing (objective → LISTING) and re-runs the permit gate, instead of being
+// shunted to a read-only detail. The route's `editable` flag still gates
+// genuinely non-editable campaigns (sent/sending/scheduled/system/SOCIAL).
+//
+// BACKEND TODO(S6-backend): the current /marketing/campaign-edit route
+// (propel-crm-integration: src/logic-functions/marketing-campaign-edit-route.ts)
+// returns editable:false when cmp.listingId is set, and does NOT return
+// listingId or the A/B fields. For S6 it must:
+//   1. treat a DRAFT, non-system EMAIL listing-backed campaign as editable;
+//   2. return `listingId` (so the wizard re-hydrates the listing + re-gates the
+//      permit) and the A/B config fields (abEnabled, abSubjectB, abBodyB,
+//      abSlicePct, abWinnerMetric, abDecideAfterHours, abMinEvents,
+//      abTemplateBId) so reopening a draft restores its A/B test instead of
+//      silently dropping it on the next save.
+// The fields below are typed as optional so the UI degrades gracefully against
+// the not-yet-widened route (missing listingId → treated as a segment draft;
+// missing A/B fields → A/B defaults), and lights up fully once it lands.
+export interface CampaignEditResponse extends RouteEnvelopeError {
+  ok?: boolean;
+  editable?: boolean;
+  campaignId?: string;
+  status?: string;
+  name?: string;
+  channel?: RealChannel;
+  subject?: string;
+  body?: string;
+  language?: TemplateLanguage;
+  segmentId?: string | null;
+  waTemplateId?: string | null;
+  // S6 — present once the route is widened; absent on the current route.
+  listingId?: string | null;
+  abEnabled?: boolean;
+  abSubjectB?: string;
+  abBodyB?: string;
+  abSlicePct?: number;
+  abWinnerMetric?: AbWinnerMetric;
+  abDecideAfterHours?: number;
+  abMinEvents?: number;
+  abTemplateBId?: string | null;
+}
+
 // ── /marketing/test-send ─────────────────────────────────────────────────────
 export interface TestSendResponse extends RouteEnvelopeError {
   ok?: boolean;
@@ -105,13 +205,37 @@ export interface SendRequestResponse extends RouteEnvelopeError {
 }
 
 // ── /marketing/segment-preview ───────────────────────────────────────────────
+// rulesPreview (P2.5): when the request sets `rulesPreview: true`, the route runs
+// the SAME cap-exclusion pass the materializer applies at fire time over the
+// resolved recipients and returns how many would be skipped for hitting their
+// weekly cap — the honest, deterministic number the Review guardrails surface.
+export interface SegmentRulesPreview {
+  capReached: number;
+  // The send-rules snapshot the cap pass ran with (echoed for the caller; the
+  // guardrails card already has its own copy from /marketing/hub, so this is
+  // informational and intentionally loosely typed).
+  rules?: unknown;
+}
+
 export interface SegmentPreviewResponse extends RouteEnvelopeError {
   ok?: boolean;
   channel?: RealChannel;
   estimate?: number;
   description?: string;
   note?: string;
+  rulesPreview?: SegmentRulesPreview;
 }
+
+// The Review cap-skip preview state (S3 guardrails). How many of the chosen
+// audience would be skipped for having already hit their weekly cap — resolved
+// by the SAME pass the materializer runs at fire time. Honest by construction:
+// 'error' renders as "couldn't check" (never zero-filled), and the count is only
+// trusted in the 'loaded' state.
+export type CapPreview =
+  | { state: 'idle' }
+  | { state: 'loading' }
+  | { state: 'loaded'; capReached: number }
+  | { state: 'error' };
 
 // ── /marketing/save-segment ──────────────────────────────────────────────────
 export interface SaveSegmentResponse extends RouteEnvelopeError {

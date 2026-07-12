@@ -85,9 +85,18 @@ export const ListingStudioPage = () => {
   if (draft === null) {
     return (
       <PropelMantineProvider>
-        <PageContainer>
+        {/* Shared hero scroll fix: PageContainer claims full height + the body is
+            the vertical scroll region (see MarketingHero for the root cause). */}
+        <PageContainer style={{ flex: 1, minHeight: 0 }}>
           <PageHeader title="Listing Studio" Icon={IconBuildingSkyscraper} />
-          <Box style={{ padding: '8px 16px 24px', flex: 1, minHeight: 0 }}>
+          <Box
+            style={{
+              padding: '8px 16px 24px',
+              flex: 1,
+              minHeight: 0,
+              overflowY: 'auto',
+            }}
+          >
             <StudioLauncher
               resumable={resumable}
               starting={starting}
@@ -104,7 +113,10 @@ export const ListingStudioPage = () => {
   // ── Studio shell (active draft) ─────────────────────────────────────────────
   return (
     <PropelMantineProvider>
-      <PageContainer>
+      {/* Shared hero scroll fix: PageContainer claims full height; the 3-column
+          studio frame below is the vertical scroll region (overflowY:auto) so the
+          step body stays reachable. See MarketingHero for the root cause. */}
+      <PageContainer style={{ flex: 1, minHeight: 0 }}>
         <PageHeader title="Listing Studio" Icon={IconBuildingSkyscraper}>
           <Group gap="sm" wrap="nowrap">
             {saveState !== 'idle' && (
@@ -132,6 +144,7 @@ export const ListingStudioPage = () => {
             padding: '8px 16px 24px',
             flex: 1,
             minHeight: 0,
+            overflowY: 'auto',
             alignItems: 'flex-start',
           }}
         >

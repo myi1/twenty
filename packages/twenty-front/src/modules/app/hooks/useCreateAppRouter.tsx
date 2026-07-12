@@ -1,6 +1,11 @@
 import { AppRouterProviders } from '@/app/components/AppRouterProviders';
 import { LazyRoute } from '@/app/components/LazyRoute';
 import { SettingsRoutes } from '@/app/components/SettingsRoutes';
+import { HeroCatchAllRoute, HeroRoute } from '@/propel/runtime/HeroRoute';
+import {
+  getAllNavEntries,
+  getPropelNavConfig,
+} from '@/propel/runtime/propelNavConfig';
 import { VerifyLoginTokenEffect } from '@/auth/components/VerifyLoginTokenEffect';
 
 import { VerifyEmailEffect } from '@/auth/components/VerifyEmailEffect';
@@ -28,47 +33,18 @@ const RecordShowPage = lazy(() =>
   })),
 );
 
-const MarketingHomePage = lazy(() =>
-  import('~/pages/propel/MarketingHomePage').then((module) => ({
-    default: module.MarketingHomePage,
-  })),
-);
-
-const MarketingCampaignBuilderPage = lazy(() =>
-  import('~/pages/propel/MarketingCampaignBuilderPage').then((module) => ({
-    default: module.MarketingCampaignBuilderPage,
-  })),
-);
-
-const SequenceEditorPage = lazy(() =>
-  import('~/pages/propel/SequenceEditorPage').then((module) => ({
-    default: module.SequenceEditorPage,
-  })),
-);
-
-const OneOnOneRunnerPage = lazy(() =>
-  import('~/pages/propel/OneOnOneRunnerPage').then((module) => ({
-    default: module.OneOnOneRunnerPage,
-  })),
-);
-
-const SocialCalendarPage = lazy(() =>
-  import('~/pages/propel/SocialCalendarPage').then((module) => ({
-    default: module.SocialCalendarPage,
-  })),
-);
-
-const A2AStudioPage = lazy(() =>
-  import('~/pages/propel/A2AStudioPage').then((module) => ({
-    default: module.A2AStudioPage,
-  })),
-);
-
-const ListingStudioPage = lazy(() =>
-  import('~/pages/propel/ListingStudioPage').then((module) => ({
-    default: module.ListingStudioPage,
-  })),
-);
+// All Propel heroes are runtime-loaded via <HeroRoute name="…"/> — none of them
+// ship in the app bundle. HeroRoute fetches each one from the /heroes volume at
+// navigation time (see HeroRoute.tsx). Their ROUTES are also config-driven now: the
+// route for each hero is registered by mapping over the runtime nav config
+// (propelNavConfig.ts → DEFAULT_NAV_CONFIG, overridable by the host-mounted
+// nav.config.json), so adding a hero in config wires its route too. Routes register
+// UNCONDITIONALLY (every config entry, enabled or not) — a nav-hidden entry simply
+// has no sidebar link but its route still resolves for deep-links, matching the
+// prior hand-written behavior. The former in-bundle lazy() imports for
+// MarketingHero / MarketingCampaignBuilderPage / SequenceEditorPage /
+// OneOnOneRunnerPage / SocialCalendarPage / A2AStudioPage were removed when each
+// graduated to runtime loading (listing-studio led; the others followed).
 
 const SignInUp = lazy(() =>
   import('~/pages/auth/SignInUp').then((module) => ({
@@ -268,61 +244,32 @@ export const useCreateAppRouter = (
               </LazyRoute>
             }
           />
+          {/* Propel hero routes, config-driven (see comment above). Built from
+              the nav config available synchronously at router-construction time
+              (the baked default, which lists every known hero; a mounted
+              nav.config.json that only RELABELS/REORDERS existing heroes needs no
+              route change, and routes register unconditionally so nav-hidden
+              entries still resolve for deep-links). */}
+          {getAllNavEntries(getPropelNavConfig()).map((entry) => (
+            <Route
+              key={entry.key}
+              path={entry.route}
+              element={<HeroRoute name={entry.bundle} />}
+            />
+          ))}
+          {/* Catch-all hero route — closes the "new hero needs a rebuild" gap.
+              The explicit per-hero routes above are baked from the SYNC nav config
+              at router-construction time, so a hero added ONLY to the host-mounted
+              nav.config.json (which resolves asynchronously, after the router is
+              already built) would get a nav drawer item but NO route → 404. This
+              wildcard resolves ANY hero bundle from the runtime config AT
+              NAVIGATION TIME instead: a new hero's nav.config.json entry uses
+              route '/h/<bundle>' and HeroCatchAllRoute loads it with no rebuild.
+              Registered AFTER the explicit routes so those win by specificity
+              (back-compat). The :bundle param is sanitized in HeroCatchAllRoute. */}
           <Route
-            path={AppPath.MarketingHub}
-            element={
-              <LazyRoute>
-                <MarketingHomePage />
-              </LazyRoute>
-            }
-          />
-          <Route
-            path={AppPath.MarketingCampaignBuilder}
-            element={
-              <LazyRoute>
-                <MarketingCampaignBuilderPage />
-              </LazyRoute>
-            }
-          />
-          <Route
-            path={AppPath.MarketingSequenceEditor}
-            element={
-              <LazyRoute>
-                <SequenceEditorPage />
-              </LazyRoute>
-            }
-          />
-          <Route
-            path={AppPath.OneOnOneRunner}
-            element={
-              <LazyRoute>
-                <OneOnOneRunnerPage />
-              </LazyRoute>
-            }
-          />
-          <Route
-            path={AppPath.MarketingSocialCalendar}
-            element={
-              <LazyRoute>
-                <SocialCalendarPage />
-              </LazyRoute>
-            }
-          />
-          <Route
-            path={AppPath.A2AStudio}
-            element={
-              <LazyRoute>
-                <A2AStudioPage />
-              </LazyRoute>
-            }
-          />
-          <Route
-            path={AppPath.ListingStudio}
-            element={
-              <LazyRoute>
-                <ListingStudioPage />
-              </LazyRoute>
-            }
+            path={AppPath.HeroCatchAll}
+            element={<HeroCatchAllRoute />}
           />
           <Route
             path={AppPath.PageLayoutPage}

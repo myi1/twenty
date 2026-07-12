@@ -52,10 +52,14 @@ const StyledLeftContainer = styled.div`
   }
 `;
 
+// PROPEL-NOCTURNE PATCH (Tier B) — re-apply on Twenty upgrade.
+// The top-bar page title (record page header / table view title) renders in
+// the Fraunces display face at ≥15px (DESIGN.md §2.2).
 const StyledTitleContainer = styled.div`
   align-items: center;
   display: flex;
-  font-size: ${themeCssVariables.font.size.md};
+  font-family: ${themeCssVariables.font.familyDisplay};
+  font-size: ${themeCssVariables.font.size.lg};
   font-weight: ${themeCssVariables.font.weight.medium};
   margin-right: ${themeCssVariables.spacing[1]};
   overflow: hidden;

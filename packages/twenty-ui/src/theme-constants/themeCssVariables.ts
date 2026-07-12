@@ -53,6 +53,18 @@ export const themeCssVariables = {
       normal: 'var(--t-animation-duration-normal)',
       slow: 'var(--t-animation-duration-slow)',
     },
+    easing: {
+      out: 'var(--t-animation-easing-out)',
+      inOut: 'var(--t-animation-easing-in-out)',
+      drawer: 'var(--t-animation-easing-drawer)',
+    },
+    durationMs: {
+      press: 'var(--t-animation-duration-ms-press)',
+      tooltip: 'var(--t-animation-duration-ms-tooltip)',
+      dropdown: 'var(--t-animation-duration-ms-dropdown)',
+      drawerIn: 'var(--t-animation-duration-ms-drawer-in)',
+      drawerOut: 'var(--t-animation-duration-ms-drawer-out)',
+    },
   },
   spacingMultiplicator: 'var(--t-spacing-multiplicator)',
   spacing: {
@@ -212,6 +224,7 @@ export const themeCssVariables = {
       semiBold: 'var(--t-font-weight-semi-bold)',
     },
     family: 'var(--t-font-family)',
+    familyDisplay: 'var(--t-font-family-display)',
   },
   name: 'var(--t-name)',
   snackBar: {

@@ -20,12 +20,31 @@ if [ -n "$REACT_APP_PROPEL_MARKETING_HUB" ]; then
   HUB_LINE="        REACT_APP_PROPEL_MARKETING_HUB: \"$REACT_APP_PROPEL_MARKETING_HUB\","
 fi
 
+# Propel runtime-loaded heroes — base URL of the hero-bundles volume. The FE
+# (HeroRoute) reads window._env_.REACT_APP_HEROES_BASE_URL and dynamic-imports
+# `${base}/<name>/index.js`; defaults to "/heroes" in the FE when unset.
+HEROES_LINE=""
+if [ -n "$REACT_APP_HEROES_BASE_URL" ]; then
+  HEROES_LINE="        REACT_APP_HEROES_BASE_URL: \"$REACT_APP_HEROES_BASE_URL\","
+fi
+
+# Propel floating WhatsApp dock (founder feature #2) — runtime toggle. The FE
+# (WhatsAppDock) reads window._env_.REACT_APP_WA_DOCK_ENABLED === 'true', so it
+# must be surfaced here or the dock can never turn on at runtime. Set "true" to
+# enable (staging first); leave UNSET to dark-ship.
+WA_DOCK_LINE=""
+if [ -n "$REACT_APP_WA_DOCK_ENABLED" ]; then
+  WA_DOCK_LINE="        REACT_APP_WA_DOCK_ENABLED: \"$REACT_APP_WA_DOCK_ENABLED\","
+fi
+
 CONFIG_BLOCK=$(cat << EOF
     <script id="twenty-env-config">
       window._env_ = {
         REACT_APP_SERVER_BASE_URL: "$REACT_APP_SERVER_BASE_URL",
 $DOCK_LINE
 $HUB_LINE
+$HEROES_LINE
+$WA_DOCK_LINE
       };
     </script>
     <!-- END: Twenty Config -->

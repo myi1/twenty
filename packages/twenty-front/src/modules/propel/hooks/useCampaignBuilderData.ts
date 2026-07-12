@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import { type CampaignBuilderHubPayload } from '@/propel/types/campaignBuilder';
 
@@ -41,6 +41,18 @@ export const useCampaignBuilderData = () => {
     };
   }, []);
 
+  // Re-pull the hub after a mutation that changes what the builder reads — e.g.
+  // editing the send rules from the Review guardrails, so the guardrails summary
+  // refreshes live without leaving Review. Fails soft like the initial load: a
+  // null response leaves the last good payload in place (never blanks the UI).
+  const refetch = useCallback(async () => {
+    const payload = await callPropelRoute<CampaignBuilderHubPayload>(
+      '/marketing/hub',
+      {},
+    );
+    if (payload !== null) setHub(payload);
+  }, []);
+
   const data = useMemo(
     () => ({
       segments: hub?.segments ?? EMPTY.segments,
@@ -48,9 +60,23 @@ export const useCampaignBuilderData = () => {
       waTemplates: hub?.waTemplates ?? EMPTY.waTemplates,
       emailTemplates: hub?.emailTemplates ?? EMPTY.emailTemplates,
       customFields: hub?.customFields ?? EMPTY.customFields,
+      // S3 — the send-rules singleton for the Review guardrails card. Left
+      // undefined (NOT zero-filled) when the route omits it, so the card shows
+      // an honest "couldn't load your send rules" note rather than fake caps.
+      sendRules: hub?.sendRules,
+      // S9 — the capability tier. The hub route returns tier:'VIEWER_BLOCKED'
+      // (with everything else empty) for a non-coordinator, and 'COORDINATOR' for
+      // a Manager/Admin. The page reads this to show a permission-denied surface
+      // instead of an empty builder that would silently fail on every save.
+      tier: hub?.tier,
     }),
     [hub],
   );
 
-  return { ...data, isLoading };
+  // S9 — distinguish "load failed entirely" (null payload, not loading) from a
+  // populated empty workspace, so the page can show an honest retry rather than
+  // an empty builder. `loaded` is true once a non-null payload has arrived.
+  const loaded = hub !== null;
+
+  return { ...data, isLoading, loaded, refetch };
 };

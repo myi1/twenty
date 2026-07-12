@@ -20,6 +20,7 @@ export enum AppPath {
   Index = '/',
   TasksPage = '/objects/tasks',
   OpportunitiesPage = '/objects/opportunities',
+  Inbox = '/inbox',
   MarketingHub = '/marketing',
   MarketingCampaignBuilder = '/marketing/campaign/new',
   MarketingSequenceEditor = '/marketing/sequences',
@@ -27,6 +28,13 @@ export enum AppPath {
   OneOnOneRunner = '/one-on-one',
   A2AStudio = '/a2a-studio',
   ListingStudio = '/listing-studio',
+  SettingsHub = '/settings-hub',
+
+  // Propel catch-all hero route. A brand-new hero added ONLY to the host-mounted
+  // nav.config.json (route '/h/<bundle>') resolves at navigation time via this
+  // wildcard — no engine rebuild. Existing heroes keep their explicit routes
+  // above for back-compat. See modules/propel/runtime/HeroRoute (HeroCatchAllRoute).
+  HeroCatchAll = '/h/:bundle',
 
   RecordIndexPage = '/objects/:objectNamePlural',
   RecordShowPage = '/object/:objectNameSingular/:objectRecordId',

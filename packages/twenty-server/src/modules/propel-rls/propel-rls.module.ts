@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { RoleModule } from 'src/engine/metadata-modules/role/role.module';
+import { UserRoleModule } from 'src/engine/metadata-modules/user-role/user-role.module';
 import { PropelTierService } from 'src/modules/propel-rls/propel-tier.service';
 import { SecondaryOpportunityRlsPreQueryHook } from 'src/modules/propel-rls/secondary-opportunity-rls.pre-query.hook';
 import { SecondaryOpportunityFindOneRlsPreQueryHook } from 'src/modules/propel-rls/secondary-opportunity-find-one-rls.pre-query.hook';
@@ -49,6 +50,36 @@ import { InstitutionalOpportunityStageGatePreQueryHook } from 'src/modules/prope
 import { RcbiOpportunityStageGatePreQueryHook } from 'src/modules/propel-rls/rcbi-opportunity-stage-gate.pre-query.hook';
 import { ListingStageGatePreQueryHook } from 'src/modules/propel-rls/listing-stage-gate.pre-query.hook';
 import { DealStageGatePreQueryHook } from 'src/modules/propel-rls/deal-stage-gate.pre-query.hook';
+import { RcbiComplianceGateService } from 'src/modules/propel-rls/rcbi-compliance-gate.service';
+import { RcbiOpportunityComplianceGatePreQueryHook } from 'src/modules/propel-rls/rcbi-opportunity-compliance-gate.pre-query.hook';
+// Standard-Twenty object RLS hooks (Person / Task / TimelineActivity) — extend
+// the original 14 custom-object hooks above to close the standard-object leak
+// surface (an agent on the Agent role was seeing 1,649 contacts assigned to
+// other agents, 1,907 other agents' tasks, and the 45k-row global activity
+// log). Each uses a non-default ownerField passed through
+// PropelTierService.buildTierFilter (person → assignedAgentId,
+// task → assigneeId, timelineActivity → workspaceMemberId).
+import { PersonRlsPreQueryHook } from 'src/modules/propel-rls/person-rls.pre-query.hook';
+import { PersonFindOneRlsPreQueryHook } from 'src/modules/propel-rls/person-find-one-rls.pre-query.hook';
+import { PersonGroupByRlsPreQueryHook } from 'src/modules/propel-rls/person-group-by-rls.pre-query.hook';
+import { TaskRlsPreQueryHook } from 'src/modules/propel-rls/task-rls.pre-query.hook';
+import { TaskFindOneRlsPreQueryHook } from 'src/modules/propel-rls/task-find-one-rls.pre-query.hook';
+import { TaskGroupByRlsPreQueryHook } from 'src/modules/propel-rls/task-group-by-rls.pre-query.hook';
+import { TimelineActivityRlsPreQueryHook } from 'src/modules/propel-rls/timeline-activity-rls.pre-query.hook';
+import { TimelineActivityFindOneRlsPreQueryHook } from 'src/modules/propel-rls/timeline-activity-find-one-rls.pre-query.hook';
+import { TimelineActivityGroupByRlsPreQueryHook } from 'src/modules/propel-rls/timeline-activity-group-by-rls.pre-query.hook';
+// ── Track 2 v2 generic RLS hooks (wildcard, convention-driven) ──────────────
+// Three wildcard hooks (*.findMany, *.findOne, *.groupBy) consult the
+// PROPEL_OWNER_FIELD convention table and apply the AGENT-tier filter for
+// any object in the convention. The 23 per-object hooks ABOVE remain
+// registered as the safety net during the overlap window — wildcard hooks
+// run FIRST (per Twenty's hook storage `[...wildcardInstances, ...specificInstances]`
+// composition), the per-object hooks AND-merge an identical filter on top
+// (idempotent under AND). A follow-up cleanup branch deletes the per-object
+// hooks once the wildcard has soaked in prod.
+import { GenericRlsFindManyPreQueryHook } from 'src/modules/propel-rls/generic-rls-find-many.pre-query.hook';
+import { GenericRlsFindOnePreQueryHook } from 'src/modules/propel-rls/generic-rls-find-one.pre-query.hook';
+import { GenericRlsGroupByPreQueryHook } from 'src/modules/propel-rls/generic-rls-group-by.pre-query.hook';
 
 // Propel clean-room module:
 //  - RLS read-path hooks (findMany/findOne/groupBy) inject per-tier row filters.
@@ -60,7 +91,7 @@ import { DealStageGatePreQueryHook } from 'src/modules/propel-rls/deal-stage-gat
 //    read-path hooks (buildTierFilter) and the stage gate (gateBypasses).
 // None derived from @license Enterprise code.
 @Module({
-  imports: [RoleModule],
+  imports: [RoleModule, UserRoleModule],
   providers: [
     PropelTierService,
     SecondaryOpportunityRlsPreQueryHook,
@@ -110,6 +141,24 @@ import { DealStageGatePreQueryHook } from 'src/modules/propel-rls/deal-stage-gat
     ListingStageGatePreQueryHook,
     DealStageGatePreQueryHook,
     StageGateService,
+    // RCBI compliance HARD-block (FATF/PEP) — a SEPARATE updateOne hook from the
+    // §8.3 task stage-gate above; both run, either can reject. Not manager-bypassable.
+    RcbiComplianceGateService,
+    RcbiOpportunityComplianceGatePreQueryHook,
+    // Standard-Twenty object RLS hooks (own-rows-only for AGENT tier).
+    PersonRlsPreQueryHook,
+    PersonFindOneRlsPreQueryHook,
+    PersonGroupByRlsPreQueryHook,
+    TaskRlsPreQueryHook,
+    TaskFindOneRlsPreQueryHook,
+    TaskGroupByRlsPreQueryHook,
+    TimelineActivityRlsPreQueryHook,
+    TimelineActivityFindOneRlsPreQueryHook,
+    TimelineActivityGroupByRlsPreQueryHook,
+    // Track 2 v2 wildcard hooks — see imports above.
+    GenericRlsFindManyPreQueryHook,
+    GenericRlsFindOnePreQueryHook,
+    GenericRlsGroupByPreQueryHook,
   ],
 })
 export class PropelRlsModule {}

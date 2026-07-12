@@ -5,17 +5,20 @@
 // NOT derived from Twenty's @license Enterprise RLS.
 //
 //   MANAGER (Admin / custom "Manager" role) → null (no filter, sees all)
-//   AGENT   (everything else, fail-closed)   → ownerId == requesting member (own)
+//   AGENT   (everything else, fail-closed)   → <ownerField> == requesting member (own)
 //   non-user contexts (apiKey/application/system) → null (integrations unfiltered)
 //
 // CITERRA has been removed: RCBI merged into the normal pipelines, so there is
 // no separate Citerra role / businessUnit wall anymore.
 //
-// `options` lets objects opt out of the owner axis if they don't carry ownerId
-// (all our isolated objects currently do).
+// `options` lets each hook (a) opt out of the owner axis if the object doesn't
+// carry one and (b) override the default `ownerId` column name when the object
+// names its owner differently (e.g. person → assignedAgentId,
+// task → assigneeId, timelineActivity → workspaceMemberId).
 
 export type TierFilterOptions = {
-  hasOwner?: boolean; // object carries ownerId (default true)
+  hasOwner?: boolean; // object carries an owner column (default true)
+  ownerField?: string; // owner column name (default 'ownerId')
 };
 
 // Compose the tier filter with any user-supplied filter via AND so scoping can't

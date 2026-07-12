@@ -7484,6 +7484,22 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@grapesjs/react@npm:2.0.0":
+  version: 2.0.0
+  resolution: "@grapesjs/react@npm:2.0.0"
+  dependencies:
+    "@types/react": "npm:^19.0.0"
+    "@types/react-dom": "npm:^19.0.0"
+    react: "npm:^19.0.0"
+    react-dom: "npm:^19.0.0"
+  peerDependencies:
+    grapesjs: ^0.22.5
+    react: ^18.0.0 || ^19.0.0
+    react-dom: ^18.0.0 || ^19.0.0
+  checksum: 10c0/4b433fdbd1639f29765da5a86aac433f2b33e11895297a46a78bdc32fd3963390dd1448fa403d850b9e766c1be6a9792e8621fc8050906bf70d0330dbcedb123
+  languageName: node
+  linkType: hard
+
 "@graphiql/plugin-explorer@npm:^1.0.2":
   version: 1.0.4
   resolution: "@graphiql/plugin-explorer@npm:1.0.4"
@@ -22625,6 +22641,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/backbone@npm:1.4.15":
+  version: 1.4.15
+  resolution: "@types/backbone@npm:1.4.15"
+  dependencies:
+    "@types/jquery": "npm:*"
+    "@types/underscore": "npm:*"
+  checksum: 10c0/46449a28e50e37e8fd425166289010c73c9436fb2cc77d11e0e71b521da604ea6a686d535bb55d747552bdbc40fb47ddd5ceb8408f27e148849751c51f9a2e98
+  languageName: node
+  linkType: hard
+
 "@types/bcrypt@npm:^5.0.0":
   version: 5.0.2
   resolution: "@types/bcrypt@npm:5.0.2"
@@ -23260,6 +23286,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/jquery@npm:*":
+  version: 4.0.1
+  resolution: "@types/jquery@npm:4.0.1"
+  checksum: 10c0/8cacbee3ec548cca54079212ef0722882df53fa5e47ee7b082ed541d288487fd830faf6fb535b996d4c3e9b99e7ffa6bbc463da1b7f9e22a9b95005c55aba862
+  languageName: node
+  linkType: hard
+
 "@types/js-cookie@npm:^3.0.3":
   version: 3.0.6
   resolution: "@types/js-cookie@npm:3.0.6"
@@ -23658,6 +23691,22 @@ __metadata:
   version: 3.0.5
   resolution: "@types/minimatch@npm:3.0.5"
   checksum: 10c0/a1a19ba342d6f39b569510f621ae4bbe972dc9378d15e9a5e47904c440ee60744f5b09225bc73be1c6490e3a9c938eee69eb53debf55ce1f15761201aa965f97
+  languageName: node
+  linkType: hard
+
+"@types/mjml-core@npm:*":
+  version: 5.0.0
+  resolution: "@types/mjml-core@npm:5.0.0"
+  checksum: 10c0/231b98991a6c213b4da13c5fcdaa2be94b2d4780774f2f39081ac9a3509f101d77624a722b30c55f33835806d61eff898b30a8bb07a8b11d3c4b6cdb784f536b
+  languageName: node
+  linkType: hard
+
+"@types/mjml@npm:^4.7.4":
+  version: 4.7.4
+  resolution: "@types/mjml@npm:4.7.4"
+  dependencies:
+    "@types/mjml-core": "npm:*"
+  checksum: 10c0/6f4bbdf709e1f6c9b26be67146b1e4c759142fb4ddfa4c079b600835701bb2039c60cd530d016f1d2f1aef4256580e30cdc942c3acd6935e2fe56b5a665795ae
   languageName: node
   linkType: hard
 
@@ -24345,6 +24394,13 @@ __metadata:
   version: 2.0.7
   resolution: "@types/trusted-types@npm:2.0.7"
   checksum: 10c0/4c4855f10de7c6c135e0d32ce462419d8abbbc33713b31d294596c0cc34ae1fa6112a2f9da729c8f7a20707782b0d69da3b1f8df6645b0366d08825ca1522e0c
+  languageName: node
+  linkType: hard
+
+"@types/underscore@npm:*":
+  version: 1.13.0
+  resolution: "@types/underscore@npm:1.13.0"
+  checksum: 10c0/240d3f36f694e177b1896c464b1254249e64b51a2afc703a1dda61f0c544d6e3b081ac4d955fb057e873982a62a7ba78e3a0aaa252c9d766f6cbe5e85283bc04
   languageName: node
   linkType: hard
 
@@ -29010,6 +29066,34 @@ __metadata:
   languageName: node
   linkType: hard
 
+"backbone-undo@npm:0.2.6":
+  version: 0.2.6
+  resolution: "backbone-undo@npm:0.2.6"
+  dependencies:
+    backbone: "npm:>=1.0.0"
+    underscore: "npm:>=1.4.4"
+  checksum: 10c0/4a53fddd55399c50f456948e4b3fff1acefcba523166b24940588d3d92b90be3f784880c2794aa07a3a86b5cb7c2ec7d63e598153ce106a317e96ca36a4550ea
+  languageName: node
+  linkType: hard
+
+"backbone@npm:1.4.1":
+  version: 1.4.1
+  resolution: "backbone@npm:1.4.1"
+  dependencies:
+    underscore: "npm:>=1.8.3"
+  checksum: 10c0/a31f35b1c7716678f4d4028397a8516374950b7d350c5ee16f1d04b6062d500dc9def4a37b942c667a3f588faa39a084b6fd10949536dc696f4d4703364de813
+  languageName: node
+  linkType: hard
+
+"backbone@npm:>=1.0.0":
+  version: 1.6.1
+  resolution: "backbone@npm:1.6.1"
+  dependencies:
+    underscore: "npm:>=1.8.3"
+  checksum: 10c0/de59ea1f81c72f18cebecf9bd9ecfc30ea5dcd7633e18aea820c5236cbdd1d807777a0d4f76d63d38c3c47647eddcbe1f739d797c3043de473c2469aa13f304a
+  languageName: node
+  linkType: hard
+
 "backo2@npm:^1.0.2":
   version: 1.0.2
   resolution: "backo2@npm:1.0.2"
@@ -31163,6 +31247,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"codemirror-formatting@npm:1.0.0":
+  version: 1.0.0
+  resolution: "codemirror-formatting@npm:1.0.0"
+  checksum: 10c0/c390c960d736f8d647776b999e51a5b51c6f2958da9e893f079d0a35ef1e82ad50de27b614ab071765bec5fbc0496477b19e5e6b5e66659da09cf090820c6350
+  languageName: node
+  linkType: hard
+
 "codemirror-graphql@npm:^2.0.13":
   version: 2.0.13
   resolution: "codemirror-graphql@npm:2.0.13"
@@ -31198,6 +31289,13 @@ __metadata:
     "@codemirror/state": "npm:^6.0.0"
     "@codemirror/view": "npm:^6.0.0"
   checksum: 10c0/8d198d8aebc32e56c966ac57b0fe8f832b7d601a2f62819ba3a294570233982bf4d5b499a764194b6b26dbc5313a156c2611cbc542234ea6eae6accf07a651ab
+  languageName: node
+  linkType: hard
+
+"codemirror@npm:5.63.0":
+  version: 5.63.0
+  resolution: "codemirror@npm:5.63.0"
+  checksum: 10c0/bb7d1bbd776386843f452561c0996c53e268e481639de46807134da9f576147aea0dad417e450b126e19cac6d4442e14f492411bfe3c046eb5d64342d9cc4a6f
   languageName: node
   linkType: hard
 
@@ -37777,6 +37875,32 @@ __metadata:
   languageName: node
   linkType: hard
 
+"grapesjs-mjml@npm:1.0.8":
+  version: 1.0.8
+  resolution: "grapesjs-mjml@npm:1.0.8"
+  dependencies:
+    "@types/mjml": "npm:^4.7.4"
+    mjml-browser: "npm:^4.18.0"
+  checksum: 10c0/ac2566e8cfc8ec751f109b46da567558a4e97110827f1f3a7cf41838173388d76440e33c9d1c6d4b51f8ae7fbb17957a953d320f371927a3df857ed24a0d753e
+  languageName: node
+  linkType: hard
+
+"grapesjs@npm:0.23.2":
+  version: 0.23.2
+  resolution: "grapesjs@npm:0.23.2"
+  dependencies:
+    "@types/backbone": "npm:1.4.15"
+    backbone: "npm:1.4.1"
+    backbone-undo: "npm:0.2.6"
+    codemirror: "npm:5.63.0"
+    codemirror-formatting: "npm:1.0.0"
+    html-entities: "npm:~1.4.0"
+    promise-polyfill: "npm:8.3.0"
+    underscore: "npm:1.13.8"
+  checksum: 10c0/b30b0ddf0300cb4c47433299150a2c00ea8147f5d329ce86c36aa57d2adab57ee737e7610d55b86c89184c577e9ad7caa226d2da8f270e5a81351166fa5d179f
+  languageName: node
+  linkType: hard
+
 "graphiql-explorer@npm:^0.9.0":
   version: 0.9.0
   resolution: "graphiql-explorer@npm:0.9.0"
@@ -38829,6 +38953,13 @@ __metadata:
   version: 2.6.0
   resolution: "html-entities@npm:2.6.0"
   checksum: 10c0/7c8b15d9ea0cd00dc9279f61bab002ba6ca8a7a0f3c36ed2db3530a67a9621c017830d1d2c1c65beb9b8e3436ea663e9cf8b230472e0e413359399413b27c8b7
+  languageName: node
+  linkType: hard
+
+"html-entities@npm:~1.4.0":
+  version: 1.4.0
+  resolution: "html-entities@npm:1.4.0"
+  checksum: 10c0/eb2de616fb5948e681157805687672ea90e67c8a4f21a3215888ab422a984cab61fec96860708dca3bde0ae52577515683c8e28157ac8637220bb6a57a031b85
   languageName: node
   linkType: hard
 
@@ -45539,6 +45670,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"mjml-browser@npm:^4.18.0":
+  version: 4.18.0
+  resolution: "mjml-browser@npm:4.18.0"
+  checksum: 10c0/1f20de8ca5925361d904471632d17682c97ad456eac8067462e357915756f298249503d6b29221b94ab2c94ae267363b6f9381cbd5c8e00d3cfb10a0484e14c8
+  languageName: node
+  linkType: hard
+
 "mkdirp-classic@npm:^0.5.2, mkdirp-classic@npm:^0.5.3":
   version: 0.5.3
   resolution: "mkdirp-classic@npm:0.5.3"
@@ -49567,7 +49705,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"promise-polyfill@npm:^8.1.3":
+"promise-polyfill@npm:8.3.0, promise-polyfill@npm:^8.1.3":
   version: 8.3.0
   resolution: "promise-polyfill@npm:8.3.0"
   checksum: 10c0/97141f07a31a6be135ec9ed53700a3423a771cabec0ba5e08fcb2bf8cfda855479ff70e444fceb938f560be42b450cd032c14f4a940ed2ad1e5b4dcb78368dce
@@ -56588,6 +56726,7 @@ __metadata:
     "@dnd-kit/react": "npm:^0.3.2"
     "@documenso/embed-react": "npm:^0.6.2"
     "@floating-ui/react": "npm:^0.24.3"
+    "@grapesjs/react": "npm:2.0.0"
     "@graphiql/plugin-explorer": "npm:^1.0.2"
     "@graphiql/react": "npm:^0.23.0"
     "@graphql-codegen/cli": "npm:^3.3.1"
@@ -56671,6 +56810,8 @@ __metadata:
     file-saver: "npm:^2.0.5"
     framer-motion: "npm:^11.18.0"
     fuse.js: "npm:^7.1.0"
+    grapesjs: "npm:0.23.2"
+    grapesjs-mjml: "npm:1.0.8"
     graphiql: "npm:^3.1.1"
     graphql: "npm:16.8.1"
     graphql-sse: "npm:^2.5.4"
@@ -57710,6 +57851,13 @@ __metadata:
   bin:
     undeclared-identifiers: bin.js
   checksum: 10c0/f9055dcf17b3b44390e1226514655c39efb7a51cc3aa359743f3281c39392a48e8a44689a1574b7c7e28562f212847e9d4deb5dbb045db8b603caac4e61faf8f
+  languageName: node
+  linkType: hard
+
+"underscore@npm:1.13.8, underscore@npm:>=1.4.4, underscore@npm:>=1.8.3":
+  version: 1.13.8
+  resolution: "underscore@npm:1.13.8"
+  checksum: 10c0/6677688daeda30484823e77c0b89ce4dcf29964a77d5a06f37299c007ab4bb1c66a0ff75e0d274620b62a1fe2a6ba29879f8214533ca611d71a1ae504f2bfc9b
   languageName: node
   linkType: hard
 

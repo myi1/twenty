@@ -22,7 +22,7 @@ export const useOpenFrontComponentInSidePanel = () => {
     pageIcon: IconComponent;
     resetNavigationStack?: boolean;
     recordContext?: {
-      recordId: string;
+      selectedRecordIds: string[];
       objectNameSingular: string;
     };
   }) => {

@@ -54,6 +54,8 @@ export const getPageTitleFromPath = (pathname: string): string => {
     case SettingsPathPrefixes.General:
       return t`General - Settings`;
     default:
-      return 'Twenty';
+      // Falls through to the bare product name ("Propel") via PageTitle's
+      // base-name composition; also used as the analytics PAGEVIEW name.
+      return 'Propel';
   }
 };

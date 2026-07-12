@@ -441,11 +441,23 @@ export class LocalDriver implements LogicFunctionDriver {
               if (!msg || msg.type !== 'run') return;
               try {
                 const out = await mod.${handlerName}(msg.payload);
-                process.send && process.send({ ok: true, result: out });
-                process.exit(0);
+                // PROPEL: exit only in the send callback. process.send() is async for
+                // payloads over the IPC pipe buffer (~64KB) — exiting synchronously
+                // right after send() races the flush and SILENTLY truncates the
+                // response (parent sees channel close, gets nothing). The callback
+                // fires once the message is queued to the channel, so large logic-
+                // function responses arrive whole.
+                if (process.send) {
+                  process.send({ ok: true, result: out }, () => process.exit(0));
+                } else {
+                  process.exit(0);
+                }
               } catch (err) {
-                process.send && process.send({ ok: false, error: String(err), stack: err?.stack });
-                process.exit(1);
+                if (process.send) {
+                  process.send({ ok: false, error: String(err), stack: err?.stack }, () => process.exit(1));
+                } else {
+                  process.exit(1);
+                }
               }
             });
           } else {
@@ -459,11 +471,12 @@ export class LocalDriver implements LogicFunctionDriver {
         } catch (err) {
           const msg = String(err);
           if (process.send) {
-            process.send({ ok: false, error: msg, stack: err?.stack });
+            // PROPEL: same send-flush race as above — exit in the callback.
+            process.send({ ok: false, error: msg, stack: err?.stack }, () => process.exit(1));
           } else {
             process.stdout.write(msg);
+            process.exit(1);
           }
-          process.exit(1);
         }
       })();
     `;

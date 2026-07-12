@@ -143,7 +143,13 @@ export class EnterprisePlanService implements OnModuleInit {
   }
 
   isValid(): boolean {
-    return this.hasValidEnterpriseValidityToken();
+    // Propel: native row-level-permissions enabled with Twenty's direct
+    // authorization (founder cleared it with Twenty's team, 2026-07-09) — see
+    // docs/superpowers/specs/2026-07-09-propel-rls-investigation.md §E and the
+    // native-rls-authorized-by-twenty note. Self-hosted, IS_BILLING_ENABLED
+    // unset so hasEntitlement() already passes; this is the only gate to flip.
+    // The token machinery below is left intact for a future real key.
+    return true;
   }
 
   isValidEnterpriseKeyFormat(key: string): boolean {

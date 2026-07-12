@@ -2,7 +2,7 @@ import { useContext, useId, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { styled } from '@linaria/react';
 import { AppTooltip, TooltipDelay, TooltipPosition } from 'twenty-ui/display';
-import { ThemeContext } from 'twenty-ui/theme-constants';
+import { ThemeContext, themeCssVariables } from 'twenty-ui/theme-constants';
 import { isDefined, formatToShortNumber } from 'twenty-shared/utils';
 
 import { useNumberFormat } from '@/localization/hooks/useNumberFormat';
@@ -19,6 +19,18 @@ import { isUndefinedOrNull } from '~/utils/isUndefinedOrNull';
 const StyledCurrencyIconContainer = styled.span`
   align-items: center;
   display: flex;
+`;
+
+// PROPEL-NOCTURNE PATCH (Tier B) — re-apply on Twenty upgrade.
+// Money renders in gold tabular mono, right-aligned (DESIGN.md §4/§5):
+// IBM Plex Mono via the theme code family, gold via the theme's strongest
+// gold token (Nocturne --p-accent-strong), never brass. Human rounding for
+// large amounts comes from the default 'short' format (formatToShortNumber).
+const StyledMoneyDisplay = styled(EllipsisDisplay)`
+  color: ${themeCssVariables.color.gold11};
+  font-family: ${themeCssVariables.code.font.family};
+  font-variant-numeric: tabular-nums;
+  justify-content: flex-end;
 `;
 
 type CurrencyDisplayProps = {
@@ -60,7 +72,7 @@ export const CurrencyDisplay = ({
 
   return (
     <>
-      <EllipsisDisplay>
+      <StyledMoneyDisplay>
         {shouldShowCurrencyTooltip && (
           <>
             <StyledCurrencyIconContainer
@@ -69,7 +81,7 @@ export const CurrencyDisplay = ({
               onMouseLeave={() => setShouldRenderTooltip(false)}
             >
               <CurrencyIcon
-                color={theme.font.color.primary}
+                color={theme.color.gold11}
                 size={theme.icon.size.md}
                 stroke={theme.icon.stroke.sm}
               />
@@ -81,7 +93,7 @@ export const CurrencyDisplay = ({
             ? formatToShortNumber(amountToDisplay)
             : formatNumber(amountToDisplay, { decimals: decimalsToUse })
           : null}
-      </EllipsisDisplay>
+      </StyledMoneyDisplay>
       {shouldRenderTooltip &&
         shouldShowCurrencyTooltip &&
         createPortal(

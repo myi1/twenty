@@ -8,5 +8,5 @@ export const CODE_DARK = {
     orange: COLOR_DARK.orange8,
     green: COLOR_DARK.lime8,
   },
-  font: { family: 'DM Mono' },
+  font: { family: "'IBM Plex Mono'" },
 };

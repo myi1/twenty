@@ -32,6 +32,7 @@ import {
 } from 'twenty-ui/display';
 import { AiCopyControls } from '@/propel/components/calendar/AiCopyControls';
 import { AiImageControls } from '@/propel/components/calendar/AiImageControls';
+import { CanvaControls } from '@/propel/components/calendar/CanvaControls';
 import { ComposerPreview } from '@/propel/components/calendar/ComposerPreview';
 import {
   StyledComposerBackdrop,
@@ -45,6 +46,11 @@ import {
   makeBrandCard,
 } from '@/propel/lib/socialBrandCard';
 import { parseMediaRefs } from '@/propel/lib/socialPostDetail';
+import {
+  VIDEO_MAX_BYTES,
+  isVideoFile,
+  uploadLargeVideo,
+} from '@/propel/lib/socialPresign';
 import { type SocialImageAspect } from '@/propel/types/socialAiImage';
 import {
   type ComposeMode,
@@ -284,32 +290,105 @@ const ComposerBody = ({
   const canSave = blocking.length === 0 && !saving;
 
   // ── media ──────────────────────────────────────────────────────────────
+  // Patch a single media tile by id (keeps the upload handlers terse).
+  const patchMedia = useCallback(
+    (id: string, p: Partial<ComposerMedia>) =>
+      setForm((f) => ({
+        ...f,
+        media: f.media.map((m) => (m.id === id ? { ...m, ...p } : m)),
+      })),
+    [],
+  );
+
+  // A VIDEO takes the presigned-B2 path: we ask the CRM for a presigned URL, PUT the
+  // raw bytes straight to B2 with a real progress bar, then attach by public URL — no
+  // base64, no 7 MB body cap (videos allowed up to 2 GB). Images keep the instant
+  // base64 /marketing/media/upload route.
+  const uploadVideoFile = useCallback(
+    (id: string, file: File) => {
+      void uploadLargeVideo(file, (fraction) => {
+        patchMedia(id, { progress: fraction });
+      }).then((res) => {
+        patchMedia(
+          id,
+          res.ok
+            ? {
+                url: res.publicUrl,
+                kind: 'video',
+                status: 'ready',
+                error: null,
+                progress: null,
+              }
+            : { status: 'error', error: res.message, progress: null },
+        );
+      });
+    },
+    [patchMedia],
+  );
+
   const addFiles = (files: FileList | File[]) => {
     const list = Array.from(files);
     for (const file of list) {
       const id = uid();
       const objectUrl = URL.createObjectURL(file);
+      const video = isVideoFile(file);
       const kind = mediaKindOf(file.type, file.name);
-      // optimistic uploading tile
+
+      // Reject an over-cap video before even inserting an uploading tile — show the
+      // failure as an error tile so the operator sees why (the base64 image route has
+      // its own 7 MB guard inside uploadMedia).
+      if (video && file.size > VIDEO_MAX_BYTES) {
+        const maxMb = Math.floor(VIDEO_MAX_BYTES / (1024 * 1024));
+        URL.revokeObjectURL(objectUrl);
+        setForm((f) => ({
+          ...f,
+          media: [
+            ...f.media,
+            {
+              id,
+              url: null,
+              objectUrl: null,
+              kind: 'video',
+              name: file.name,
+              status: 'error',
+              error: `That video is too large (max ${maxMb} MB). Trim or compress it.`,
+              progress: null,
+            },
+          ],
+        }));
+        continue;
+      }
+
+      // optimistic uploading tile (videos start a progress bar at 0)
       setForm((f) => ({
         ...f,
         media: [
           ...f.media,
-          { id, url: null, objectUrl, kind, name: file.name, status: 'uploading', error: null },
+          {
+            id,
+            url: null,
+            objectUrl,
+            kind,
+            name: file.name,
+            status: 'uploading',
+            error: null,
+            progress: video ? 0 : null,
+          },
         ],
       }));
-      void uploadMedia(file).then((res) => {
-        setForm((f) => ({
-          ...f,
-          media: f.media.map((m) =>
-            m.id === id
-              ? res.ok
-                ? { ...m, url: res.url, kind: mediaKindOf(res.contentType, res.url), status: 'ready', error: null }
-                : { ...m, status: 'error', error: res.message }
-              : m,
-          ),
-        }));
-      });
+
+      if (video) {
+        uploadVideoFile(id, file);
+      } else {
+        void uploadMedia(file).then((res) => {
+          patchMedia(
+            id,
+            res.ok
+              ? { url: res.url, kind: mediaKindOf(res.contentType, res.url), status: 'ready', error: null }
+              : { status: 'error', error: res.message },
+          );
+        });
+      }
     }
   };
 
@@ -428,6 +507,40 @@ const ComposerBody = ({
     }
     setBrandCardBusy(false);
   }, [brandCardBusy, form.listingId, form.media, surfaceAiError]);
+
+  // ── Design in Canva (Canva Connect round-trip) ───────────────────────────────
+  // getSeedImage: the bytes of the FIRST ready photo already on the post, so the
+  // create-design route can seed it as a Canva asset (best-effort; null = blank
+  // design). The tile only retains the (signed) URL, so we re-read the bytes.
+  const getSeedImageForCanva = useCallback(async (): Promise<{ base64: string; contentType: string } | null> => {
+    const sourcePhoto = form.media.find(
+      (m) => m.status === 'ready' && m.kind === 'image' && m.url !== null,
+    );
+    if (!sourcePhoto || sourcePhoto.url === null) return null;
+    return fetchPhotoBytes(sourcePhoto.url);
+  }, [form.media]);
+
+  // attachCanvaImage: the exported (re-hosted) PNG flows back here — attach it as a
+  // NEW ready media tile (alongside any source photo; we never replace). Same media
+  // contract as a file upload / generated image, so Save gating + the strip render
+  // it identically. The export route already stored it to B2, so it's `ready`.
+  const attachCanvaImage = useCallback((url: string) => {
+    setForm((f) => ({
+      ...f,
+      media: [
+        ...f.media,
+        {
+          id: uid(),
+          url,
+          objectUrl: null,
+          kind: mediaKindOf('image/png', url),
+          name: 'Canva design',
+          status: 'ready',
+          error: null,
+        },
+      ],
+    }));
+  }, []);
 
   const onPickFiles = (e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) addFiles(e.target.files);
@@ -738,6 +851,18 @@ const ComposerBody = ({
               <AiImageControls onGenerate={generateBrandImage} />
             </div>
 
+            {/* "Design in Canva" round-trip (Canva Connect API): each agent connects
+                THEIR OWN Canva account → designs in a new tab → the finished PNG is
+                exported, re-hosted, and pulled back onto the post automatically. Shows
+                a disabled state when Canva isn't configured on this environment. */}
+            <div style={{ marginBottom: 8 }}>
+              <CanvaControls
+                getSeedImage={getSeedImageForCanva}
+                onPulledImage={attachCanvaImage}
+                onError={surfaceAiError}
+              />
+            </div>
+
             {/* "Make a branded card" (§15): DETERMINISTIC — composites the real
                 listing photo + facts + Hub branding into a "Just Listed" card and
                 attaches it as a NEW tile (alongside the source photo). Shown only
@@ -842,7 +967,7 @@ const ComposerBody = ({
               />
             </div>
             <Text size="xs" c="dimmed" mt={6}>
-              Up to 7 MB each. Drag thumbnails to reorder.
+              Images up to 7 MB; videos up to 2 GB. Drag thumbnails to reorder.
             </Text>
           </div>
 
@@ -1033,6 +1158,21 @@ const MediaTile = ({
             ) : (
               <img src={src} alt="" style={{ opacity: 0.55 }} />
             )
+          ) : null}
+          {/* Large-video B2 upload progress bar (images upload instantly, no bar). */}
+          {typeof media.progress === 'number' ? (
+            <div
+              className="propel-media-progress"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(media.progress * 100)}
+            >
+              <span
+                className="propel-media-progress-fill"
+                style={{ width: `${Math.round(media.progress * 100)}%` }}
+              />
+            </div>
           ) : null}
         </div>
       ) : media.status === 'error' ? (

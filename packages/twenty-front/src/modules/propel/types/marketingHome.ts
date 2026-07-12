@@ -118,6 +118,158 @@ export interface AttentionRow {
   campaignId?: string;
 }
 
+// ── Campaigns + Templates tab rows (fuller hub subset) ───────────────────────
+// These mirror the additional MarketingHubPayload fields the Campaigns and
+// Templates tabs of the unified hero read (canonical shapes:
+// propel-crm-integration src/shared/marketing-hub-types.ts). The route owns ALL
+// label formatting (Asia/Dubai); the UI renders strings.
+
+export interface ScheduledRow {
+  id: string;
+  name: string;
+  whenLabel: string;
+  audienceLabel: string;
+  channel: RealChannel;
+}
+
+export interface DraftRow {
+  id: string;
+  name: string;
+  updatedLabel: string;
+  channel: RealChannel | 'SOCIAL';
+  hasSegment: boolean;
+  hasListing: boolean;
+}
+
+export interface ResultRow {
+  id: string;
+  name: string;
+  channel: RealChannel;
+  completedLabel: string;
+  openRate: number | null;
+  clickRate: number | null;
+  replies: number;
+  callTasks: number;
+  statsSettling: boolean;
+}
+
+export interface SequenceStepDraft {
+  name: string;
+  stepType:
+    | 'SEND_EMAIL'
+    | 'SEND_WHATSAPP'
+    | 'WAIT'
+    | 'CONDITION'
+    | 'CREATE_TASK'
+    | 'EXIT';
+  channel: 'EMAIL' | 'WHATSAPP' | null;
+  waitDays: number | null;
+  templateSubject: string | null;
+  templateBody: string | null;
+  conditionKind: 'REPLIED' | 'OPENED' | 'CLICKED' | null;
+  whatsappTemplateId: string | null;
+  whatsappLanguageCode: 'EN' | 'AR' | null;
+  yesStepIndex: number | null;
+  noStepIndex: number | null;
+}
+
+export interface SequenceRow {
+  id: string;
+  name: string;
+  status: 'DRAFT' | 'RUNNING' | 'PAUSED' | 'ARCHIVED';
+  entryType: 'SEGMENT_POLL' | 'MANUAL' | 'EVENT';
+  entrySegmentId: string | null;
+  activeVersion: number;
+  enrolledCount: number;
+  activeCount: number;
+  steps: SequenceStepDraft[];
+}
+
+// ── POST /marketing/campaign-detail (single-campaign drill-in) ───────────────
+// Mirrors the SUBSET of the route's CampaignDetailPayload the unified Marketing
+// hero's CampaignDetail surface reads (canonical shape: propel-crm-integration
+// src/shared/marketing-hub-types.ts). The route owns ALL label formatting
+// (Asia/Dubai) and the plain-English problem/action; the UI renders strings and
+// never zero-fills (KPI tiles + funnel are gated on isSent, recipient activity
+// hides when empty).
+export interface RecipientActivityRow {
+  recipientId: string;
+  displayName: string;
+  contactLabel: string; // e164 for WhatsApp, masked email otherwise
+  state: 'OPENED' | 'CLICKED' | 'REPLIED';
+  activityLabel: string;
+  whenLabel: string;
+  personId: string | null;
+  isReplied: boolean;
+}
+
+export interface CampaignDetailPayload {
+  ok: boolean;
+  id: string;
+  name: string;
+  status: string; // DRAFT | SCHEDULED | SEND_REQUESTED | MATERIALIZING | SENDING | SENT | FAILED | CANCELLED
+  statusLine: string; // "Sent — finished 15h ago"
+  channel: RealChannel;
+  audienceLabel: string; // segment or listing name ('' when unset)
+  timeline: { label: string; whenLabel: string }[]; // Created / Scheduled / Started / Finished
+  targetCount: number;
+  sentCount: number;
+  failedCount: number;
+  skippedCount: number;
+  pendingCount: number; // live PENDING+SENDING+HELD recipients
+  openCount: number;
+  clickCount: number;
+  replyCount: number;
+  openRate: number | null;
+  clickRate: number | null;
+  statsSettling: boolean;
+  subject: string | null;
+  bodyPreview: string; // first 600 chars of the template body
+  language: string;
+  ab:
+    | null
+    | { winner: string | null; openA: number; openB: number; replyA: number; replyB: number };
+  problem: string | null; // plain-English what went wrong
+  problemAction: string | null; // plain-English what to do about it
+  techDetail: string | null; // raw errorSummary for whoever wants it
+  recipientActivity: RecipientActivityRow[]; // engaged recipients (empty = none / pruned)
+  recipientActivityTotal: number; // total engaged (for the "+N more" footer)
+  error?: string;
+}
+
+export interface WaTemplateOption {
+  id: string;
+  name: string;
+  languageCode: 'EN' | 'AR';
+  category: string;
+  bodyText: string;
+  paramMap: string[];
+  bodyExample: string[];
+  status: string;
+  approved: boolean;
+  metaTemplateId: string;
+  rejectionReason: string;
+}
+
+export interface EmailTemplateOption {
+  id: string;
+  name: string;
+  subject: string;
+  bodyText: string;
+  languageCode: string;
+  // Stringified GrapesJS project JSON for EXACT re-editability of the saved design
+  // (#59). Empty/undefined for templates saved HTML-only before the field existed —
+  // those re-open from the starter skeleton, same as before.
+  designProjectJson?: string;
+}
+
+export interface CustomFieldOption {
+  id: string;
+  key: string;
+  value: string;
+  label: string;
+}
+
 export interface MarketingHubPayload {
   tier?: string;
   greeting?: string;
@@ -126,6 +278,15 @@ export interface MarketingHubPayload {
   sendingNowTotal?: number;
   needsAttention?: AttentionRow[];
   firstRun?: boolean;
+  // Campaigns tab
+  scheduled?: ScheduledRow[];
+  drafts?: DraftRow[];
+  recentResults?: ResultRow[];
+  sequences?: SequenceRow[];
+  // Templates tab
+  waTemplates?: WaTemplateOption[];
+  emailTemplates?: EmailTemplateOption[];
+  customFields?: CustomFieldOption[];
 }
 
 // ── POST /s/marketing/dashboard-layout ───────────────────────────────────────

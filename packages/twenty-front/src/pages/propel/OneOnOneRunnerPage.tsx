@@ -27,10 +27,21 @@ export const OneOnOneRunnerPage = () => {
 
   return (
     <PropelMantineProvider>
-      <PageContainer>
+      {/* Shared hero scroll fix: PageContainer claims the full available height
+          under DefaultLayout's overflow:hidden / 100dvh shell, and the body Box is
+          the vertical scroll region (overflowY:auto) so long content is reachable
+          instead of clipped. See MarketingHero for the root-cause writeup. */}
+      <PageContainer style={{ flex: 1, minHeight: 0 }}>
         <PageHeader title="Weekly 1:1" Icon={IconUsers} />
 
-        <Box style={{ padding: '0 16px 24px', minHeight: 0 }}>
+        <Box
+          style={{
+            padding: '0 16px 24px',
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+          }}
+        >
           {isLoading && payload === null ? (
             <Center h={320}>
               <Loader color="red" />

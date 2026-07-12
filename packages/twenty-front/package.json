@@ -6,7 +6,9 @@
     "build": "NODE_ENV=production NODE_OPTIONS=--max-old-space-size=8192 npx vite build",
     "build:sourcemaps": "NODE_ENV=production VITE_BUILD_SOURCEMAP=true NODE_OPTIONS=--max-old-space-size=8192 npx vite build",
     "start:prod": "NODE_ENV=production npx serve -s build",
-    "tsup": "npx tsup"
+    "tsup": "npx tsup",
+    "gen:hero-shims": "node scripts/gen-hero-shims.mjs",
+    "build:hero": "node scripts/build-hero.mjs"
   },
   "engines": {
     "node": "^24.5.0",
@@ -40,6 +42,7 @@
     "@dnd-kit/react": "^0.3.2",
     "@documenso/embed-react": "^0.6.2",
     "@floating-ui/react": "^0.24.3",
+    "@grapesjs/react": "2.0.0",
     "@graphiql/plugin-explorer": "^1.0.2",
     "@graphiql/react": "^0.23.0",
     "@hello-pangea/dnd": "^16.2.0",
@@ -90,6 +93,8 @@
     "file-saver": "^2.0.5",
     "framer-motion": "^11.18.0",
     "fuse.js": "^7.1.0",
+    "grapesjs": "0.23.2",
+    "grapesjs-mjml": "1.0.8",
     "graphiql": "^3.1.1",
     "graphql": "16.8.1",
     "graphql-sse": "^2.5.4",

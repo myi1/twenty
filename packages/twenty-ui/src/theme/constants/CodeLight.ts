@@ -8,5 +8,5 @@ export const CODE_LIGHT = {
     orange: COLOR_LIGHT.orange8,
     green: COLOR_LIGHT.lime8,
   },
-  font: { family: 'DM Mono' },
+  font: { family: "'IBM Plex Mono'" },
 };

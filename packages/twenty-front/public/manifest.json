@@ -1,11 +1,24 @@
 {
-  "short_name": "Twenty",
-  "name": "Twenty",
+  "short_name": "Propel",
+  "name": "Propel",
+  "description": "Propel — the RE/MAX Hub CRM for real estate teams",
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#000000",
+  "theme_color": "#E41D2D",
   "background_color": "#ffffff",
   "icons": [
+    {
+      "src": "images/icons/propel/propel-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "images/icons/android/android-launchericon-512-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
     {
       "src": "images/icons/windows11/SmallTile.scale-100.png",
       "sizes": "71x71"

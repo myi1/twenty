@@ -7,6 +7,9 @@ import { type ThemeColor } from '@ui/theme';
 import { ThemeContext, themeCssVariables } from '@ui/theme-constants';
 import { useContext } from 'react';
 
+// PROPEL-NOCTURNE PATCH (Tier B) — re-apply on Twenty upgrade.
+// Status tags render as SEALS (DESIGN.md §4): a 7px semantic dot with a soft
+// ring + a plain-language label — never a filled pill, never UPPER_CASE.
 const StyledTag = styled.span<{
   color: TagColor;
   weight: TagWeight;
@@ -15,18 +18,14 @@ const StyledTag = styled.span<{
   preventPadding?: boolean;
 }>`
   align-items: center;
-  background: ${({ color }) =>
-    color === 'transparent'
-      ? 'transparent'
-      : (themeCssVariables.tag.background[color] ??
-        themeCssVariables.tag.background.gray)};
+  background: transparent;
   border-radius: ${themeCssVariables.border.radius.sm};
   color: ${({ color }) =>
     color === 'transparent'
       ? themeCssVariables.font.color.secondary
-      : (themeCssVariables.tag.text[color] ??
-        themeCssVariables.font.color.secondary)};
+      : themeCssVariables.font.color.primary};
   display: inline-flex;
+  text-transform: none;
   font-size: ${themeCssVariables.font.size.md};
   font-style: normal;
   font-weight: ${({ weight }) =>
@@ -46,6 +45,22 @@ const StyledTag = styled.span<{
   gap: ${themeCssVariables.spacing[1]};
 
   min-width: ${({ preventShrink }) => (preventShrink ? 'fit-content' : 'none')};
+`;
+
+// PROPEL-NOCTURNE PATCH (Tier B) — the 7px seal dot carries the semantic
+// color; the soft ring is a warm transparent wash.
+const StyledSealDot = styled.span<{ color: TagColor }>`
+  background: ${({ color }) =>
+    color === 'transparent'
+      ? themeCssVariables.font.color.tertiary
+      : (themeCssVariables.tag.text[color] ??
+        themeCssVariables.font.color.tertiary)};
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px ${themeCssVariables.background.transparent.light};
+  flex-shrink: 0;
+  height: 7px;
+  margin: 0 ${themeCssVariables.spacing[1]};
+  width: 7px;
 `;
 
 const StyledContent = styled.span`
@@ -107,7 +122,7 @@ export const Tag = ({
           <Icon size={theme.icon.size.sm} stroke={theme.icon.stroke.sm} />
         </StyledIconContainer>
       ) : (
-        <></>
+        color !== 'transparent' && <StyledSealDot color={color} />
       )}
       {preventShrink ? (
         <StyledNonShrinkableText>{text}</StyledNonShrinkableText>

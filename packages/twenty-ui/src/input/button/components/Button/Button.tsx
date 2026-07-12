@@ -372,7 +372,14 @@ const StyledButton = styled.button<
   padding: 0 ${themeCssVariables.spacing[2]} 0 ${themeCssVariables.spacing[2]};
   box-sizing: border-box;
 
-  transition: background 0.1s ease;
+  /* PROPEL-NOCTURNE PATCH (Tier B) — re-apply on Twenty upgrade.
+     140ms press feedback on the EASE.out curve (DESIGN.md §2.6/§4):
+     background via the shared clickable transition token + scale-down on
+     :active. Transform + opacity only; reduced motion drops the transform
+     but keeps the background fade. */
+  transition:
+    ${themeCssVariables.clickableElementBackgroundTransition},
+    transform 140ms cubic-bezier(0.23, 1, 0.32, 1);
 
   white-space: nowrap;
 
@@ -383,6 +390,15 @@ const StyledButton = styled.button<
   }
   &:active {
     background: var(--btn-active-bg);
+    transform: scale(0.97);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: ${themeCssVariables.clickableElementBackgroundTransition};
+
+    &:active {
+      transform: none;
+    }
   }
 
   &:focus {

@@ -42,7 +42,16 @@ const StyledRightIconsContainer = styled.div`
   gap: ${themeCssVariables.spacing[1]};
 `;
 
-export const WorkspaceSection = () => {
+type WorkspaceSectionProps = {
+  // Propel (config-driven nav sections): app-side folder names/identifiers to OMIT
+  // from the Workspace section because they're promoted to their own top-level
+  // section. Read-only mode only; the DnD editor still shows the real structure.
+  excludeFolders?: readonly string[];
+};
+
+export const WorkspaceSection = ({
+  excludeFolders,
+}: WorkspaceSectionProps = {}) => {
   const items = useNavigationMenuItemSectionItems();
   const { workspaceNavigationMenuItemsSorted } = useSortedNavigationMenuItems();
   const objectMetadataItems = useAtomStateValue(objectMetadataItemsSelector);
@@ -176,6 +185,7 @@ export const WorkspaceSection = () => {
     <WorkspaceSectionContainer
       sectionTitle={t`Workspace`}
       items={items}
+      excludeFolders={excludeFolders}
       rightIcon={
         <StyledRightIconsContainer>
           {isLayoutCustomizationModeEnabled ? (

@@ -1,0 +1,18 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Propel — RE/MAX Hub">
+  <defs>
+    <clipPath id="propel-pin-shape">
+      <path d="M256 96C171.634 96 103 164.634 103 249C103 352.139 225.28 473.566 256 504C286.72 473.566 409 352.139 409 249C409 164.634 340.366 96 256 96Z"/>
+    </clipPath>
+  </defs>
+  <!-- Rounded-square plate for app-icon contexts -->
+  <rect x="0" y="0" width="512" height="512" rx="112" fill="#FFFFFF"/>
+  <!-- RE/MAX balloon pin, red-white-blue motif -->
+  <g clip-path="url(#propel-pin-shape)">
+    <rect x="103" y="96" width="153" height="153" fill="#7C1000"/>
+    <rect x="256" y="96" width="153" height="153" fill="#E41D2D"/>
+    <rect x="103" y="249" width="306" height="76" fill="#F4F1EA"/>
+    <rect x="103" y="325" width="153" height="179" fill="#121D4A"/>
+    <rect x="256" y="325" width="153" height="179" fill="#2C5AA0"/>
+  </g>
+  <path d="M256 96C171.634 96 103 164.634 103 249C103 352.139 225.28 473.566 256 504C286.72 473.566 409 352.139 409 249C409 164.634 340.366 96 256 96Z" stroke="#0B1020" stroke-opacity="0.12" stroke-width="2"/>
+</svg>
