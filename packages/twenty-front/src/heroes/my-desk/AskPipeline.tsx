@@ -10,7 +10,7 @@
 //   · Every ref is a real record the route resolved (the model cites rows by index;
 //     it can't invent an id), so a clickable row always lands somewhere real.
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import styled from '@emotion/styled';
 import { type PropelHeroHost } from '@/propel/runtime/heroHost';
 
@@ -67,6 +67,35 @@ const Hint = styled.div`
   letter-spacing: 0.11em;
   text-transform: uppercase;
   color: var(--p-ink-2);
+`;
+
+// Transparent click-catcher behind the popover — click anywhere outside to close.
+const Scrim = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 4999;
+  background: transparent;
+`;
+
+const HeadRight = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+`;
+
+const CloseBtn = styled.button`
+  all: unset;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: var(--p-ink-2);
+  font: 400 17px/1 ${FONT_UI};
+  transition: color ${DUR.tooltip}ms ${EASE.out}, background ${DUR.tooltip}ms ${EASE.out};
+  &:hover { color: var(--p-ink); background: var(--p-surface); }
+  &:active { transform: scale(0.92); }
 `;
 
 const Body = styled.div`
@@ -157,6 +186,14 @@ export const AskPipeline = ({ host }: { host: PropelHeroHost }) => {
   const [result, setResult] = useState<Result>({ kind: 'idle' });
   const seq = useRef(0);
 
+  // Esc closes the popover (matches the peek drawer / REIDIN slide-in).
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
   const ask = async (e: React.FormEvent) => {
     e.preventDefault();
     const q = question.trim();
@@ -195,10 +232,15 @@ export const AskPipeline = ({ host }: { host: PropelHeroHost }) => {
         Ask
       </Btn>
       {open && (
-        <Sheet role="dialog" aria-label="Ask your pipeline">
+        <>
+          <Scrim onClick={() => setOpen(false)} aria-hidden />
+          <Sheet role="dialog" aria-label="Ask your pipeline">
           <Head>
             <Title>Ask your pipeline</Title>
-            <Hint>Read-only</Hint>
+            <HeadRight>
+              <Hint>Read-only</Hint>
+              <CloseBtn type="button" aria-label="Close" onClick={() => setOpen(false)}>×</CloseBtn>
+            </HeadRight>
           </Head>
           <Body>
             <Form onSubmit={ask}>
@@ -234,7 +276,8 @@ export const AskPipeline = ({ host }: { host: PropelHeroHost }) => {
               </>
             )}
           </Body>
-        </Sheet>
+          </Sheet>
+        </>
       )}
     </>
   );
