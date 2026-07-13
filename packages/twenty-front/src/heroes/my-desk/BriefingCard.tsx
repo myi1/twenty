@@ -195,36 +195,65 @@ const SNOOZE = [
   { label: 'Next week', hours: 168 },
 ] as const;
 
+const isBriefingKind = (value: unknown): value is DeskBriefingItem['kind'] =>
+  value === 'lead' ||
+  value === 'deal' ||
+  value === 'viewing' ||
+  value === 'whatsapp';
+
+const isBriefingItem = (value: unknown): value is DeskBriefingItem => {
+  if (typeof value !== 'object' || value === null) return false;
+  const item = value as Record<string, unknown>;
+  return (
+    typeof item.id === 'string' &&
+    item.id.trim().length > 0 &&
+    isBriefingKind(item.kind) &&
+    typeof item.line === 'string' &&
+    item.line.trim().length > 0
+  );
+};
+
+const validatedBriefingItems = (value: unknown): DeskBriefingItem[] | null =>
+  Array.isArray(value) && value.every(isBriefingItem) ? value : null;
+
 export const BriefingCard = () => {
   const [state, setState] = useState<State>({ kind: 'loading' });
   const [menuId, setMenuId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const cancelled = useRef(false);
+  const mounted = useRef(false);
+  const loadGeneration = useRef(0);
   const busyRef = useRef(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const triggerRefs = useRef(new Map<string, HTMLButtonElement>());
 
   const load = async (showLoading: boolean) => {
+    const generation = ++loadGeneration.current;
     if (showLoading) setState({ kind: 'loading' });
     const response = await assistBriefing().catch(() => null);
-    if (cancelled.current) return;
+    if (!mounted.current || generation !== loadGeneration.current) return;
     if (!response || !response.ok) {
+      if (showLoading) setState({ kind: 'hidden' });
+      return;
+    }
+    const items = validatedBriefingItems(response.items);
+    if (!items) {
       if (showLoading) setState({ kind: 'hidden' });
       return;
     }
     setState({
       kind: 'ready',
-      items: response.items,
-      allCaughtUp: response.items.length === 0 || response.allCaughtUp,
+      items,
+      allCaughtUp: items.length === 0,
     });
   };
 
   useEffect(() => {
-    cancelled.current = false;
+    mounted.current = true;
     void load(true);
     return () => {
-      cancelled.current = true;
+      mounted.current = false;
+      loadGeneration.current += 1;
     };
   }, []);
 
@@ -261,7 +290,7 @@ export const BriefingCard = () => {
     mode: 'dismissed' | 'snoozed',
     hours?: number,
   ) => {
-    if (cancelled.current || busyRef.current || state.kind !== 'ready') return;
+    if (!mounted.current || busyRef.current || state.kind !== 'ready') return;
     const previous = state;
     const items = previous.items.filter(({ id }) => id !== item.id);
     const until =
@@ -278,7 +307,7 @@ export const BriefingCard = () => {
     const response = await writeBriefingDisposition(item.id, mode, until).catch(
       () => null,
     );
-    if (cancelled.current) return;
+    if (!mounted.current) return;
     if (!response?.ok) {
       busyRef.current = false;
       setState(previous);
@@ -288,7 +317,7 @@ export const BriefingCard = () => {
     }
 
     await load(false);
-    if (cancelled.current) return;
+    if (!mounted.current) return;
     busyRef.current = false;
     setBusy(false);
   };

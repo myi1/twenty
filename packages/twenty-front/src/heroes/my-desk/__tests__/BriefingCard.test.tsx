@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import {
   act,
   fireEvent,
@@ -216,6 +217,58 @@ it('normalizes a successful empty item array to all caught up without controls',
   expect(screen.queryByRole('button')).not.toBeInTheDocument();
 });
 
+it('renders nonempty validated items even when the server says all caught up', async () => {
+  brief.mockResolvedValue({ ok: true, items: [A], allCaughtUp: true });
+
+  render(<BriefingCard />);
+
+  expect(await screen.findByText(A.line)).toBeVisible();
+  expect(
+    screen.getByRole('button', { name: `Dismiss ${A.line}` }),
+  ).toBeVisible();
+  expect(
+    screen.queryByText("You're all caught up — nothing needs you right now."),
+  ).not.toBeInTheDocument();
+});
+
+it.each([
+  { ok: true, lines: [A.line] },
+  {
+    ok: true,
+    items: [{ id: '', kind: 'other', line: '' }],
+    allCaughtUp: false,
+  },
+])(
+  'hides safely for a malformed successful initial response',
+  async (response) => {
+    brief.mockResolvedValue(response as never);
+    const { container } = render(<BriefingCard />);
+
+    await waitFor(() => expect(container).toBeEmptyDOMElement());
+  },
+);
+
+it('retains the optimistic sibling state when backfill is malformed', async () => {
+  brief
+    .mockResolvedValueOnce({
+      ok: true,
+      items: [A, B],
+      allCaughtUp: false,
+    })
+    .mockResolvedValueOnce({ ok: true, lines: [A.line] } as never);
+  write.mockResolvedValue({ ok: true });
+
+  render(<BriefingCard />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: `Dismiss ${A.line}` }),
+  );
+
+  await waitFor(() => expect(brief).toHaveBeenCalledTimes(2));
+  expect(screen.queryByText(A.line)).not.toBeInTheDocument();
+  expect(screen.getByText(B.line)).toBeVisible();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
 it('does not refetch after an in-flight write resolves post-unmount', async () => {
   const mutation = deferred<{ ok: true }>();
   brief.mockResolvedValue({
@@ -233,4 +286,57 @@ it('does not refetch after an in-flight write resolves post-unmount', async () =
   await act(async () => mutation.resolve({ ok: true }));
 
   expect(brief).toHaveBeenCalledTimes(1);
+});
+
+it('ignores an older StrictMode load after a newer load and disposition backfill', async () => {
+  const firstInitial = deferred<{
+    ok: true;
+    items: Array<typeof A>;
+    allCaughtUp: false;
+  }>();
+  const secondInitial = deferred<{
+    ok: true;
+    items: Array<typeof A | typeof B>;
+    allCaughtUp: false;
+  }>();
+  const backfill = deferred<{
+    ok: true;
+    items: Array<typeof B>;
+    allCaughtUp: false;
+  }>();
+  brief
+    .mockReturnValueOnce(firstInitial.promise)
+    .mockReturnValueOnce(secondInitial.promise)
+    .mockReturnValueOnce(backfill.promise);
+  write.mockResolvedValue({ ok: true });
+
+  render(
+    <StrictMode>
+      <BriefingCard />
+    </StrictMode>,
+  );
+  await waitFor(() => expect(brief).toHaveBeenCalledTimes(2));
+
+  await act(async () =>
+    secondInitial.resolve({
+      ok: true,
+      items: [A, B],
+      allCaughtUp: false,
+    }),
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: `Dismiss ${A.line}` }),
+  );
+  await waitFor(() => expect(brief).toHaveBeenCalledTimes(3));
+  await act(async () =>
+    backfill.resolve({ ok: true, items: [B], allCaughtUp: false }),
+  );
+  expect(screen.queryByText(A.line)).not.toBeInTheDocument();
+  expect(screen.getByText(B.line)).toBeVisible();
+
+  await act(async () =>
+    firstInitial.resolve({ ok: true, items: [A], allCaughtUp: false }),
+  );
+  expect(screen.queryByText(A.line)).not.toBeInTheDocument();
+  expect(screen.getByText(B.line)).toBeVisible();
 });
