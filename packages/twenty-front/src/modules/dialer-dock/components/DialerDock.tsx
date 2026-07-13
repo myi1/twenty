@@ -4,7 +4,9 @@ import {
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
+  type PointerEventHandler,
 } from 'react';
+import { IconPhone } from 'twenty-ui/display';
 
 import { REACT_APP_SERVER_BASE_URL } from '~/config';
 import { getTokenPair } from '@/apollo/utils/getTokenPair';
@@ -163,28 +165,62 @@ const StyledIframe = styled.iframe`
   width: 100%;
 `;
 
-const StyledPill = styled.button`
+const StyledLauncher = styled.button`
   align-items: center;
   align-self: flex-end;
   background: ${dialerAccent.pillBg};
   border: 0;
-  border-radius: ${dockColor.radiusPill};
+  border-radius: 50%;
   box-shadow: ${dockColor.shadowStrong};
   color: ${dockColor.textInverted};
   cursor: pointer;
   display: flex;
-  font:
-    600 13px/1 ui-sans-serif,
-    system-ui,
-    sans-serif;
-  gap: 6px;
-  padding: 10px 16px;
+  height: 44px;
+  justify-content: center;
+  padding: 0;
   touch-action: none;
+  width: 44px;
 
   &:hover {
     background: ${dialerAccent.pillBgHover};
   }
+
+  &:focus-visible {
+    outline: 2px solid ${dockColor.textInverted};
+    outline-offset: 2px;
+  }
 `;
+
+type DockLauncherProps = {
+  onClick: () => void;
+  onPointerDown?: PointerEventHandler<HTMLButtonElement>;
+  onPointerMove?: PointerEventHandler<HTMLButtonElement>;
+  onPointerUp?: PointerEventHandler<HTMLButtonElement>;
+  onPointerCancel?: PointerEventHandler<HTMLButtonElement>;
+};
+
+export const DialerDockLauncher = ({
+  onClick,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+}: DockLauncherProps) => (
+  <StyledLauncher
+    aria-label="Expand dialer"
+    title="Open dialer"
+    type="button"
+    onClick={onClick}
+    onPointerDown={onPointerDown}
+    onPointerMove={onPointerMove}
+    onPointerUp={onPointerUp}
+    onPointerCancel={onPointerCancel}
+  >
+    <span aria-hidden="true">
+      <IconPhone size={20} />
+    </span>
+  </StyledLauncher>
+);
 
 type DialerDockMessage = {
   type: 'propel:dial';
@@ -515,9 +551,11 @@ export const DialerDock = () => {
         />
       </StyledPanel>
       {!isExpanded && (
-        <StyledPill
-          aria-label="Expand dialer"
-          {...dragHandleProps}
+        <DialerDockLauncher
+          onPointerDown={handleDragPointerDown}
+          onPointerMove={handleDragPointerMove}
+          onPointerUp={handleDragPointerEnd}
+          onPointerCancel={handleDragPointerEnd}
           onClick={() => {
             if (suppressClickRef.current) {
               suppressClickRef.current = false;
@@ -525,9 +563,7 @@ export const DialerDock = () => {
             }
             toggleExpanded();
           }}
-        >
-          ☎ Dialer
-        </StyledPill>
+        />
       )}
     </StyledDockContainer>
   );
