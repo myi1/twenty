@@ -16,6 +16,7 @@ export type TimelineLoadState = {
   cursor: string | null;
   loadingInitial: boolean;
   loadingOlder: boolean;
+  warning: string | null;
   error: string | null;
 };
 
@@ -24,6 +25,7 @@ export const initialTimelineLoadState: TimelineLoadState = {
   cursor: null,
   loadingInitial: true,
   loadingOlder: false,
+  warning: null,
   error: null,
 };
 
@@ -53,6 +55,7 @@ export const createTimelineLoadCoordinator = (
       cursor: null,
       loadingInitial: true,
       loadingOlder: false,
+      warning: null,
       error: null,
     });
 
@@ -70,15 +73,17 @@ export const createTimelineLoadCoordinator = (
         events: response.events,
         cursor: response.nextCursor,
         loadingInitial: false,
-        error:
+        warning:
           response.partialFailures.length > 0
             ? 'Some timeline sources could not be loaded.'
             : null,
+        error: null,
       });
     } catch (error) {
       if (version !== requestVersion) return;
       update({
         loadingInitial: false,
+        warning: null,
         error:
           error instanceof Error ? error.message : 'Could not load activity.',
       });
@@ -89,7 +94,7 @@ export const createTimelineLoadCoordinator = (
     if (state.cursor === null || state.loadingOlder) return;
     const version = requestVersion;
     const cursor = state.cursor;
-    update({ loadingOlder: true, error: null });
+    update({ loadingOlder: true, warning: null, error: null });
 
     try {
       const response = await fetchTimeline(laneObject, recordId, cursor);
@@ -105,15 +110,17 @@ export const createTimelineLoadCoordinator = (
         events: mergeTimelineEvents(state.events, response.events),
         cursor: response.nextCursor,
         loadingOlder: false,
-        error:
+        warning:
           response.partialFailures.length > 0
             ? 'Some timeline sources could not be loaded.'
             : null,
+        error: null,
       });
     } catch (error) {
       if (version !== requestVersion) return;
       update({
         loadingOlder: false,
+        warning: null,
         error:
           error instanceof Error
             ? error.message

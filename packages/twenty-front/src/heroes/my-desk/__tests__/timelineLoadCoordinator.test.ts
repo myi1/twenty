@@ -58,7 +58,8 @@ describe('createTimelineLoadCoordinator', () => {
       cursor: 'older-page',
       loadingInitial: false,
       loadingOlder: false,
-      error: 'Some timeline sources could not be loaded.',
+      warning: 'Some timeline sources could not be loaded.',
+      error: null,
     });
   });
 
@@ -78,6 +79,7 @@ describe('createTimelineLoadCoordinator', () => {
       events: [first, older],
       cursor: null,
       loadingOlder: false,
+      warning: null,
       error: null,
     });
     expect(fetchTimeline).toHaveBeenNthCalledWith(
@@ -109,6 +111,7 @@ describe('createTimelineLoadCoordinator', () => {
       events: [first],
       cursor: 'page-2',
       loadingOlder: false,
+      warning: null,
       error: 'Could not load older activity.',
     });
     expect(fetchTimeline).toHaveBeenCalledTimes(2);
@@ -124,6 +127,7 @@ describe('createTimelineLoadCoordinator', () => {
     expect(coordinator.getState()).toMatchObject({
       events: [first],
       cursor: 'page-2',
+      warning: null,
       error: 'Timeline unavailable.',
     });
 
@@ -135,7 +139,11 @@ describe('createTimelineLoadCoordinator', () => {
       'lead-a',
       'page-2',
     );
-    expect(coordinator.getState().cursor).toBeNull();
+    expect(coordinator.getState()).toMatchObject({
+      cursor: null,
+      warning: null,
+      error: null,
+    });
   });
 
   it('ignores an older-page response after switching records or cancelling', async () => {

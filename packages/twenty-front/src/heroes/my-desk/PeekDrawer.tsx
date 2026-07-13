@@ -93,6 +93,7 @@ const Button = styled.button<{ $primary?: boolean }>`
   color: ${({ $primary }) => ($primary ? 'var(--p-bg)' : 'var(--p-ink)')};
   background: ${({ $primary }) => ($primary ? 'var(--p-accent-strong)' : 'transparent')};
   border: 1px solid ${({ $primary }) => ($primary ? 'var(--p-accent-strong)' : 'var(--p-line)')};
+  &:focus-visible { outline: 2px solid var(--p-accent); outline-offset: 2px; }
   &:disabled { cursor: not-allowed; opacity: .38; }
 `;
 
@@ -281,6 +282,7 @@ export const PeekDrawer = ({
     cursor: timelineCursor,
     loadingInitial: timelineLoading,
     loadingOlder: timelineLoadingOlder,
+    warning: timelineWarning,
     error: timelineError,
   } = timelineState;
   const [note, setNote] = useState('');
@@ -673,10 +675,15 @@ export const PeekDrawer = ({
                 </div>)}
               </div>
             )}
-            {(timelineError || timelineCursor !== null) && (
+            {(timelineWarning || timelineError || timelineCursor !== null) && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
+                {timelineWarning && (
+                  <div role="status" style={{ flex: 1, minWidth: 220, font: `11px/1.45 ${FONT_UI}`, color: P.warn }}>
+                    {timelineWarning}
+                  </div>
+                )}
                 {timelineError && (
-                  <div aria-live="polite" style={{ flex: 1, minWidth: 220, font: `11px/1.45 ${FONT_UI}`, color: P.bad }}>
+                  <div role="alert" style={{ flex: 1, minWidth: 220, font: `11px/1.45 ${FONT_UI}`, color: P.bad }}>
                     {timelineError}
                   </div>
                 )}
