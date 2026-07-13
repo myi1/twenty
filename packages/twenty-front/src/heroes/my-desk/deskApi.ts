@@ -15,6 +15,7 @@ import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import type {
   DeskAskPipelineResponse,
   DeskBoardResponse,
+  DeskBriefingDispositionResponse,
   DeskBriefingResponse,
   DeskCallNoteResponse,
   DeskGateStatusResponse,
@@ -199,6 +200,19 @@ export const assistCallNote = (
  *  null / non-ok / AI_UNAVAILABLE ⇒ the hero hides the card (never a broken one). */
 export const assistBriefing = (): Promise<DeskBriefingResponse | null> =>
   callPropelRoute<DeskBriefingResponse>(ASSIST, { action: 'briefing' });
+
+/** Persist one briefing signal dismissal/snooze through the authenticated route. */
+export const writeBriefingDisposition = (
+  signalId: string,
+  mode: 'dismissed' | 'snoozed',
+  until?: string,
+): Promise<DeskBriefingDispositionResponse | null> =>
+  callPropelRoute<DeskBriefingDispositionResponse>(ROUTE, {
+    action: 'briefingDisposition',
+    signalId,
+    mode,
+    ...(until ? { until } : {}),
+  });
 
 /** Ask-your-pipeline — a READ-ONLY natural-language answer + the records it cited. */
 export const assistAskPipeline = (

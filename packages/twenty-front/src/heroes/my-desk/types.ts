@@ -217,12 +217,20 @@ export type DeskCallNoteResponse =
   | { ok: true; draft: string; why: string }
   | DeskAssistError;
 
-/** briefing — a morning day-setter, ≤3 plain-English lines grounded in the
- *  acting member's own board+rail. An empty book comes back as one calm
- *  "all caught up" line (ok:true). AI_UNAVAILABLE ⇒ the hero hides the card. */
+/** briefing — a morning day-setter, ≤3 actionable signals grounded in the
+ *  acting member's own board+rail. Empty books are explicitly all caught up. */
+export type DeskBriefingItem = {
+  id: string;
+  kind: 'lead' | 'deal' | 'viewing' | 'whatsapp';
+  line: string;
+};
 export type DeskBriefingResponse =
-  | { ok: true; lines: string[] }
+  | { ok: true; items: DeskBriefingItem[]; allCaughtUp: boolean }
   | DeskAssistError;
+
+export type DeskBriefingDispositionResponse =
+  | { ok: true }
+  | { ok: false; error: string };
 
 /** askPipeline — a read-only NL answer over the member's own leads+deals plus
  *  the records it cited (clickable). `truncated` = the book was token-capped. */

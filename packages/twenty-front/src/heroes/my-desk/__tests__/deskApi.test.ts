@@ -1,6 +1,6 @@
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 
-import { fetchBoard } from '../deskApi';
+import { fetchBoard, writeBriefingDisposition } from '../deskApi';
 import type { DeskBoardResponse, DeskPartialFailure, DeskRow } from '../types';
 
 jest.mock('@/propel/lib/callPropelRoute');
@@ -55,6 +55,26 @@ beforeEach(() => {
 
 afterEach(() => {
   jest.restoreAllMocks();
+});
+
+it('writes one briefing disposition through the authenticated My Desk route', async () => {
+  mockCall.mockResolvedValueOnce({ ok: true } as never);
+  const id =
+    'brief:v1:lead:none:11111111-1111-4111-8111-111111111111:0123456789abcdef';
+
+  const result = await writeBriefingDisposition(
+    id,
+    'snoozed',
+    '2026-07-13T14:00:00.000Z',
+  );
+
+  expect(result).toEqual({ ok: true });
+  expect(mockCall).toHaveBeenCalledWith('/my-desk', {
+    action: 'briefingDisposition',
+    signalId: id,
+    mode: 'snoozed',
+    until: '2026-07-13T14:00:00.000Z',
+  });
 });
 
 it('streams a deduplicated, canonically sorted snapshot and accumulated failures after every page', async () => {
