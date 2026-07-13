@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
+  type PointerEventHandler,
 } from 'react';
 import { IconBrandWhatsapp, IconPlus } from 'twenty-ui/display';
 
@@ -113,11 +114,6 @@ const StyledPanelHeader = styled.div`
   user-select: none;
 `;
 
-const StyledHeaderDot = styled.span`
-  color: ${dockColor.accentGreen};
-  margin-right: 6px;
-`;
-
 // Approved-mockup header: a WhatsApp brand glyph (green) + "WhatsApp" title on
 // the left, replacing the plain green-dot bullet used on the pill launcher.
 const StyledHeaderBrand = styled.span`
@@ -172,29 +168,63 @@ const StyledCollapseButton = styled.button`
   }
 `;
 
-const StyledPill = styled.button`
+const StyledLauncher = styled.button`
   align-items: center;
   align-self: flex-end;
   background: ${dockColor.accentGreen};
   border: 0;
-  border-radius: ${dockColor.radiusPill};
+  border-radius: 50%;
   box-shadow: ${dockColor.shadowStrong};
   color: ${dockColor.textInverted};
   cursor: pointer;
   display: flex;
-  font:
-    600 13px/1 ui-sans-serif,
-    system-ui,
-    sans-serif;
-  gap: 6px;
-  padding: 10px 16px;
+  height: 44px;
+  justify-content: center;
+  padding: 0;
   touch-action: none;
   transition: transform 120ms ease;
+  width: 44px;
 
   &:hover {
     transform: translateY(-1px);
   }
+
+  &:focus-visible {
+    outline: 2px solid ${dockColor.textInverted};
+    outline-offset: 2px;
+  }
 `;
+
+type DockLauncherProps = {
+  onClick: () => void;
+  onPointerDown?: PointerEventHandler<HTMLButtonElement>;
+  onPointerMove?: PointerEventHandler<HTMLButtonElement>;
+  onPointerUp?: PointerEventHandler<HTMLButtonElement>;
+  onPointerCancel?: PointerEventHandler<HTMLButtonElement>;
+};
+
+export const WhatsAppDockLauncher = ({
+  onClick,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+}: DockLauncherProps) => (
+  <StyledLauncher
+    aria-label="Open WhatsApp"
+    title="Open WhatsApp"
+    type="button"
+    onClick={onClick}
+    onPointerDown={onPointerDown}
+    onPointerMove={onPointerMove}
+    onPointerUp={onPointerUp}
+    onPointerCancel={onPointerCancel}
+  >
+    <span aria-hidden="true">
+      <IconBrandWhatsapp size={21} />
+    </span>
+  </StyledLauncher>
+);
 
 export const WhatsAppDock = () => {
   const [isExpanded, setIsExpanded] = useState(
@@ -376,9 +406,11 @@ export const WhatsAppDock = () => {
       </StyledPanel>
 
       {!isExpanded && (
-        <StyledPill
-          aria-label="Open WhatsApp"
-          {...dragHandleProps}
+        <WhatsAppDockLauncher
+          onPointerDown={handleDragPointerDown}
+          onPointerMove={handleDragPointerMove}
+          onPointerUp={handleDragPointerEnd}
+          onPointerCancel={handleDragPointerEnd}
           onClick={() => {
             if (suppressClickRef.current) {
               suppressClickRef.current = false;
@@ -386,9 +418,7 @@ export const WhatsAppDock = () => {
             }
             toggleExpanded();
           }}
-        >
-          <StyledHeaderDot>●</StyledHeaderDot>WhatsApp
-        </StyledPill>
+        />
       )}
     </StyledDockContainer>
   );
