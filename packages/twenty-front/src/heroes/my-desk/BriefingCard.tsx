@@ -195,26 +195,82 @@ const SNOOZE = [
   { label: 'Next week', hours: 168 },
 ] as const;
 
+const UUID =
+  '[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
+const UUID_RE = new RegExp(`^${UUID}$`, 'i');
+const SIGNAL_ID_RE =
+  /^brief:v1:(lead|deal|viewing|whatsapp):([A-Za-z]+|none):([^:]+):([0-9a-f]{16})$/;
+const DEAL_LANES = new Set([
+  'secondaryOpportunity',
+  'sellOpportunity',
+  'offplanOpportunity',
+  'rcbiOpportunity',
+  'institutionalOpportunity',
+  'deal',
+]);
+
 const isBriefingKind = (value: unknown): value is DeskBriefingItem['kind'] =>
   value === 'lead' ||
   value === 'deal' ||
   value === 'viewing' ||
   value === 'whatsapp';
 
+const parseBriefingSignalId = (
+  value: unknown,
+): { kind: DeskBriefingItem['kind']; identity: string } | null => {
+  if (typeof value !== 'string') return null;
+  const match = SIGNAL_ID_RE.exec(value);
+  if (!match) return null;
+  const [, kind, lane, sourceId] = match;
+  if (!UUID_RE.test(sourceId)) return null;
+  if (kind === 'deal' ? !DEAL_LANES.has(lane) : lane !== 'none') return null;
+  return isBriefingKind(kind)
+    ? {
+        kind,
+        identity: `${kind}:${lane}:${sourceId.toLowerCase()}:${match[4]}`,
+      }
+    : null;
+};
+
 const isBriefingItem = (value: unknown): value is DeskBriefingItem => {
   if (typeof value !== 'object' || value === null) return false;
   const item = value as Record<string, unknown>;
+  const parsedId = parseBriefingSignalId(item.id);
   return (
-    typeof item.id === 'string' &&
-    item.id.trim().length > 0 &&
+    parsedId !== null &&
     isBriefingKind(item.kind) &&
+    parsedId.kind === item.kind &&
     typeof item.line === 'string' &&
     item.line.trim().length > 0
   );
 };
 
-const validatedBriefingItems = (value: unknown): DeskBriefingItem[] | null =>
-  Array.isArray(value) && value.every(isBriefingItem) ? value : null;
+const validatedBriefingItems = (value: unknown): DeskBriefingItem[] | null => {
+  if (!Array.isArray(value) || value.length > 3) return null;
+  const identities = new Set<string>();
+  for (const item of value) {
+    if (!isBriefingItem(item)) return null;
+    const parsedId = parseBriefingSignalId(item.id);
+    if (!parsedId || identities.has(parsedId.identity)) return null;
+    identities.add(parsedId.identity);
+  }
+  return value;
+};
+
+const successfulBriefingItems = (value: unknown): DeskBriefingItem[] | null => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    return null;
+  const response = value as Record<string, unknown>;
+  if (response.ok !== true || typeof response.allCaughtUp !== 'boolean')
+    return null;
+  return validatedBriefingItems(response.items);
+};
+
+const isSuccessfulDisposition = (value: unknown): boolean =>
+  typeof value === 'object' &&
+  value !== null &&
+  !Array.isArray(value) &&
+  (value as Record<string, unknown>).ok === true;
 
 export const BriefingCard = () => {
   const [state, setState] = useState<State>({ kind: 'loading' });
@@ -226,17 +282,14 @@ export const BriefingCard = () => {
   const busyRef = useRef(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const triggerRefs = useRef(new Map<string, HTMLButtonElement>());
+  const dismissRefs = useRef(new Map<string, HTMLButtonElement>());
 
   const load = async (showLoading: boolean) => {
     const generation = ++loadGeneration.current;
     if (showLoading) setState({ kind: 'loading' });
     const response = await assistBriefing().catch(() => null);
     if (!mounted.current || generation !== loadGeneration.current) return;
-    if (!response || !response.ok) {
-      if (showLoading) setState({ kind: 'hidden' });
-      return;
-    }
-    const items = validatedBriefingItems(response.items);
+    const items = successfulBriefingItems(response);
     if (!items) {
       if (showLoading) setState({ kind: 'hidden' });
       return;
@@ -302,13 +355,17 @@ export const BriefingCard = () => {
     setBusy(true);
     setError(null);
     setMenuId(null);
-    setState({ kind: 'ready', items, allCaughtUp: items.length === 0 });
+    setState(
+      items.length === 0
+        ? { kind: 'hidden' }
+        : { kind: 'ready', items, allCaughtUp: false },
+    );
 
     const response = await writeBriefingDisposition(item.id, mode, until).catch(
       () => null,
     );
     if (!mounted.current) return;
-    if (!response?.ok) {
+    if (!isSuccessfulDisposition(response)) {
       busyRef.current = false;
       setState(previous);
       setError("That didn't save. Try again.");
@@ -323,6 +380,14 @@ export const BriefingCard = () => {
   };
 
   const navigateMenu = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      const trigger = menuId ? triggerRefs.current.get(menuId) : undefined;
+      const dismiss = menuId ? dismissRefs.current.get(menuId) : undefined;
+      setMenuId(null);
+      (event.shiftKey ? trigger : dismiss)?.focus();
+      return;
+    }
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
     const options = Array.from(
       event.currentTarget.querySelectorAll<HTMLButtonElement>(
@@ -344,6 +409,9 @@ export const BriefingCard = () => {
             : activeIndex <= 0
               ? options.length - 1
               : activeIndex - 1;
+    options.forEach((option, index) => {
+      option.tabIndex = index === nextIndex ? 0 : -1;
+    });
     options[nextIndex]?.focus();
   };
 
@@ -387,6 +455,10 @@ export const BriefingCard = () => {
                   <IconClock size={14} />
                 </ActionButton>
                 <ActionButton
+                  ref={(node) => {
+                    if (node) dismissRefs.current.set(item.id, node);
+                    else dismissRefs.current.delete(item.id);
+                  }}
                   type="button"
                   aria-label={`Dismiss ${item.line}`}
                   title="Dismiss"
@@ -403,11 +475,22 @@ export const BriefingCard = () => {
                     aria-label={`Snooze ${item.line}`}
                     onKeyDown={navigateMenu}
                   >
-                    {SNOOZE.map((option) => (
+                    {SNOOZE.map((option, optionIndex) => (
                       <SnoozeOption
                         key={option.hours}
                         type="button"
                         role="menuitem"
+                        tabIndex={optionIndex === 0 ? 0 : -1}
+                        onFocus={(event) => {
+                          const options =
+                            menuRef.current?.querySelectorAll<HTMLButtonElement>(
+                              '[role="menuitem"]',
+                            );
+                          options?.forEach((menuOption) => {
+                            menuOption.tabIndex =
+                              menuOption === event.currentTarget ? 0 : -1;
+                          });
+                        }}
                         onClick={() =>
                           void apply(item, 'snoozed', option.hours)
                         }
