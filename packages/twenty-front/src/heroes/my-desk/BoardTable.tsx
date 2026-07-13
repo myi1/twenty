@@ -792,6 +792,7 @@ export const BoardTable = ({
             return (
             <RowEl
               key={row.id}
+              data-testid={`desk-row-${row.id}`}
               $urgent={urgent}
               style={{ gridTemplateColumns: colsTemplate, minWidth: TABLE_MIN_WIDTH }}
               onMouseEnter={() => setActionRowId(row.id)}

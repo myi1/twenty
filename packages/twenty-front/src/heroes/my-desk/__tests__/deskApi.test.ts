@@ -36,13 +36,16 @@ const page = (
   rows: DeskRow[],
   nextCursor: string | null,
   partialFailures: DeskPartialFailure[] = [],
+  metadata: {
+    actingMemberName: string | null;
+    memberId: string | null;
+  } = { actingMemberName: 'Yahya', memberId: 'member-1' },
 ): Extract<DeskBoardResponse, { ok: true }> => ({
   ok: true,
   rows,
   nextCursor,
   partialFailures,
-  actingMemberName: 'Yahya',
-  memberId: 'member-1',
+  ...metadata,
 });
 
 beforeEach(() => {
@@ -143,7 +146,12 @@ it('delivers the 40th page snapshot before throwing the overflow guard', async (
 it('emits first-page metadata only once across multiple pages', async () => {
   mockCall
     .mockResolvedValueOnce(page([row('first')], 'opaque-2') as never)
-    .mockResolvedValueOnce(page([row('second')], null) as never);
+    .mockResolvedValueOnce(
+      page([row('second')], null, [], {
+        actingMemberName: 'Second Page',
+        memberId: 'member-2',
+      }) as never,
+    );
   const onMeta = jest.fn();
 
   await fetchBoard(() => undefined, onMeta);
