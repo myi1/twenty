@@ -11,6 +11,11 @@ import {
   sendDeskWhatsApp,
 } from '../deskApi';
 import { PeekDrawer } from '../PeekDrawer';
+import {
+  createTimelineLoadCoordinator,
+  type TimelineLoadCoordinator,
+  type TimelineLoadState,
+} from '../timelineLoadCoordinator';
 import type {
   DeskRow,
   DeskTimelineEvent,
@@ -27,6 +32,35 @@ jest.mock('../deskApi', () => ({
   sendDeskWhatsApp: jest.fn(),
 }));
 
+jest.mock('../timelineLoadCoordinator', () => {
+  const actual = jest.requireActual(
+    '../timelineLoadCoordinator',
+  ) as typeof import('../timelineLoadCoordinator');
+
+  return {
+    ...actual,
+    createTimelineLoadCoordinator: jest.fn(
+      (
+        fetchTimeline: Parameters<
+          typeof actual.createTimelineLoadCoordinator
+        >[0],
+        onChange: Parameters<typeof actual.createTimelineLoadCoordinator>[1],
+      ) => {
+        const onChangeSpy = jest.fn(onChange);
+        const coordinator = actual.createTimelineLoadCoordinator(
+          fetchTimeline,
+          onChangeSpy,
+        );
+        return {
+          ...coordinator,
+          cancel: jest.fn(coordinator.cancel),
+          onChangeSpy,
+        };
+      },
+    ),
+  };
+});
+
 const mockedDeskApi = {
   assistCallNote: jest.mocked(assistCallNote),
   assistNextAction: jest.mocked(assistNextAction),
@@ -35,6 +69,20 @@ const mockedDeskApi = {
   fetchWaContext: jest.mocked(fetchWaContext),
   runDeskAction: jest.mocked(runDeskAction),
   sendDeskWhatsApp: jest.mocked(sendDeskWhatsApp),
+};
+
+type ObservedTimelineCoordinator = TimelineLoadCoordinator & {
+  cancel: jest.Mock<void, []>;
+  onChangeSpy: jest.Mock<void, [TimelineLoadState]>;
+};
+
+const getObservedCoordinator = (): ObservedTimelineCoordinator => {
+  const factory = jest.mocked(createTimelineLoadCoordinator);
+  const result = factory.mock.results[factory.mock.results.length - 1];
+  if (!result || result.type !== 'return') {
+    throw new Error('Timeline coordinator was not created.');
+  }
+  return result.value as ObservedTimelineCoordinator;
 };
 
 const deferred = <T,>() => {
@@ -98,7 +146,8 @@ const host: PropelHeroHost = {
 
 describe('PeekDrawer timeline pagination', () => {
   beforeEach(() => {
-    jest.resetAllMocks();
+    jest.clearAllMocks();
+    Object.values(mockedDeskApi).forEach((mock) => mock.mockReset());
   });
 
   afterEach(() => {
@@ -192,6 +241,7 @@ describe('PeekDrawer timeline pagination', () => {
         onMoveStage={jest.fn()}
       />,
     );
+    const coordinator = getObservedCoordinator();
     const leadB = {
       ...row,
       id: 'lead:lead-b',
@@ -210,6 +260,9 @@ describe('PeekDrawer timeline pagination', () => {
         onMoveStage={jest.fn()}
       />,
     );
+    expect(coordinator.cancel).toHaveBeenCalledTimes(1);
+    const publicationsAfterReplacement =
+      coordinator.onChangeSpy.mock.calls.length;
 
     await act(async () => {
       leadARequest.resolve(
@@ -217,6 +270,9 @@ describe('PeekDrawer timeline pagination', () => {
       );
       await leadARequest.promise;
     });
+    expect(coordinator.onChangeSpy).toHaveBeenCalledTimes(
+      publicationsAfterReplacement,
+    );
     expect(screen.queryByText('Event lead-a-event')).not.toBeInTheDocument();
     expect(screen.getByText('Loading activity…')).toBeInTheDocument();
 
@@ -237,6 +293,40 @@ describe('PeekDrawer timeline pagination', () => {
       'lead',
       'lead-b',
     );
+  });
+
+  it('cancels an unresolved initial load on unmount before it can publish', async () => {
+    const initialRequest = deferred<DeskTimelineResponse | null>();
+    mockedDeskApi.fetchTimeline.mockReturnValueOnce(initialRequest.promise);
+    const view = render(
+      <PeekDrawer
+        row={row}
+        mode="overview"
+        host={host}
+        onClose={jest.fn()}
+        onStartCall={jest.fn()}
+        onRowPatch={jest.fn()}
+        onMoveStage={jest.fn()}
+      />,
+    );
+    const coordinator = getObservedCoordinator();
+
+    view.unmount();
+    const publicationsBeforeResolution =
+      coordinator.onChangeSpy.mock.calls.length;
+
+    await act(async () => {
+      initialRequest.resolve(
+        success([event('late-initial', '2026-07-13T10:00:00.000Z')], null),
+      );
+      await initialRequest.promise;
+    });
+
+    expect(coordinator.onChangeSpy).toHaveBeenCalledTimes(
+      publicationsBeforeResolution,
+    );
+    expect(coordinator.cancel).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Event late-initial')).not.toBeInTheDocument();
   });
 
   it('does not publish a late older-page update after the drawer unmounts', async () => {
@@ -264,8 +354,11 @@ describe('PeekDrawer timeline pagination', () => {
     const loadOlder = await screen.findByRole('button', {
       name: 'Load older activity',
     });
+    const coordinator = getObservedCoordinator();
     fireEvent.click(loadOlder);
     view.unmount();
+    const publicationsBeforeResolution =
+      coordinator.onChangeSpy.mock.calls.length;
     await act(async () => {
       olderRequest.resolve(
         success([event('late', '2026-07-12T10:00:00.000Z')], null, true),
@@ -273,6 +366,10 @@ describe('PeekDrawer timeline pagination', () => {
       await olderRequest.promise;
     });
 
+    expect(coordinator.onChangeSpy).toHaveBeenCalledTimes(
+      publicationsBeforeResolution,
+    );
+    expect(coordinator.cancel).toHaveBeenCalledTimes(1);
     expect(screen.queryByText('Event late')).not.toBeInTheDocument();
     expect(
       screen.queryByText('Some timeline sources could not be loaded.'),
