@@ -47,7 +47,7 @@ const MAX_BOARD_PAGES = 40;
 export type DeskBoardMeta = { actingMemberName: string | null; memberId: string | null };
 
 /**
- * Pages through the board (route caps each page at 50 rows / 25 per lane — the
+ * Pages through the board (route caps each page at 48 rows — the
  * 64KB IPC ceiling gotcha — so a real book needs several round-trips). `onPage`
  * is called with the growing accumulator after every page lands, so the caller
  * can paint rows as they arrive instead of showing a blank desk until the last

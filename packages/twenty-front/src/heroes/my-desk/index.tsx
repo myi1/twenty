@@ -26,6 +26,7 @@ import { type PropelHeroHost } from '@/propel/runtime/heroHost';
 import { Btn, FONT_DISPLAY, FONT_UI, PulseFonts, PulseNocturne } from '../_pulse/pulse';
 
 import { AskPipeline } from './AskPipeline';
+import { createBoardLoadCoordinator } from './boardLoad';
 import { BoardTable } from './BoardTable';
 import { BriefingCard } from './BriefingCard';
 import { deskRecordPath, PeekDrawer, type DrawerMode } from './PeekDrawer';
@@ -209,38 +210,41 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
   const cancelledRef = useRef(false);
   const boardHasRowsRef = useRef(false);
 
-  const loadBoard = useCallback(async () => {
-    setBoardError(null);
-    setBoardPartial(false);
-
-    let boardPageReceived = false;
-    try {
-      await fetchBoard(
-        (rows, failures) => {
-          if (cancelledRef.current) return;
-          boardPageReceived = true;
+  const boardLoadCoordinator = useMemo(
+    () =>
+      createBoardLoadCoordinator({
+        fetchBoard,
+        hasRows: () => boardHasRowsRef.current,
+        onStart: () => {
+          setBoardError(null);
+          setBoardPartial(false);
+        },
+        onPage: (rows, failures) => {
           boardHasRowsRef.current = rows.length > 0;
           setBoardRows(rows);
           setBoardPartial(failures.length > 0);
           setBoardStatus('ready');
         },
-        (meta) => {
-          if (cancelledRef.current) return;
+        onMeta: (meta) => {
           setFirstName(meta.actingMemberName);
           setMemberId(meta.memberId);
         },
-      );
-    } catch (err: unknown) {
-      if (cancelledRef.current) return;
-      if (boardPageReceived || boardHasRowsRef.current) {
-        setBoardPartial(true);
-        setBoardStatus('ready');
-        return;
-      }
-      setBoardStatus('error');
-      setBoardError(err instanceof Error ? err.message : 'DESK_LOAD_FAILED');
-    }
-  }, []);
+        onPartialError: () => {
+          setBoardPartial(true);
+          setBoardStatus('ready');
+        },
+        onError: (error) => {
+          setBoardStatus('error');
+          setBoardError(error);
+        },
+      }),
+    [],
+  );
+
+  const loadBoard = useCallback(
+    () => boardLoadCoordinator.load(),
+    [boardLoadCoordinator],
+  );
 
   useEffect(() => {
     const id = window.setInterval(() => setNowMs(Date.now()), NOW_TICK_MS);
@@ -470,8 +474,9 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
 
     return () => {
       cancelledRef.current = true;
+      boardLoadCoordinator.invalidate();
     };
-  }, [loadBoard]);
+  }, [boardLoadCoordinator, loadBoard]);
 
   return (
     <PropelMantineProvider>

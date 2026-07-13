@@ -108,3 +108,49 @@ it('rejects a later transport failure only after streaming the successful snapsh
 
   expect(snapshots).toEqual([[first]]);
 });
+
+it('throws on a repeated cursor after delivering that page snapshot', async () => {
+  mockCall
+    .mockResolvedValueOnce(page([row('first')], 'same-cursor') as never)
+    .mockResolvedValueOnce(page([row('second')], 'same-cursor') as never);
+  const snapshots: DeskRow[][] = [];
+
+  await expect(fetchBoard((rows) => snapshots.push(rows))).rejects.toThrow(
+    'DESK_PAGING_STUCK',
+  );
+
+  expect(snapshots).toHaveLength(2);
+  expect(snapshots[1].map(({ id }) => id)).toEqual(['first', 'second']);
+});
+
+it('delivers the 40th page snapshot before throwing the overflow guard', async () => {
+  for (let pageIndex = 0; pageIndex < 40; pageIndex += 1) {
+    mockCall.mockResolvedValueOnce(
+      page([row(`row-${pageIndex}`)], `cursor-${pageIndex + 1}`) as never,
+    );
+  }
+  const snapshots: DeskRow[][] = [];
+
+  await expect(fetchBoard((rows) => snapshots.push(rows))).rejects.toThrow(
+    'DESK_PAGING_OVERFLOW',
+  );
+
+  expect(snapshots).toHaveLength(40);
+  expect(snapshots[39]).toHaveLength(40);
+  expect(snapshots[39]).toContainEqual(row('row-39'));
+});
+
+it('emits first-page metadata only once across multiple pages', async () => {
+  mockCall
+    .mockResolvedValueOnce(page([row('first')], 'opaque-2') as never)
+    .mockResolvedValueOnce(page([row('second')], null) as never);
+  const onMeta = jest.fn();
+
+  await fetchBoard(() => undefined, onMeta);
+
+  expect(onMeta).toHaveBeenCalledTimes(1);
+  expect(onMeta).toHaveBeenCalledWith({
+    actingMemberName: 'Yahya',
+    memberId: 'member-1',
+  });
+});

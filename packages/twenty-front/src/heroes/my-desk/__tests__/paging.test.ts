@@ -76,6 +76,30 @@ describe('mergeDeskRows', () => {
 
     expect(mergeDeskRows([coldRow], [hotRow], NOW)).toEqual([hotRow, coldRow]);
   });
+
+  it('sorts the same band by oldest touch first, treating no touch as oldest', () => {
+    const untouched = row({
+      id: 'lead:untouched',
+      recordId: 'untouched',
+      lastTouchAt: null,
+    });
+    const older = row({
+      id: 'lead:older',
+      recordId: 'older',
+      lastTouchAt: '2026-07-11T08:00:00.000Z',
+    });
+    const newer = row({
+      id: 'lead:newer',
+      recordId: 'newer',
+      lastTouchAt: '2026-07-12T08:00:00.000Z',
+    });
+
+    expect(mergeDeskRows([newer], [older, untouched], NOW)).toEqual([
+      untouched,
+      older,
+      newer,
+    ]);
+  });
 });
 
 describe('mergePartialFailures', () => {
