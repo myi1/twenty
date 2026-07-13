@@ -128,8 +128,8 @@ export type DeskRailResponse =
  *  Shared across index.tsx / TodayStrip.tsx / RightRail.tsx (Task 12). */
 export type DeskRailOk = Extract<DeskRailResponse, { ok: true }>;
 
-// timeline — the peek-drawer event feed for one record (one page today;
-// nextCursor is always null until a unified cursor across the 4 source types lands).
+// timeline — the paged peek-drawer event feed for one record. nextCursor is an
+// opaque cursor carrying independent progress for all four timeline sources.
 export type DeskTimelineEvent = {
   id: string;
   type: 'NOTE' | 'TASK' | 'CALL' | 'WHATSAPP';

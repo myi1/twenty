@@ -27,6 +27,10 @@ import {
 } from './deskApi';
 import { formatAedTotal, formatRelative, formatStageLabel } from './format';
 import { stageTone } from './stageTone';
+import {
+  createTimelineLoadCoordinator,
+  initialTimelineLoadState,
+} from './timelineLoadCoordinator';
 import type { DeskRow, DeskTimelineEvent, DeskWaContextResponse } from './types';
 
 export type DrawerMode = 'overview' | 'note' | 'whatsapp' | 'more' | 'task' | 'viewing' | 'snooze' | 'postCall';
@@ -262,8 +266,23 @@ export const PeekDrawer = ({
   onMoveStage: (anchor: { x: number; y: number }) => void;
 }) => {
   const [activeMode, setActiveMode] = useState(mode);
-  const [timeline, setTimeline] = useState<DeskTimelineEvent[]>([]);
-  const [timelineLoading, setTimelineLoading] = useState(true);
+  const [timelineState, setTimelineState] = useState(initialTimelineLoadState);
+  const timelineLoader = useRef<ReturnType<
+    typeof createTimelineLoadCoordinator
+  > | null>(null);
+  if (timelineLoader.current === null) {
+    timelineLoader.current = createTimelineLoadCoordinator(
+      fetchTimeline,
+      setTimelineState,
+    );
+  }
+  const {
+    events: timeline,
+    cursor: timelineCursor,
+    loadingInitial: timelineLoading,
+    loadingOlder: timelineLoadingOlder,
+    error: timelineError,
+  } = timelineState;
   const [note, setNote] = useState('');
   const [message, setMessage] = useState('');
   const [wa, setWa] = useState<DeskWaContextResponse | null>(null);
@@ -288,17 +307,27 @@ export const PeekDrawer = ({
   const latestWa = useMemo(() => timeline.find((event) => event.type === 'WHATSAPP') ?? null, [timeline]);
 
   const reloadTimeline = () => {
-    setTimelineLoading(true);
-    fetchTimeline(row.laneObject, row.recordId)
-      .then((res) => setTimeline(res?.ok ? res.events : []))
-      .finally(() => setTimelineLoading(false));
+    void timelineLoader.current?.loadInitial(
+      row.laneObject,
+      row.recordId,
+    );
   };
+
+  const loadOlderTimeline = () => {
+    void timelineLoader.current?.loadOlder(row.laneObject, row.recordId);
+  };
+
+  useEffect(() => {
+    reloadTimeline();
+    return () => timelineLoader.current?.cancel();
+    // The coordinator invalidates every in-flight page before the next record loads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [row.laneObject, row.recordId]);
 
   useEffect(() => {
     setActiveMode(mode);
     setNote('');
     setMessage('');
-    reloadTimeline();
     setWa(null);
     // Reset every AI draft flow so a new row never shows a stale receipt/draft.
     setWaAi({ status: 'idle', why: null });
@@ -638,10 +667,29 @@ export const PeekDrawer = ({
           <Section title="Timeline">
             {timelineLoading ? <div style={{ font: `12.5px ${FONT_UI}`, color: P.ink2 }}>Loading activity…</div> : timeline.length === 0 ? <div style={{ font: `12.5px ${FONT_UI}`, color: P.ink2 }}>No activity yet.</div> : (
               <div style={{ display: 'flex', flexDirection: 'column' }}>
-                {timeline.map((event) => <div key={event.id} style={{ display: 'grid', gridTemplateColumns: '82px 1fr', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--p-line)' }}>
+                {timeline.map((event) => <div key={`${event.type}:${event.id}`} style={{ display: 'grid', gridTemplateColumns: '82px 1fr', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--p-line)' }}>
                   <div style={{ font: `9.5px ${FONT_MONO}`, letterSpacing: '.08em', textTransform: 'uppercase', color: P.accent }}>{eventLabel(event)}</div>
                   <div><div style={{ font: `12.5px/1.45 ${FONT_UI}`, color: P.ink }}>{event.title}</div><div style={{ font: `10.5px ${FONT_MONO}`, color: P.ink2, marginTop: 4 }}>{formatRelative(event.occurredAt) ?? ''}{event.by ? ` · ${event.by}` : ''}</div></div>
                 </div>)}
+              </div>
+            )}
+            {(timelineError || timelineCursor !== null) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 12 }}>
+                {timelineError && (
+                  <div aria-live="polite" style={{ flex: 1, minWidth: 220, font: `11px/1.45 ${FONT_UI}`, color: P.bad }}>
+                    {timelineError}
+                  </div>
+                )}
+                {timelineCursor !== null && (
+                  <Button
+                    type="button"
+                    aria-label="Load older activity"
+                    disabled={timelineLoadingOlder}
+                    onClick={loadOlderTimeline}
+                  >
+                    {timelineLoadingOlder ? 'Loading…' : 'Load older'}
+                  </Button>
+                )}
               </div>
             )}
           </Section>
