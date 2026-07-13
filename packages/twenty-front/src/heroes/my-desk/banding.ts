@@ -1,15 +1,14 @@
 // banding.ts — hero-side mirror of the ONE "needs-you-first" triage logic.
 // ─────────────────────────────────────────────────────────────────────────────
-// Mirrored VERBATIM (bandOf / isGoingCold / GOING_COLD_HOURS + their private
+// Mirrored VERBATIM (bandOf / sortRows / isGoingCold / GOING_COLD_HOURS + their private
 // helpers — logic only; the DeskBand/DeskRow TYPES are already mirrored in
 // ./types.ts, so they're imported here rather than redeclared) from:
 //   /Users/yahyaismail/dev/_wt/my-desk/src/shared/my-desk-core.ts (CRM repo)
-// Keep this in sync BY HAND when that file changes — diff the two `bandOf`/
-// `isGoingCold` bodies on any my-desk-core.ts edit. This is the ONE
+// Keep this in sync BY HAND when that file changes — diff the `bandOf`/
+// `sortRows`/`isGoingCold` bodies on any my-desk-core.ts edit. This is the ONE
 // implementation of "needs-you-first" on this side of the fork; never fork it
-// further (sortRows/slaState from the source file aren't mirrored here because
-// nothing on this side needs them yet — the board arrives PRE-SORTED from the
-// route, and slaState's ring math lands with SlaRing, Task 14).
+// further (slaState from the source file isn't mirrored here because its ring
+// math lands with SlaRing, Task 14).
 //
 // Used by:
 //   - TodayStrip.tsx  — "Needs you now" tile count (rows where bandOf === 'slaAtRisk')
@@ -44,6 +43,20 @@ const isSameLocalDay = (a: number, b: number): boolean => {
     da.getDate() === db.getDate()
   );
 };
+
+const BAND_ORDER: Record<DeskBand, number> = {
+  slaAtRisk: 0,
+  overdue: 1,
+  dueToday: 2,
+  rest: 3,
+};
+
+export const sortRows = (rows: DeskRow[], nowMs: number): DeskRow[] =>
+  [...rows].sort((left, right) => {
+    const band = BAND_ORDER[bandOf(left, nowMs)] - BAND_ORDER[bandOf(right, nowMs)];
+    if (band !== 0) return band;
+    return (ms(left.lastTouchAt) ?? 0) - (ms(right.lastTouchAt) ?? 0);
+  });
 
 export const GOING_COLD_HOURS = 48;
 export const isGoingCold = (r: DeskRow, nowMs: number): boolean => {

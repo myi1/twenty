@@ -52,6 +52,11 @@ export type DeskRow = {
  *  action switch, so NOT_AUTHENTICATED can come back from any of the four). */
 export type DeskErrorResponse = { ok: false; error: string };
 
+export type DeskPartialFailure = {
+  source: string;
+  code: 'LOOKUP_FAILED';
+};
+
 // board — rows come pre-sorted needs-you-first (sortRows, server-side).
 // actingMemberName (first name, or null) + memberId ride EVERY board page
 // (Batch 3): the hero reads them off the first page for the greeting and the
@@ -61,6 +66,7 @@ export type DeskBoardResponse =
       ok: true;
       rows: DeskRow[];
       nextCursor: string | null;
+      partialFailures: DeskPartialFailure[];
       actingMemberName?: string | null;
       memberId?: string | null;
     }
@@ -135,7 +141,12 @@ export type DeskTimelineEvent = {
 };
 
 export type DeskTimelineResponse =
-  | { ok: true; events: DeskTimelineEvent[]; nextCursor: string | null }
+  | {
+      ok: true;
+      events: DeskTimelineEvent[];
+      nextCursor: string | null;
+      partialFailures: DeskPartialFailure[];
+    }
   | DeskErrorResponse;
 
 // waContext — WhatsApp session-window + reengagement-template state for one person.

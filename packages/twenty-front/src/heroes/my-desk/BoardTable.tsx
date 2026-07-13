@@ -17,7 +17,7 @@ import styled from '@emotion/styled';
 import { IconComment, IconNotes, IconPhone } from 'twenty-ui/display';
 
 import { DUR, EASE, SPACE } from '../_pulse/pulse-tokens';
-import { FONT_DISPLAY, FONT_MONO, FONT_UI, P, Seal } from '../_pulse/pulse';
+import { Btn, FONT_DISPLAY, FONT_MONO, FONT_UI, P, Seal } from '../_pulse/pulse';
 
 import { bandOf, isGoingCold, needsAttentionToday } from './banding';
 import { BoardKanban } from './BoardKanban';
@@ -372,6 +372,7 @@ export const BoardTable = ({
   rows,
   error,
   partial,
+  onRetry,
   nowMs,
   stripFilter,
   focusToday,
@@ -391,6 +392,7 @@ export const BoardTable = ({
   error: string | null;
   /** Later pages failed AFTER rows were already painted — keep them on screen. */
   partial: boolean;
+  onRetry: () => void;
   nowMs: number;
   /** Board layout — table (default centerpiece) or the secondary kanban. The
    *  header + filter chips are shared; only the body below them swaps. */
@@ -715,6 +717,7 @@ export const BoardTable = ({
           rows={visibleRows}
           error={error}
           partial={partial}
+          onRetry={onRetry}
           nowMs={nowMs}
           onRowClick={onRowClick}
           onCardDrop={onCardDrop}
@@ -1006,8 +1009,19 @@ export const BoardTable = ({
           })}
 
         {status === 'ready' && partial && (
-          <div style={{ padding: `${SPACE[3]}px ${SPACE[6]}px`, minWidth: TABLE_MIN_WIDTH }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: SPACE[3],
+              padding: `${SPACE[3]}px ${SPACE[6]}px`,
+              minWidth: TABLE_MIN_WIDTH,
+            }}
+          >
             <Text muted>Couldn't load the rest — showing what arrived.</Text>
+            <Btn type="button" variant="secondary" onClick={onRetry}>
+              Retry board load
+            </Btn>
           </div>
         )}
       </div>

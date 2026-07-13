@@ -207,6 +207,40 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
   );
 
   const cancelledRef = useRef(false);
+  const boardHasRowsRef = useRef(false);
+
+  const loadBoard = useCallback(async () => {
+    setBoardError(null);
+    setBoardPartial(false);
+
+    let boardPageReceived = false;
+    try {
+      await fetchBoard(
+        (rows, failures) => {
+          if (cancelledRef.current) return;
+          boardPageReceived = true;
+          boardHasRowsRef.current = rows.length > 0;
+          setBoardRows(rows);
+          setBoardPartial(failures.length > 0);
+          setBoardStatus('ready');
+        },
+        (meta) => {
+          if (cancelledRef.current) return;
+          setFirstName(meta.actingMemberName);
+          setMemberId(meta.memberId);
+        },
+      );
+    } catch (err: unknown) {
+      if (cancelledRef.current) return;
+      if (boardPageReceived || boardHasRowsRef.current) {
+        setBoardPartial(true);
+        setBoardStatus('ready');
+        return;
+      }
+      setBoardStatus('error');
+      setBoardError(err instanceof Error ? err.message : 'DESK_LOAD_FAILED');
+    }
+  }, []);
 
   useEffect(() => {
     const id = window.setInterval(() => setNowMs(Date.now()), NOW_TICK_MS);
@@ -412,32 +446,9 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
     cancelledRef.current = false;
 
     // Board — fails ALONE (a rail outage must never blank the opportunities list).
-    // Tracks how many rows made it on screen so a MID-SEQUENCE failure (page 2+,
-    // incl. deskApi's stuck-cursor/page-cap bails) degrades to a partial board
-    // instead of erasing rows the agent is already reading.
-    let boardRowsReceived = 0;
-    fetchBoard(
-      (rows) => {
-        if (cancelledRef.current) return;
-        boardRowsReceived = rows.length;
-        setBoardRows(rows);
-        setBoardStatus('ready');
-      },
-      (meta) => {
-        if (cancelledRef.current) return;
-        setFirstName(meta.actingMemberName);
-        setMemberId(meta.memberId);
-      },
-    )
-      .catch((err: unknown) => {
-        if (cancelledRef.current) return;
-        if (boardRowsReceived > 0) {
-          setBoardPartial(true); // keep the painted rows; flag the gap inline
-          return;
-        }
-        setBoardStatus('error');
-        setBoardError(err instanceof Error ? err.message : 'DESK_LOAD_FAILED');
-      });
+    // A retry owns a fresh cursor snapshot and leaves the current rows painted
+    // until its first page arrives.
+    void loadBoard();
 
     // Rail — fails ALONE (a board outage must never blank the day's panels).
     fetchRail()
@@ -460,7 +471,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
     return () => {
       cancelledRef.current = true;
     };
-  }, []);
+  }, [loadBoard]);
 
   return (
     <PropelMantineProvider>
@@ -557,6 +568,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
               rows={boardRows}
               error={boardError}
               partial={boardPartial}
+              onRetry={() => void loadBoard()}
               nowMs={nowMs}
               stripFilter={stripFilter}
               focusToday={focusToday}

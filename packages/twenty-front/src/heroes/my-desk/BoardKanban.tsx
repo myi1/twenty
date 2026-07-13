@@ -20,7 +20,7 @@ import { useState, type DragEvent as ReactDragEvent } from 'react';
 import styled from '@emotion/styled';
 
 import { DUR, EASE, SPACE } from '../_pulse/pulse-tokens';
-import { FONT_MONO, FONT_UI, P } from '../_pulse/pulse';
+import { Btn, FONT_MONO, FONT_UI, P } from '../_pulse/pulse';
 
 import { LANE_COLOR, LANE_LABEL } from './BoardTable';
 import { bandOf, isGoingCold, needsAttentionToday } from './banding';
@@ -203,6 +203,7 @@ export const BoardKanban = ({
   rows,
   error,
   partial,
+  onRetry,
   nowMs,
   onRowClick,
   onCardDrop,
@@ -213,6 +214,7 @@ export const BoardKanban = ({
   error: string | null;
   /** Later pages failed after rows painted — keep the board, flag the gap. */
   partial: boolean;
+  onRetry: () => void;
   nowMs: number;
   onRowClick: (row: DeskRow) => void;
   /** Hands the target ladder column back to index.tsx, which resolves it to the
@@ -379,8 +381,18 @@ export const BoardKanban = ({
         })}
       </Cols>
       {partial && (
-        <div style={{ paddingTop: SPACE[3] }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: SPACE[3],
+            paddingTop: SPACE[3],
+          }}
+        >
           <Text muted>Couldn't load the rest — showing what arrived.</Text>
+          <Btn type="button" variant="secondary" onClick={onRetry}>
+            Retry board load
+          </Btn>
         </div>
       )}
     </KanbanWrap>

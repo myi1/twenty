@@ -19,6 +19,7 @@ import type {
   DeskCallNoteResponse,
   DeskGateStatusResponse,
   DeskNextActionResponse,
+  DeskPartialFailure,
   DeskRailResponse,
   DeskRow,
   DeskTimelineResponse,
@@ -28,6 +29,7 @@ import type {
   ReidinPollResponse,
   ReidinStartResponse,
 } from './types';
+import { mergeDeskRows, mergePartialFailures } from './paging';
 
 const ROUTE = '/my-desk';
 const ASSIST = '/my-desk/assist';
@@ -35,7 +37,7 @@ const ASSIST = '/my-desk/assist';
 // Paging safety rails: the loop must terminate even against a misbehaving
 // server. A non-advancing nextCursor (the same value echoed back) would
 // otherwise spin forever; MAX_BOARD_PAGES caps a runaway-but-advancing
-// sequence (40 pages × 50 rows = a 2,000-row desk — far past any real
+// sequence (40 pages × 48 rows = a 1,920-row desk — far past any real
 // personal book).
 const MAX_BOARD_PAGES = 40;
 
@@ -55,10 +57,11 @@ export type DeskBoardMeta = { actingMemberName: string | null; memberId: string 
  * via `onPage`, so the caller can keep the partial board on screen and flag the gap.
  */
 export const fetchBoard = async (
-  onPage: (rows: DeskRow[]) => void,
+  onPage: (rows: DeskRow[], partialFailures: DeskPartialFailure[]) => void,
   onMeta?: (meta: DeskBoardMeta) => void,
-): Promise<DeskRow[]> => {
-  const all: DeskRow[] = [];
+): Promise<{ rows: DeskRow[]; partialFailures: DeskPartialFailure[] }> => {
+  let rows: DeskRow[] = [];
+  let partialFailures: DeskPartialFailure[] = [];
   let cursor: string | null = null;
   let pages = 0;
   do {
@@ -72,11 +75,12 @@ export const fetchBoard = async (
     if (!page.ok) {
       throw new Error(page.error || 'DESK_LOAD_FAILED');
     }
-    all.push(...page.rows);
+    rows = mergeDeskRows(rows, page.rows, Date.now());
+    partialFailures = mergePartialFailures(partialFailures, page.partialFailures ?? []);
     if (pages === 0 && onMeta) {
       onMeta({ actingMemberName: page.actingMemberName ?? null, memberId: page.memberId ?? null });
     }
-    onPage(all); // stream pages into the table — no blank desk while later pages load
+    onPage(rows, partialFailures); // stream pages into the table — no blank desk while later pages load
     pages += 1;
     const previousCursor: string | null = cursor;
     cursor = page.nextCursor;
@@ -88,7 +92,7 @@ export const fetchBoard = async (
       throw new Error('DESK_PAGING_OVERFLOW');
     }
   } while (cursor);
-  return all;
+  return { rows, partialFailures };
 };
 
 /** Tasks/viewings/unread-WA/priority-leads for the right rail — one call, ≤10 each. */
