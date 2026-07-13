@@ -195,7 +195,7 @@ const StyledLauncher = styled.button`
   }
 `;
 
-type DockLauncherProps = {
+type WhatsAppDockLauncherProps = {
   onClick: () => void;
   onPointerDown?: PointerEventHandler<HTMLButtonElement>;
   onPointerMove?: PointerEventHandler<HTMLButtonElement>;
@@ -209,7 +209,7 @@ export const WhatsAppDockLauncher = ({
   onPointerMove,
   onPointerUp,
   onPointerCancel,
-}: DockLauncherProps) => (
+}: WhatsAppDockLauncherProps) => (
   <StyledLauncher
     aria-label="Open WhatsApp"
     title="Open WhatsApp"

@@ -191,7 +191,7 @@ const StyledLauncher = styled.button`
   }
 `;
 
-type DockLauncherProps = {
+type DialerDockLauncherProps = {
   onClick: () => void;
   onPointerDown?: PointerEventHandler<HTMLButtonElement>;
   onPointerMove?: PointerEventHandler<HTMLButtonElement>;
@@ -205,7 +205,7 @@ export const DialerDockLauncher = ({
   onPointerMove,
   onPointerUp,
   onPointerCancel,
-}: DockLauncherProps) => (
+}: DialerDockLauncherProps) => (
   <StyledLauncher
     aria-label="Expand dialer"
     title="Open dialer"
