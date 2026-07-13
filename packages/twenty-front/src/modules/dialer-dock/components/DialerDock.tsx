@@ -296,7 +296,7 @@ export const DialerDock = () => {
   );
   const [position, setPosition] = useState<DockPosition>(readStoredDockPosition);
   // Live drag bookkeeping. A drag and a click share the same pointer gesture on
-  // the pill — `moved` past the threshold turns the gesture into a drag, and
+  // the launcher — `moved` past the threshold turns the gesture into a drag, and
   // suppressClickRef swallows the click event the browser fires after pointerup.
   const dragStateRef = useRef<{
     pointerId: number;

@@ -39,9 +39,10 @@ export const dockColor = {
   textInverted: 'var(--t-font-color-inverted)',
   textDanger: 'var(--t-font-color-danger)',
 
-  // Icons on saturated accent launchers need the inverse canvas polarity:
-  // dark in the light theme and light in the dark theme.
-  iconOnAccent: 'var(--t-background-primary-inverted)',
+  // Deliberately theme-stable: pure white is the verified contrast-safe icon
+  // color on both green9 and blue9; switching polarity fails one channel per
+  // theme even though the channel accent backgrounds themselves remain themed.
+  iconOnAccent: 'white',
 
   // WhatsApp-recognizable green accent — deliberately NOT Twenty's own
   // `--t-accent-*` (Twenty's blue brand accent). Radix-style green scale

@@ -40,7 +40,7 @@ describe('WhatsAppDockLauncher', () => {
     expect(launcher.querySelector('svg')).not.toBeNull();
 
     const ruleText = getEmotionRuleText(launcher);
-    expect(ruleText).toContain('color: var(--t-background-primary-inverted)');
+    expect(ruleText).toContain('color: white');
     expect(ruleText).toContain(':focus-visible');
     expect(ruleText).toContain(
       'outline: 2px solid var(--t-font-color-primary)',
