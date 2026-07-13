@@ -47,8 +47,9 @@ const DIALER_DOCK_EXPANDED_STORAGE_KEY = 'propel-dialer-dock-expanded';
 const DIALER_DOCK_POSITION_STORAGE_KEY = 'propel-dialer-dock-position';
 
 // Default offsets: right-aligned but ABOVE the record side-panel footer (the
-// "Options ⌘O / Open" strip occupies the bottom ~56px), so the collapsed pill
-// never covers those buttons. The dock is draggable; this is only the fallback.
+// "Options ⌘O / Open" strip occupies the bottom ~56px), so the collapsed
+// launcher never covers those buttons. The dock is draggable; this is only the
+// fallback.
 const DEFAULT_DOCK_POSITION = { right: 14, bottom: 72 };
 const DOCK_EDGE_MARGIN_PX = 8;
 const DOCK_DRAG_THRESHOLD_PX = 4;
@@ -172,7 +173,7 @@ const StyledLauncher = styled.button`
   border: 0;
   border-radius: 50%;
   box-shadow: ${dockColor.shadowStrong};
-  color: ${dockColor.textInverted};
+  color: ${dockColor.iconOnAccent};
   cursor: pointer;
   display: flex;
   height: 44px;
@@ -186,7 +187,7 @@ const StyledLauncher = styled.button`
   }
 
   &:focus-visible {
-    outline: 2px solid ${dockColor.textInverted};
+    outline: 2px solid ${dockColor.textPrimary};
     outline-offset: 2px;
   }
 `;
