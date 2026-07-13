@@ -52,7 +52,14 @@ import {
   type DeskPersistedState,
   type RailArrangement,
 } from './deskState';
-import type { DeskGate, DeskMoveResponse, DeskRailOk, DeskRow, DeskUndoResponse } from './types';
+import type {
+  DeskGate,
+  DeskMoveResponse,
+  DeskPartialFailure,
+  DeskRailOk,
+  DeskRow,
+  DeskUndoResponse,
+} from './types';
 
 // Lane → plain label, for the "no such column in this lane" drop hint (kanban).
 // Mirrors BoardTable/StagePicker's own label maps — small enough to keep local.
@@ -126,6 +133,9 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
   // (BoardTable renders an inline "showing what arrived" line instead of an
   // error state that would erase the rows the agent is already looking at).
   const [boardPartial, setBoardPartial] = useState(false);
+  const [boardPartialFailures, setBoardPartialFailures] = useState<
+    DeskPartialFailure[]
+  >([]);
 
   const [railStatus, setRailStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [rail, setRail] = useState<DeskRailOk | null>(null);
@@ -218,11 +228,13 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
         onStart: () => {
           setBoardError(null);
           setBoardPartial(false);
+          setBoardPartialFailures([]);
         },
         onPage: (rows, failures) => {
           boardHasRowsRef.current = rows.length > 0;
           setBoardRows(rows);
           setBoardPartial(failures.length > 0);
+          setBoardPartialFailures(failures);
           setBoardStatus('ready');
         },
         onMeta: (meta) => {
@@ -573,6 +585,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
               rows={boardRows}
               error={boardError}
               partial={boardPartial}
+              partialFailures={boardPartialFailures}
               onRetry={() => void loadBoard()}
               nowMs={nowMs}
               stripFilter={stripFilter}

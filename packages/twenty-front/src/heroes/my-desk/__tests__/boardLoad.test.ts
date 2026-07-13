@@ -54,6 +54,9 @@ const setup = () => {
   const state = {
     rows: [row('existing')],
     partial: true,
+    partialFailures: [
+      { source: 'existing-source', code: 'LOOKUP_FAILED' },
+    ] as DeskPartialFailure[],
     error: 'STALE_ERROR' as string | null,
     status: 'ready' as 'loading' | 'ready' | 'error',
     firstName: 'Existing agent' as string | null,
@@ -65,10 +68,12 @@ const setup = () => {
     onStart: () => {
       state.error = null;
       state.partial = false;
+      state.partialFailures = [];
     },
     onPage: (rows, failures) => {
       state.rows = rows;
       state.partial = failures.length > 0;
+      state.partialFailures = failures;
       state.status = 'ready';
     },
     onMeta: (meta) => {
@@ -95,6 +100,7 @@ it('keeps only the newest retry writes and preserves rows until its first page',
   expect(state).toMatchObject({
     rows: [row('existing')],
     partial: false,
+    partialFailures: [],
     error: null,
   });
 
@@ -123,6 +129,7 @@ it('keeps only the newest retry writes and preserves rows until its first page',
   expect(state).toEqual({
     rows: [row('new')],
     partial: false,
+    partialFailures: [],
     error: null,
     status: 'ready',
     firstName: 'New agent',
@@ -147,5 +154,21 @@ it('invalidates a StrictMode-cleaned load before a later setup becomes active', 
 
   expect(state.rows).toEqual([row('active')]);
   expect(state.partial).toBe(false);
+  expect(state.partialFailures).toEqual([]);
   expect(state.error).toBeNull();
+});
+
+it('publishes the exact current partial-failure sources without collapsing them', async () => {
+  const { coordinator, pending, state } = setup();
+  const load = coordinator.load();
+  const failures: DeskPartialFailure[] = [
+    { source: 'secondaryOpportunity', code: 'LOOKUP_FAILED' },
+    { source: 'viewings', code: 'LOOKUP_FAILED' },
+  ];
+
+  pending[0].onPage([row('current')], failures);
+  pending[0].resolve();
+  await load;
+
+  expect(state.partialFailures).toEqual(failures);
 });

@@ -33,8 +33,9 @@ import {
   type LadderStep,
 } from './gates';
 import { formatAedTotal, formatStageLabel, friendlyError } from './format';
+import { formatPartialFailureMessage } from './partialFailureLabels';
 import { SkeletonStack, Text } from './shared';
-import type { DeskRow } from './types';
+import type { DeskPartialFailure, DeskRow } from './types';
 
 // Which ladder column a row belongs in. Leads are pre-pipeline → always New
 // (they convert, they don't move stage). A stage-lane row maps by LADDER_MAP; a
@@ -203,6 +204,7 @@ export const BoardKanban = ({
   rows,
   error,
   partial,
+  partialFailures,
   onRetry,
   nowMs,
   onRowClick,
@@ -214,6 +216,7 @@ export const BoardKanban = ({
   error: string | null;
   /** Later pages failed after rows painted — keep the board, flag the gap. */
   partial: boolean;
+  partialFailures: DeskPartialFailure[];
   onRetry: () => void;
   nowMs: number;
   onRowClick: (row: DeskRow) => void;
@@ -228,6 +231,11 @@ export const BoardKanban = ({
     return (
       <div style={{ padding: SPACE[6] }}>
         <Text muted>{friendlyError(error ?? 'DESK_LOAD_FAILED')}</Text>
+        <div style={{ marginTop: SPACE[3] }}>
+          <Btn type="button" variant="secondary" onClick={onRetry}>
+            Retry board load
+          </Btn>
+        </div>
       </div>
     );
   }
@@ -389,7 +397,12 @@ export const BoardKanban = ({
             paddingTop: SPACE[3],
           }}
         >
-          <Text muted>Couldn't load the rest — showing what arrived.</Text>
+          <Text muted>
+            {formatPartialFailureMessage(
+              partialFailures,
+              'showing what arrived',
+            ) ?? "Couldn't load the rest — showing what arrived."}
+          </Text>
           <Btn type="button" variant="secondary" onClick={onRetry}>
             Retry board load
           </Btn>

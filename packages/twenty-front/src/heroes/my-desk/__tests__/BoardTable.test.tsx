@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import { BoardTable } from '../BoardTable';
 import type { DeskRow } from '../types';
@@ -50,6 +51,7 @@ const renderBoard = ({ partial = false }: { partial?: boolean } = {}) => {
       rows={[normalRow, urgentRow]}
       error={null}
       partial={partial}
+      partialFailures={[]}
       onRetry={callbacks.onRetry}
       nowMs={NOW_MS}
       stripFilter={null}
@@ -67,6 +69,21 @@ const renderBoard = ({ partial = false }: { partial?: boolean } = {}) => {
 };
 
 const hoverActions = [/call/i, /whatsapp/i, /add note/i, /more actions/i];
+
+const guardedActionCases = [
+  ['call', /call/i, 'call'],
+  ['whatsapp', /whatsapp/i, 'whatsapp'],
+  ['note', /add note/i, 'note'],
+  ['stage', 'Move Normal Opportunity to another stage', 'stage'],
+  ['overflow', 'More actions for Normal Opportunity', 'task'],
+] as const;
+
+const guardedActivationCases = guardedActionCases.flatMap((actionCase) =>
+  (['direct click', 'keyboard'] as const).map(
+    (activation) =>
+      [actionCase[0], activation, actionCase[1], actionCase[2]] as const,
+  ),
+);
 
 describe('BoardTable interactions', () => {
   it('opens the matching drawer callback when the row body is clicked', () => {
@@ -154,6 +171,59 @@ describe('BoardTable interactions', () => {
 
     expect(onRowAction).toHaveBeenCalledWith('task', normalRow);
     expect(onRowClick).not.toHaveBeenCalled();
+  });
+
+  it.each(guardedActivationCases)(
+    '%s via %s does not also open the drawer',
+    async (_name, activation, accessibleName, expectedAction) => {
+      const { onRowAction, onRowClick, onStagePick } = renderBoard();
+      const rowElement = screen.getByTestId('desk-row-row-1');
+      fireEvent.mouseEnter(rowElement);
+      const actionButton = within(rowElement).getByRole('button', {
+        name: accessibleName,
+      });
+
+      if (activation === 'keyboard') {
+        act(() => actionButton.focus());
+        await userEvent.keyboard('{Enter}');
+      } else {
+        fireEvent.click(actionButton);
+      }
+
+      if (expectedAction === 'stage') {
+        expect(onStagePick).toHaveBeenCalledWith(normalRow, { x: 0, y: 6 });
+      } else {
+        if (expectedAction === 'task') {
+          fireEvent.click(
+            screen.getByRole('menuitem', { name: 'Create a task' }),
+          );
+        }
+        expect(onRowAction).toHaveBeenCalledWith(expectedAction, normalRow);
+      }
+      expect(onRowClick).not.toHaveBeenCalled();
+    },
+  );
+
+  it('shows a visible focus treatment on a focused row action', () => {
+    renderBoard();
+    const rowElement = screen.getByTestId('desk-row-row-1');
+    fireEvent.mouseEnter(rowElement);
+    const callButton = within(rowElement).getByRole('button', {
+      name: 'Call Normal Opportunity',
+    });
+
+    act(() => callButton.focus());
+
+    expect(callButton).toHaveFocus();
+    const className = [...callButton.classList].find((candidate) =>
+      candidate.startsWith('css-'),
+    );
+    const focusRule = [...document.styleSheets]
+      .flatMap((styleSheet) => [...styleSheet.cssRules])
+      .map((rule) => rule.cssText)
+      .find((cssText) => cssText.includes(`.${className}:focus-visible`));
+    expect(focusRule).toContain('outline: 2px solid var(--p-accent)');
+    expect(focusRule).toContain('outline-offset: 2px');
   });
 
   it('retries a partial board load', () => {

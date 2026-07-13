@@ -104,12 +104,15 @@ const event = (id: string, occurredAt: string): DeskTimelineEvent => ({
 const success = (
   events: DeskTimelineEvent[],
   nextCursor: string | null,
-  partial = false,
+  partialSources: string[] = [],
 ): DeskTimelineResponse => ({
   ok: true,
   events,
   nextCursor,
-  partialFailures: partial ? [{ source: 'tasks', code: 'LOOKUP_FAILED' }] : [],
+  partialFailures: partialSources.map((source) => ({
+    source,
+    code: 'LOOKUP_FAILED',
+  })),
 });
 
 const row: DeskRow = {
@@ -206,7 +209,10 @@ describe('PeekDrawer timeline pagination', () => {
 
     await act(async () => {
       olderRequest.resolve(
-        success([event('older', '2026-07-12T10:00:00.000Z')], null, true),
+        success([event('older', '2026-07-12T10:00:00.000Z')], null, [
+          'tasks',
+          'calls',
+        ]),
       );
       await olderRequest.promise;
     });
@@ -215,7 +221,7 @@ describe('PeekDrawer timeline pagination', () => {
     expect(screen.getByText('Event older')).toBeInTheDocument();
     const partialWarning = screen.getByRole('status');
     expect(partialWarning).toHaveTextContent(
-      'Some timeline sources could not be loaded.',
+      "Couldn't load Tasks and Calls — showing available activity.",
     );
     expect(partialWarning).toHaveStyle({ color: 'var(--p-warn)' });
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
@@ -361,7 +367,7 @@ describe('PeekDrawer timeline pagination', () => {
       coordinator.onChangeSpy.mock.calls.length;
     await act(async () => {
       olderRequest.resolve(
-        success([event('late', '2026-07-12T10:00:00.000Z')], null, true),
+        success([event('late', '2026-07-12T10:00:00.000Z')], null, ['tasks']),
       );
       await olderRequest.promise;
     });
@@ -372,7 +378,7 @@ describe('PeekDrawer timeline pagination', () => {
     expect(coordinator.cancel).toHaveBeenCalledTimes(1);
     expect(screen.queryByText('Event late')).not.toBeInTheDocument();
     expect(
-      screen.queryByText('Some timeline sources could not be loaded.'),
+      screen.queryByText("Couldn't load Tasks — showing available activity."),
     ).not.toBeInTheDocument();
     expect(consoleError).not.toHaveBeenCalled();
     consoleError.mockRestore();
@@ -415,5 +421,37 @@ describe('PeekDrawer timeline pagination', () => {
     expect(
       screen.queryByRole('button', { name: 'Load older activity' }),
     ).not.toBeInTheDocument();
+  });
+
+  it('retries an initial timeline error for the same record', async () => {
+    mockedDeskApi.fetchTimeline
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(
+        success([event('retried', '2026-07-13T10:00:00.000Z')], null),
+      );
+    render(
+      <PeekDrawer
+        row={row}
+        mode="overview"
+        host={host}
+        onClose={jest.fn()}
+        onStartCall={jest.fn()}
+        onRowPatch={jest.fn()}
+        onMoveStage={jest.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not load activity.',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry activity' }));
+
+    expect(await screen.findByText('Event retried')).toBeInTheDocument();
+    expect(mockedDeskApi.fetchTimeline).toHaveBeenNthCalledWith(
+      2,
+      'lead',
+      'lead-a',
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

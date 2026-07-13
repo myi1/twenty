@@ -47,6 +47,7 @@ describe('createTimelineLoadCoordinator', () => {
       .mockResolvedValue(
         success([event('new', '2026-07-13T10:00:00.000Z')], 'older-page', [
           'tasks',
+          'calls',
         ]),
       );
     const coordinator = createTimelineLoadCoordinator(fetchTimeline, () => {});
@@ -58,7 +59,10 @@ describe('createTimelineLoadCoordinator', () => {
       cursor: 'older-page',
       loadingInitial: false,
       loadingOlder: false,
-      warning: 'Some timeline sources could not be loaded.',
+      partialFailures: [
+        { source: 'tasks', code: 'LOOKUP_FAILED' },
+        { source: 'calls', code: 'LOOKUP_FAILED' },
+      ],
       error: null,
     });
   });
@@ -79,7 +83,7 @@ describe('createTimelineLoadCoordinator', () => {
       events: [first, older],
       cursor: null,
       loadingOlder: false,
-      warning: null,
+      partialFailures: [],
       error: null,
     });
     expect(fetchTimeline).toHaveBeenNthCalledWith(
@@ -111,7 +115,7 @@ describe('createTimelineLoadCoordinator', () => {
       events: [first],
       cursor: 'page-2',
       loadingOlder: false,
-      warning: null,
+      partialFailures: [],
       error: 'Could not load older activity.',
     });
     expect(fetchTimeline).toHaveBeenCalledTimes(2);
@@ -127,7 +131,7 @@ describe('createTimelineLoadCoordinator', () => {
     expect(coordinator.getState()).toMatchObject({
       events: [first],
       cursor: 'page-2',
-      warning: null,
+      partialFailures: [],
       error: 'Timeline unavailable.',
     });
 
@@ -141,7 +145,7 @@ describe('createTimelineLoadCoordinator', () => {
     );
     expect(coordinator.getState()).toMatchObject({
       cursor: null,
-      warning: null,
+      partialFailures: [],
       error: null,
     });
   });

@@ -26,6 +26,7 @@ import {
   sendDeskWhatsApp,
 } from './deskApi';
 import { formatAedTotal, formatRelative, formatStageLabel } from './format';
+import { formatPartialFailureMessage } from './partialFailureLabels';
 import { stageTone } from './stageTone';
 import {
   createTimelineLoadCoordinator,
@@ -282,9 +283,13 @@ export const PeekDrawer = ({
     cursor: timelineCursor,
     loadingInitial: timelineLoading,
     loadingOlder: timelineLoadingOlder,
-    warning: timelineWarning,
+    partialFailures: timelinePartialFailures,
     error: timelineError,
   } = timelineState;
+  const timelineWarning = formatPartialFailureMessage(
+    timelinePartialFailures,
+    'showing available activity',
+  );
   const [note, setNote] = useState('');
   const [message, setMessage] = useState('');
   const [wa, setWa] = useState<DeskWaContextResponse | null>(null);
@@ -686,6 +691,16 @@ export const PeekDrawer = ({
                   <div role="alert" style={{ flex: 1, minWidth: 220, font: `11px/1.45 ${FONT_UI}`, color: P.bad }}>
                     {timelineError}
                   </div>
+                )}
+                {timelineError && timelineCursor === null && (
+                  <Button
+                    type="button"
+                    aria-label="Retry activity"
+                    disabled={timelineLoading}
+                    onClick={reloadTimeline}
+                  >
+                    Retry activity
+                  </Button>
                 )}
                 {timelineCursor !== null && (
                   <Button

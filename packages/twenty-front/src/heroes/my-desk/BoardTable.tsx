@@ -26,8 +26,9 @@ import { stageTone } from './stageTone';
 import type { StripFilter } from './TodayStrip';
 import type { LadderStep } from './gates';
 import { formatAedTotal, formatRelative, formatStageLabel, friendlyError } from './format';
+import { formatPartialFailureMessage } from './partialFailureLabels';
 import { SkeletonStack, Text } from './shared';
-import type { DeskLane, DeskRow } from './types';
+import type { DeskLane, DeskPartialFailure, DeskRow } from './types';
 import type { StagePickerAnchor } from './StagePicker';
 
 // ── Lane recognition — dot + 3px left-edge bar (mockup's --lane-* vars) ─────
@@ -218,6 +219,7 @@ const RowAction = styled.button`
   background: var(--p-surface-2);
   cursor: pointer;
   &:hover { color: var(--p-ink); border-color: var(--p-accent); }
+  &:focus-visible { outline: 2px solid var(--p-accent); outline-offset: 2px; }
   &:disabled { cursor: not-allowed; opacity: .35; }
 `;
 
@@ -372,6 +374,7 @@ export const BoardTable = ({
   rows,
   error,
   partial,
+  partialFailures,
   onRetry,
   nowMs,
   stripFilter,
@@ -392,6 +395,7 @@ export const BoardTable = ({
   error: string | null;
   /** Later pages failed AFTER rows were already painted — keep them on screen. */
   partial: boolean;
+  partialFailures: DeskPartialFailure[];
   onRetry: () => void;
   nowMs: number;
   /** Board layout — table (default centerpiece) or the secondary kanban. The
@@ -456,6 +460,9 @@ export const BoardTable = ({
   // clears that flag BEFORE calling onRowClick, so a click on an action icon
   // never also opens the drawer.
   const actionClickRef = useRef(false);
+  const markActionClick = () => {
+    actionClickRef.current = true;
+  };
 
   const colsTemplate = colWidths.map((w, i) => w ?? COL_DEFAULTS[i]).join(' ');
 
@@ -717,6 +724,7 @@ export const BoardTable = ({
           rows={visibleRows}
           error={error}
           partial={partial}
+          partialFailures={partialFailures}
           onRetry={onRetry}
           nowMs={nowMs}
           onRowClick={onRowClick}
@@ -760,6 +768,11 @@ export const BoardTable = ({
         {status === 'error' && (
           <div style={{ padding: SPACE[4], minWidth: TABLE_MIN_WIDTH }}>
             <Text muted>{friendlyError(error ?? 'DESK_LOAD_FAILED')}</Text>
+            <div style={{ marginTop: SPACE[3] }}>
+              <Btn type="button" variant="secondary" onClick={onRetry}>
+                Retry board load
+              </Btn>
+            </div>
           </div>
         )}
         {status === 'loading' && (
@@ -890,6 +903,7 @@ export const BoardTable = ({
                     title="Move stage"
                     onMouseDown={() => { actionClickRef.current = true; }}
                     onClick={(event) => {
+                      markActionClick();
                       const rect = event.currentTarget.getBoundingClientRect();
                       onStagePick(row, { x: rect.left, y: rect.bottom + 6 });
                     }}
@@ -979,7 +993,10 @@ export const BoardTable = ({
                     title={row.phoneE164 ? 'Call' : 'No phone number'}
                     disabled={!row.phoneE164}
                     onMouseDown={() => { actionClickRef.current = true; }}
-                    onClick={() => onRowAction('call', row)}
+                    onClick={() => {
+                      markActionClick();
+                      onRowAction('call', row);
+                    }}
                   ><IconPhone size={13} /></RowAction>
                   <RowAction
                     type="button"
@@ -987,21 +1004,30 @@ export const BoardTable = ({
                     title={!row.phoneE164 ? 'No phone number yet' : row.hasWhatsApp ? 'WhatsApp' : 'Not on WhatsApp yet'}
                     disabled={!row.phoneE164 || !row.hasWhatsApp}
                     onMouseDown={() => { actionClickRef.current = true; }}
-                    onClick={() => onRowAction('whatsapp', row)}
+                    onClick={() => {
+                      markActionClick();
+                      onRowAction('whatsapp', row);
+                    }}
                   ><IconComment size={13} /></RowAction>
                   <RowAction
                     type="button"
                     aria-label={`Add note for ${row.name}`}
                     title="Add note"
                     onMouseDown={() => { actionClickRef.current = true; }}
-                    onClick={() => onRowAction('note', row)}
+                    onClick={() => {
+                      markActionClick();
+                      onRowAction('note', row);
+                    }}
                   ><IconNotes size={13} /></RowAction>
                   <RowAction
                     type="button"
                     aria-label={`More actions for ${row.name}`}
                     title="More actions"
                     onMouseDown={() => { actionClickRef.current = true; }}
-                    onClick={(event) => openOverflow(event, row)}
+                    onClick={(event) => {
+                      markActionClick();
+                      openOverflow(event, row);
+                    }}
                   ><svg width={13} height={13} viewBox="0 0 16 16" fill="none" aria-hidden><circle cx="3.5" cy="8" r="1.1" fill="currentColor" /><circle cx="8" cy="8" r="1.1" fill="currentColor" /><circle cx="12.5" cy="8" r="1.1" fill="currentColor" /></svg></RowAction>
                 </ActionTray>
               </div>
@@ -1019,7 +1045,12 @@ export const BoardTable = ({
               minWidth: TABLE_MIN_WIDTH,
             }}
           >
-            <Text muted>Couldn't load the rest — showing what arrived.</Text>
+            <Text muted>
+              {formatPartialFailureMessage(
+                partialFailures,
+                'showing what arrived',
+              ) ?? "Couldn't load the rest — showing what arrived."}
+            </Text>
             <Btn type="button" variant="secondary" onClick={onRetry}>
               Retry board load
             </Btn>
