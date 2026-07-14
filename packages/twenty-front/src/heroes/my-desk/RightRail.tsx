@@ -186,6 +186,9 @@ const Panel = styled.div<{ $dragging: boolean; $drop: 'before' | 'after' | null 
     &:nth-of-type(2n) {
       border-right: 0;
     }
+    &:nth-last-of-type(-n + 2) {
+      border-bottom: 0;
+    }
   }
 `;
 

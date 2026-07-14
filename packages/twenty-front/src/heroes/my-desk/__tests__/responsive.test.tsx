@@ -31,21 +31,35 @@ it('bridges only My Desk to the host light-theme token ledger', () => {
   expect(rules).toContain('--p-ink: #2a2620');
 });
 
-it('declares stacked body, two-column KPIs, and wrapped phone actions', () => {
+it('declares a stacked body and two-column KPIs', () => {
   const { getByTestId } = render(
     <>
       <StyledDeskBody data-testid="body" />
       <StyledTodayStripGrid data-testid="strip" />
-      <StyledTopBarActions data-testid="actions" />
     </>,
   );
 
   expect(rulesFor(getByTestId('body'))).toContain('max-width: 1023px');
   expect(rulesFor(getByTestId('body'))).toContain('flex-direction: column');
   expect(rulesFor(getByTestId('strip'))).toContain('repeat(2, minmax(0, 1fr))');
-  expect(rulesFor(getByTestId('actions'))).toContain('max-width: 1023px');
-  expect(rulesFor(getByTestId('actions'))).toContain('flex-wrap: wrap');
-  expect(rulesFor(getByTestId('actions'))).toContain('max-width: 720px');
+});
+
+it('renders phone top-bar actions as two equal columns with sized children', () => {
+  const { getByTestId } = render(
+    <StyledTopBarActions data-testid="actions">
+      <button type="button">First</button>
+      <button type="button">Second</button>
+    </StyledTopBarActions>,
+  );
+  const rules = rulesFor(getByTestId('actions'));
+
+  expect(rules).toContain('max-width: 720px');
+  expect(rules).toContain('display: grid');
+  expect(rules).toContain('grid-template-columns: repeat(2, minmax(0, 1fr))');
+  expect(rules).toContain('width: 100%');
+  expect(rules).toContain('>*');
+  expect(rules).toContain('justify-content: center');
+  expect(rules).toContain('min-width: 0');
 });
 
 it('tracks the stack breakpoint with native matchMedia', () => {

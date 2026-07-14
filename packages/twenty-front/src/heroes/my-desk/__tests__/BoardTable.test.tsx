@@ -86,6 +86,18 @@ const guardedActivationCases = guardedActionCases.flatMap((actionCase) =>
 );
 
 describe('BoardTable interactions', () => {
+  it('keeps the 835px table canvas inside a horizontal overflow container', () => {
+    renderBoard();
+
+    const headerRow = screen.getByText('Opportunity').parentElement;
+    const overflowContainer = headerRow?.parentElement;
+    const firstRow = screen.getByTestId('desk-row-row-1');
+
+    expect(headerRow).toHaveStyle({ minWidth: '835px' });
+    expect(firstRow).toHaveStyle({ minWidth: '835px' });
+    expect(overflowContainer).toHaveStyle({ overflowX: 'auto' });
+  });
+
   it('opens the matching drawer callback when the row body is clicked', () => {
     const { onRowClick } = renderBoard();
 
