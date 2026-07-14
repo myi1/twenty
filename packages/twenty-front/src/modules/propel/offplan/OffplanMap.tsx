@@ -38,9 +38,14 @@ function areasToGeoJSON(areas: OffplanMapArea[]): FeatureCollection {
 }
 
 // Tiles come from the image-service tile proxy — NO Mapbox key in the bundle (the
-// token stays server-side in the image-service). `window.__propelConfig.tileBase`
-// overrides at runtime (set this in prod to a same-origin `/tiles` reverse-proxy).
-const TILE_BASE = (window as any).__propelConfig?.tileBase ?? 'http://localhost:3006/tiles';
+// token stays server-side in the image-service). Runtime override order:
+// `window._env_.REACT_APP_PROPEL_TILE_BASE` (set on prod to the same-origin `/tiles`
+// reverse-proxy; injected via Twenty's runtime env) → `window.__propelConfig.tileBase`
+// → the localhost:3006 sidecar default (staging).
+const TILE_BASE =
+  (window as any)._env_?.REACT_APP_PROPEL_TILE_BASE ??
+  (window as any).__propelConfig?.tileBase ??
+  'http://localhost:3006/tiles';
 const REMAX_RED = '#dc1c2e';
 const GOLD = '#d4af37';
 
