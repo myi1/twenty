@@ -27,6 +27,7 @@ import type { StripFilter } from './TodayStrip';
 import type { LadderStep } from './gates';
 import { formatAedTotal, formatRelative, formatStageLabel, friendlyError } from './format';
 import { formatPartialFailureMessage } from './partialFailureLabels';
+import { DESK_STACK_BREAKPOINT_PX } from './responsive';
 import { SkeletonStack, Text } from './shared';
 import type { DeskLane, DeskPartialFailure, DeskRow } from './types';
 import type { StagePickerAnchor } from './StagePicker';
@@ -337,6 +338,22 @@ const VtoggleBtn = styled.button<{ $on: boolean }>`
   svg { width: 12px; height: 12px; }
 `;
 
+const BoardShell = styled.div`
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid var(--p-line);
+  overflow-y: auto;
+  @media (max-width: ${DESK_STACK_BREAKPOINT_PX}px) {
+    flex: none;
+    width: 100%;
+    overflow-y: visible;
+    border-right: 0;
+    border-bottom: 1px solid var(--p-line);
+  }
+`;
+
 // ── Measured-truncation tooltip — appears only when a cell is actually cut
 // (el.scrollWidth > el.clientWidth), matching mockup L1716–1741. ───────────
 type TooltipState = { text: string; x: number; y: number } | null;
@@ -608,16 +625,7 @@ export const BoardTable = ({
   };
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        flex: 1,
-        minWidth: 0,
-        borderRight: '1px solid var(--p-line)',
-        overflowY: 'auto',
-      }}
-    >
+    <BoardShell>
       <div
         style={{
           display: 'flex',
@@ -1110,6 +1118,6 @@ export const BoardTable = ({
       )}
 
       <Tooltip tooltip={tooltip} />
-    </div>
+    </BoardShell>
   );
 };

@@ -44,6 +44,7 @@ import { bandOf } from './banding';
 import { SlaRing } from './SlaRing';
 import { formatClock, formatRelative, friendlyError } from './format';
 import { rowForTask, rowForUnreadWa, rowForViewing } from './railRows';
+import { DESK_PHONE_BREAKPOINT_PX, DESK_STACK_BREAKPOINT_PX } from './responsive';
 import { SkeletonStack, Text } from './shared';
 import type { RailArrangement, RailPanelId } from './deskState';
 import type {
@@ -74,6 +75,11 @@ const Aside = styled.aside<{ $collapsed: boolean }>`
   @media (prefers-reduced-motion: no-preference) {
     transition: width ${DUR.drawerIn}ms ${EASE.out};
   }
+  @media (max-width: ${DESK_STACK_BREAKPOINT_PX}px) {
+    flex: none;
+    width: 100%;
+    min-height: auto;
+  }
 `;
 
 const Scroll = styled.div`
@@ -81,6 +87,13 @@ const Scroll = styled.div`
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  @media (max-width: ${DESK_STACK_BREAKPOINT_PX}px) {
+    overflow: visible;
+  }
+  @media (min-width: ${DESK_PHONE_BREAKPOINT_PX + 1}px) and (max-width: ${DESK_STACK_BREAKPOINT_PX}px) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 `;
 
 const RailToggle = styled.button<{ $collapsed: boolean }>`
@@ -119,6 +132,9 @@ const RailToggle = styled.button<{ $collapsed: boolean }>`
     width: 11px;
     height: 11px;
     transform: ${({ $collapsed }) => ($collapsed ? 'rotate(180deg)' : 'none')};
+  }
+  @media (max-width: ${DESK_STACK_BREAKPOINT_PX}px) {
+    display: none;
   }
 `;
 
@@ -165,6 +181,12 @@ const Panel = styled.div<{ $dragging: boolean; $drop: 'before' | 'after' | null 
       : $drop === 'after'
         ? 'inset 0 -2px 0 var(--p-accent)'
         : 'none'};
+  @media (min-width: ${DESK_PHONE_BREAKPOINT_PX + 1}px) and (max-width: ${DESK_STACK_BREAKPOINT_PX}px) {
+    border-right: 1px solid var(--p-line);
+    &:nth-of-type(2n) {
+      border-right: 0;
+    }
+  }
 `;
 
 const PanelHead = styled.div`
@@ -531,6 +553,7 @@ export const RightRail = ({
   onCompleteTask,
   arrangement,
   onArrangementChange,
+  forceExpanded = false,
 }: {
   status: 'loading' | 'ready' | 'error';
   rail: DeskRailOk | null;
@@ -546,12 +569,13 @@ export const RightRail = ({
   arrangement: RailArrangement;
   /** Mirror every arrangement change out (deskState persists it). */
   onArrangementChange: (next: RailArrangement) => void;
+  forceExpanded?: boolean;
 }) => {
   const navigate = useNavigate();
 
   const order = arrangement.order;
   const folds = arrangement.folds;
-  const collapsed = arrangement.collapsed;
+  const collapsed = arrangement.collapsed && !forceExpanded;
 
   const [hoverHeadId, setHoverHeadId] = useState<RailPanelId | null>(null);
   const [hoverItemId, setHoverItemId] = useState<string | null>(null);
@@ -796,7 +820,7 @@ export const RightRail = ({
               key={id}
               $dragging={draggingId === id}
               $drop={drop}
-              draggable={dragEnabledId === id}
+              draggable={!forceExpanded && dragEnabledId === id}
               onDragStart={(e) => {
                 setDraggingId(id);
                 e.dataTransfer.effectAllowed = 'move';
@@ -845,9 +869,10 @@ export const RightRail = ({
               >
                 <PhTitle>
                   <Grip
-                    $show={hoverHeadId === id || dragEnabledId === id}
+                    $show={!forceExpanded && (hoverHeadId === id || dragEnabledId === id)}
                     title="Drag to reorder"
                     onMouseDown={() => {
+                      if (forceExpanded) return;
                       skipFoldRef.current = true;
                       setDragEnabledId(id);
                     }}
