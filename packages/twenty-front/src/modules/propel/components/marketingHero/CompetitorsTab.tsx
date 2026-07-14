@@ -1,4 +1,4 @@
-import { Box, Button, Text, useComputedColorScheme } from '@mantine/core';
+import { Box, Button, Group, Text, useComputedColorScheme } from '@mantine/core';
 import { keyframes } from '@emotion/react';
 import styled from '@emotion/styled';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -11,6 +11,7 @@ import {
 } from 'twenty-ui/display';
 import { InvitingEmpty, SurfaceIntro } from '@/propel/components/desk';
 import { ImageWithFallback } from '@/propel/components/shared/ImageWithFallback';
+import { ManageCompetitorsDrawer } from '@/propel/components/marketingHero/ManageCompetitorsDrawer';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import { DUR, EASE, staggerDelay } from '~/heroes/_pulse/motion';
 import { FONT_MONO, PulseFonts, PulseScope } from '~/heroes/_pulse/pulse';
@@ -501,6 +502,9 @@ export const CompetitorsTab = () => {
   const [sort, setSort] = useState<FeedSort>('engagement');
   const colorScheme = useComputedColorScheme('dark');
 
+  const [manageOpen, setManageOpen] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     setIsLoading(true);
     const first = await callFeedPage({ offset: 0, limit: PAGE_LIMIT, sort });
@@ -528,6 +532,33 @@ export const CompetitorsTab = () => {
     setFailed(false);
     setIsLoading(false);
   }, [sort]);
+
+  // Sync now: loop the tracked accounts one at a time (each call stays under the
+  // hero's 20s fetch timeout; a full pull runs minutes). Honest progress; a
+  // per-account failure is counted and the loop continues.
+  const syncNow = useCallback(async () => {
+    const listRes = await callPropelRoute<{ rows?: { id: string; name: string; isActive: boolean | null }[] }>(
+      '/marketing/competitor-manage',
+      { action: 'list' },
+    );
+    const active = (listRes?.rows ?? []).filter((r) => r.isActive !== false);
+    if (active.length === 0) {
+      setSyncProgress(null);
+      return;
+    }
+    let done = 0;
+    let problems = 0;
+    for (const acct of active) {
+      setSyncProgress(`Syncing… ${done + 1} of ${active.length}`);
+      const r = await callPropelRoute<{ ok?: boolean }>('/marketing/competitor-sync', { accountId: acct.id });
+      if (!r?.ok) problems += 1;
+      done += 1;
+    }
+    setSyncProgress(problems > 0 ? `Synced ${done - problems} of ${done}, ${problems} had problems` : null);
+    await load();
+    // clear the final message after a short beat
+    window.setTimeout(() => setSyncProgress(null), 4000);
+  }, [load]);
 
   useEffect(() => {
     void load();
@@ -564,15 +595,21 @@ export const CompetitorsTab = () => {
       title={`What Dubai brokerages are posting — ${SORT_INTRO_PHRASE[sort]}.`}
       icon={<IconBrandInstagram size={20} />}
       actions={
-        <Button
-          size="xs"
-          variant="light"
-          leftSection={<IconRefresh size={14} />}
-          onClick={() => void load()}
-          loading={isLoading}
-        >
-          Refresh
-        </Button>
+        <Group gap="xs">
+          {syncProgress ? <Text size="xs" c="dimmed">{syncProgress}</Text> : null}
+          <Button size="xs" variant="subtle" onClick={() => setManageOpen(true)}>
+            Manage competitors
+          </Button>
+          <Button
+            size="xs"
+            variant="light"
+            leftSection={<IconRefresh size={14} />}
+            onClick={() => void syncNow()}
+            loading={syncProgress !== null}
+          >
+            Sync now
+          </Button>
+        </Group>
       }
     />
   );
@@ -782,6 +819,11 @@ export const CompetitorsTab = () => {
           </FeedColumns>
         )}
       </PulseScope>
+      <ManageCompetitorsDrawer
+        opened={manageOpen}
+        onClose={() => setManageOpen(false)}
+        onChanged={() => void load()}
+      />
     </Box>
   );
 };
