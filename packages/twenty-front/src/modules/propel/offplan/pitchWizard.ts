@@ -9,16 +9,22 @@ import type {
 
 export const WIZARD_STEPS = [
   'Selection',
+  'Units',
   'Client',
   'Presentation',
   'Review',
   'Send',
 ] as const;
 
+// Hand-pick at most this many specific units per project for the deck's unit pages.
+export const MAX_PICKED_UNITS = 4;
+
 export type PitchWizardState = {
   step: number;
   projectIds: number[];
-  anchorUnits: Record<number, number | undefined>;
+  // projectId → the hand-picked unit externalIds (≤ MAX_PICKED_UNITS) featured on
+  // that project's deck. Empty/absent = overview-only pitch (still valid).
+  pickedUnits: Record<number, number[]>;
   client: PitchClient | null;
   clientSkipped: boolean;
   theme: PitchTheme;
@@ -40,14 +46,16 @@ export function initWizard(
   for (const id of projectIds) {
     if (!ids.includes(id)) ids.push(id);
   }
-  const anchorUnits: Record<number, number | undefined> = {};
+  // Seed the picked units from a drawer "pitch this unit" launch (single anchor);
+  // the Units step lets the agent add up to MAX_PICKED_UNITS more per project.
+  const pickedUnits: Record<number, number[]> = {};
   if (anchorUnit != null && anchorUnit.unitId != null) {
-    anchorUnits[anchorUnit.projectId] = anchorUnit.unitId;
+    pickedUnits[anchorUnit.projectId] = [anchorUnit.unitId];
   }
   return {
     step: 0,
     projectIds: ids,
-    anchorUnits,
+    pickedUnits,
     // Pre-attached when the Studio was launched "for this client" from a Person
     // record — the agent skips the client-search step and every pitch is addressed
     // to them. Falls back to null (normal in-Studio flow: pick a client in step 2).
@@ -78,18 +86,35 @@ export function removeProject(
   s: PitchWizardState,
   id: number,
 ): PitchWizardState {
-  const anchorUnits = { ...s.anchorUnits };
-  delete anchorUnits[id];
+  const pickedUnits = { ...s.pickedUnits };
+  delete pickedUnits[id];
   return {
     ...s,
     projectIds: s.projectIds.filter((p) => p !== id),
-    anchorUnits,
+    pickedUnits,
   };
 }
 
+// Toggle a unit in a project's picks — cap at MAX_PICKED_UNITS; re-ticking removes it.
+export function toggleUnit(
+  s: PitchWizardState,
+  projectId: number,
+  unitId: number,
+): PitchWizardState {
+  const current = s.pickedUnits[projectId] ?? [];
+  const has = current.includes(unitId);
+  const next = has
+    ? current.filter((u) => u !== unitId)
+    : current.length >= MAX_PICKED_UNITS
+      ? current
+      : [...current, unitId];
+  return { ...s, pickedUnits: { ...s.pickedUnits, [projectId]: next } };
+}
+
 export function canProceed(s: PitchWizardState): boolean {
-  if (s.step === 0) return s.projectIds.length > 0;
-  if (s.step === 1) return s.client != null || s.clientSkipped;
+  if (s.step === 0) return s.projectIds.length > 0; // Selection
+  if (s.step === 1) return true; // Units — skippable (overview-only is valid)
+  if (s.step === 2) return s.client != null || s.clientSkipped; // Client
   return true;
 }
 

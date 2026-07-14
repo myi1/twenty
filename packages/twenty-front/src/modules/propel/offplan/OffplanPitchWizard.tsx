@@ -6,6 +6,7 @@ import {
   Box,
   Button,
   Card,
+  Checkbox,
   Chip,
   Group,
   Loader,
@@ -29,6 +30,7 @@ import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import { formatAed } from '@/propel/lib/formatMoney';
 import { OffplanHeroImage } from './OffplanHeroImage';
 import {
+  MAX_PICKED_UNITS,
   WA_MESSAGE_MAX,
   WIZARD_STEPS,
   canProceed,
@@ -39,11 +41,14 @@ import {
   nextStep,
   prevStep,
   removeProject,
+  toggleUnit,
   type PitchLinkPair,
   type PitchWizardState,
 } from './pitchWizard';
 import type {
   OffplanMapPoint,
+  OffplanSearchResult,
+  OffplanUnit,
   PitchClient,
   PitchGenerated,
   PitchSections,
@@ -199,6 +204,29 @@ export function OffplanPitchWizard({
   );
   const [maxReached, setMaxReached] = useState(0);
 
+  // Units step — available units per selected project (lazy) + a shared beds filter.
+  const [unitsByProject, setUnitsByProject] = useState<Record<number, { status: 'loading' | 'ready' | 'error'; units?: OffplanUnit[] }>>({});
+  const [bedsFilter, setBedsFilter] = useState<string>('all');
+  useEffect(() => {
+    if (state.step !== 1) return; // fetch only while the Units step is open
+    let alive = true;
+    for (const id of state.projectIds) {
+      if (unitsByProject[id]) continue; // already loading / loaded
+      setUnitsByProject((m) => ({ ...m, [id]: { status: 'loading' } }));
+      void (async () => {
+        const res = await callPropelRoute<{ ok?: boolean; data?: OffplanSearchResult }>(
+          '/offplan/browse',
+          { action: 'search', params: { projectExternalId: id, limit: 100 } },
+        );
+        if (!alive) return;
+        const units = res?.ok ? res.data?.units ?? [] : undefined;
+        setUnitsByProject((m) => ({ ...m, [id]: units ? { status: 'ready', units } : { status: 'error' } }));
+      })();
+    }
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.step, state.projectIds]);
+
   // client search
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
@@ -306,7 +334,7 @@ export function OffplanPitchWizard({
 
   // ── Generation (runs once on entering the Send step) ──────────────────────
   useEffect(() => {
-    if (state.step !== 4 || genStartedRef.current) return;
+    if (state.step !== 5 || genStartedRef.current) return;
     genStartedRef.current = true;
     let alive = true;
     (async () => {
@@ -325,7 +353,7 @@ export function OffplanPitchWizard({
           error?: string;
         }>('/offplan/pitch-generate', {
           projectExternalId: id,
-          unitExternalId: state.anchorUnits[id],
+          unitExternalIds: state.pickedUnits[id] ?? [],
           clientName: state.client?.name,
           note: state.coverNote || undefined,
           personId: state.client?.id,
@@ -458,9 +486,9 @@ export function OffplanPitchWizard({
                       </Box>
                     </Group>
                     <Group gap="xs" wrap="nowrap">
-                      {state.anchorUnits[p.externalId] != null && (
+                      {(state.pickedUnits[p.externalId]?.length ?? 0) > 0 && (
                         <Badge variant="light" color="yellow" size="sm">
-                          Unit #{state.anchorUnits[p.externalId]}
+                          {state.pickedUnits[p.externalId].length} unit{state.pickedUnits[p.externalId].length === 1 ? '' : 's'}
                         </Badge>
                       )}
                       <Button
@@ -880,7 +908,90 @@ export function OffplanPitchWizard({
     );
   };
 
-  const bodies = [renderSelection, renderClient, renderPresentation, renderReview, renderSend];
+  // Bedroom bucket from a layout name ("Studio" → 0), for the Units-step filter.
+  const bedsOf = (u: OffplanUnit): string => {
+    if (/studio/i.test(u.layoutName)) return '0';
+    const m = u.layoutName.match(/(\d+)/);
+    return m ? m[1] : '?';
+  };
+
+  const renderUnits = () => (
+    <Stack gap="md">
+      <Box>
+        <Text fw={700}>Pick units to feature</Text>
+        <Text size="xs" c="dimmed">
+          Tick up to {MAX_PICKED_UNITS} units per project — each gets its own page with floor plan
+          + payment schedule. Skip to send an overview-only pitch.
+        </Text>
+      </Box>
+      <Chip.Group multiple={false} value={bedsFilter} onChange={(v) => setBedsFilter(typeof v === 'string' ? v : 'all')}>
+        <Group gap={6}>
+          {([['all', 'All'], ['0', 'Studio'], ['1', '1 BR'], ['2', '2 BR'], ['3', '3 BR+']] as const).map(([v, label]) => (
+            <Chip key={v} value={v} size="xs" variant="light">{label}</Chip>
+          ))}
+        </Group>
+      </Chip.Group>
+      {state.projectIds.map((id) => {
+        const point = byId.get(id);
+        const entry = unitsByProject[id];
+        const picked = state.pickedUnits[id] ?? [];
+        const filtered = [...(entry?.units ?? [])]
+          .filter((u) => bedsFilter === 'all' || (bedsFilter === '3' ? Number(bedsOf(u)) >= 3 : bedsOf(u) === bedsFilter))
+          .sort((a, b) => a.price - b.price);
+        return (
+          <Card key={id} withBorder padding="sm" radius="md">
+            <Group justify="space-between" mb={6}>
+              <Text fw={600} size="sm" lineClamp={1}>{point?.name ?? `Project ${id}`}</Text>
+              <Badge variant={picked.length ? 'filled' : 'light'} color={picked.length ? 'yellow' : 'gray'} size="sm">
+                {picked.length} of {MAX_PICKED_UNITS}
+              </Badge>
+            </Group>
+            {entry?.status === 'loading' && (
+              <Group gap={8}><Loader size={14} /><Text size="xs" c="dimmed">Loading units…</Text></Group>
+            )}
+            {entry?.status === 'error' && (
+              <Text size="xs" c="red">Couldn’t load units — this project will send overview-only.</Text>
+            )}
+            {entry?.status === 'ready' && filtered.length === 0 && (
+              <Text size="xs" c="dimmed">No matching units.</Text>
+            )}
+            {entry?.status === 'ready' && filtered.length > 0 && (
+              <Stack gap={4}>
+                {filtered.map((u) => {
+                  const on = picked.includes(u.externalId);
+                  const atCap = picked.length >= MAX_PICKED_UNITS && !on;
+                  return (
+                    <Group
+                      key={u.externalId}
+                      wrap="nowrap"
+                      gap="sm"
+                      justify="space-between"
+                      style={{ opacity: atCap ? 0.45 : 1, cursor: atCap ? 'not-allowed' : 'pointer' }}
+                      onClick={() => { if (!atCap) setState((s) => toggleUnit(s, id, u.externalId)); }}
+                    >
+                      <Group wrap="nowrap" gap="sm" style={{ minWidth: 0 }}>
+                        <Checkbox checked={on} readOnly tabIndex={-1} size="sm" />
+                        <Box style={{ minWidth: 0 }}>
+                          <Text size="sm" fw={500} lineClamp={1}>{u.layoutName}{u.number ? ` · ${u.number}` : ''}</Text>
+                          <Text size="xs" c="dimmed" lineClamp={1}>
+                            {Math.round(u.squareFt)} sqft{u.floor ? ` · Floor ${u.floor}` : ''}
+                          </Text>
+                        </Box>
+                      </Group>
+                      <Text size="sm" fw={600} style={{ whiteSpace: 'nowrap' }}>{aed(u.price)}</Text>
+                    </Group>
+                  );
+                })}
+              </Stack>
+            )}
+          </Card>
+        );
+      })}
+      {state.projectIds.length === 0 && <Text c="dimmed" size="sm">No projects selected.</Text>}
+    </Stack>
+  );
+
+  const bodies = [renderSelection, renderUnits, renderClient, renderPresentation, renderReview, renderSend];
   const meta = `${state.projectIds.length} project${state.projectIds.length === 1 ? '' : 's'}${
     state.client ? ` · ${state.client.name}` : state.clientSkipped ? ' · no client' : ''
   }`;
@@ -899,7 +1010,7 @@ export function OffplanPitchWizard({
           maxReached={maxReached}
           locked={locked}
           onGoto={(n) => {
-            if (locked && n < 4) return; // one-way door after generation
+            if (locked && n < 5) return; // one-way door after generation (Send = step 5)
             setState((s) => gotoStep(s, n));
           }}
           meta={meta}
@@ -923,13 +1034,13 @@ export function OffplanPitchWizard({
             >
               ← Back
             </Button>
-            {state.step < 4 ? (
+            {state.step < 5 ? (
               <Button
                 color="red"
                 disabled={!canProceed(state)}
                 onClick={() => advance(nextStep(state))}
               >
-                {state.step === 3
+                {state.step === 4
                   ? `Generate ${state.projectIds.length} PDF${
                       state.projectIds.length === 1 ? '' : 's'
                     } →`

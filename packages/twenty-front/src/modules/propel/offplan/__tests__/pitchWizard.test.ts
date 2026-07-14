@@ -1,4 +1,5 @@
 import {
+  MAX_PICKED_UNITS,
   WIZARD_STEPS,
   canProceed,
   defaultWaMessage,
@@ -8,6 +9,7 @@ import {
   nextStep,
   prevStep,
   removeProject,
+  toggleUnit,
 } from '../pitchWizard';
 
 describe('initWizard', () => {
@@ -37,27 +39,42 @@ describe('initWizard', () => {
     });
   });
 
-  it('records the anchor unit when provided', () => {
+  it('seeds picked units from a drawer anchor', () => {
     const s = initWizard([7, 9], { projectId: 7, unitId: 42 });
-    expect(s.anchorUnits[7]).toBe(42);
-    expect(s.anchorUnits[9]).toBeUndefined();
+    expect(s.pickedUnits[7]).toEqual([42]);
+    expect(s.pickedUnits[9]).toBeUndefined();
   });
 
   it('ignores an anchor without a unitId', () => {
     const s = initWizard([7], { projectId: 7 });
-    expect(s.anchorUnits[7]).toBeUndefined();
+    expect(s.pickedUnits[7]).toBeUndefined();
+  });
+});
+
+describe('toggleUnit', () => {
+  it('adds, removes, and caps at MAX_PICKED_UNITS', () => {
+    let s = initWizard([7]);
+    s = toggleUnit(s, 7, 1);
+    s = toggleUnit(s, 7, 2);
+    expect(s.pickedUnits[7]).toEqual([1, 2]);
+    s = toggleUnit(s, 7, 1); // re-tick removes
+    expect(s.pickedUnits[7]).toEqual([2]);
+    // fill past the cap → extra picks are ignored
+    for (const u of [10, 11, 12, 13, 14]) s = toggleUnit(s, 7, u);
+    expect(s.pickedUnits[7]).toHaveLength(MAX_PICKED_UNITS);
+    expect(s.pickedUnits[7]).toEqual([2, 10, 11, 12]);
   });
 });
 
 describe('removeProject', () => {
-  it('removes the project and clears its anchor', () => {
+  it('removes the project and clears its picks', () => {
     const s = initWizard([7, 9], { projectId: 7, unitId: 42 });
     const next = removeProject(s, 7);
     expect(next.projectIds).toEqual([9]);
-    expect(next.anchorUnits[7]).toBeUndefined();
+    expect(next.pickedUnits[7]).toBeUndefined();
     // untouched original (pure)
     expect(s.projectIds).toEqual([7, 9]);
-    expect(s.anchorUnits[7]).toBe(42);
+    expect(s.pickedUnits[7]).toEqual([42]);
   });
 
   it('an emptied selection blocks proceeding from step 0', () => {
@@ -73,8 +90,12 @@ describe('canProceed', () => {
     expect(canProceed(initWizard([7]))).toBe(true);
   });
 
-  it('gates step 1 on client picked OR explicitly skipped', () => {
-    const s = { ...initWizard([7]), step: 1 };
+  it('never blocks the Units step (1) — it is skippable', () => {
+    expect(canProceed({ ...initWizard([7]), step: 1 })).toBe(true);
+  });
+
+  it('gates the Client step (2) on client picked OR explicitly skipped', () => {
+    const s = { ...initWizard([7]), step: 2 };
     expect(canProceed(s)).toBe(false);
     expect(
       canProceed({
@@ -85,9 +106,9 @@ describe('canProceed', () => {
     expect(canProceed({ ...s, clientSkipped: true })).toBe(true);
   });
 
-  it('always allows steps 2..4', () => {
+  it('always allows steps 3..5', () => {
     const s = initWizard([7]);
-    for (const step of [2, 3, 4]) {
+    for (const step of [3, 4, 5]) {
       expect(canProceed({ ...s, step })).toBe(true);
     }
   });
@@ -110,7 +131,7 @@ describe('step navigation', () => {
   it('gotoStep clamps out-of-range targets', () => {
     const s = initWizard([7]);
     expect(gotoStep(s, -3).step).toBe(0);
-    expect(gotoStep(s, 99).step).toBe(4);
+    expect(gotoStep(s, 99).step).toBe(WIZARD_STEPS.length - 1);
     expect(gotoStep(s, 2).step).toBe(2);
   });
 });
