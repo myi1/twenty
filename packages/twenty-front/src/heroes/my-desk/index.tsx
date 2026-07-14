@@ -33,10 +33,10 @@ import { KeyGlyph, ReidinDrawer } from './ReidinDrawer';
 import { railRowsFrom } from './railRows';
 import { RightRail } from './RightRail';
 import {
-  DeskBody,
-  MyDeskNocturne,
-  TopBarActions,
-  TopBarRow,
+  StyledDeskBody,
+  StyledMyDeskNocturne,
+  StyledTopBarActions,
+  StyledTopBarRow,
   useDeskStackedLayout,
 } from './responsive';
 import { TodayStrip, type StripFilter } from './TodayStrip';
@@ -492,7 +492,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
             </span>
           }
         />
-        <MyDeskNocturne
+        <StyledMyDeskNocturne
           data-testid="my-desk-root"
           style={{
             flex: 1,
@@ -502,7 +502,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
             overflowY: 'auto',
           }}
         >
-          <TopBarRow>
+          <StyledTopBarRow>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontFamily: FONT_UI, fontSize: 13, color: 'var(--p-ink-2)', marginTop: 2 }}>
                 {greeting.date} · {greeting.lead}
@@ -513,7 +513,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
                 ) : null}
               </div>
             </div>
-            <TopBarActions>
+            <StyledTopBarActions>
               <AskPipeline host={host} />
               <Btn
                 type="button"
@@ -552,8 +552,8 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
               >
                 + New lead
               </Btn>
-            </TopBarActions>
-          </TopBarRow>
+            </StyledTopBarActions>
+          </StyledTopBarRow>
           <BriefingCard />
           <TodayStrip
             boardStatus={boardStatus}
@@ -570,7 +570,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
               })
             }
           />
-          <DeskBody>
+          <StyledDeskBody>
             <BoardTable
               status={boardStatus}
               rows={boardRows}
@@ -609,7 +609,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
               }}
               forceExpanded={stackedLayout}
             />
-          </DeskBody>
+          </StyledDeskBody>
           {reidinOpen && <ReidinDrawer onClose={() => setReidinOpen(false)} />}
           {drawer && (() => {
             const row = resolveRow(drawer.rowId);
@@ -660,7 +660,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
               </div>
             );
           })()}
-        </MyDeskNocturne>
+        </StyledMyDeskNocturne>
       </PageContainer>
     </PropelMantineProvider>
   );

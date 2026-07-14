@@ -29,19 +29,19 @@ export const useDeskStackedLayout = (): boolean => {
   return stacked;
 };
 
-export const MyDeskNocturne = styled(PulseNocturne)`
+export const StyledMyDeskNocturne = styled(PulseNocturne)`
   html[data-mantine-color-scheme='light'] & {
     ${NOCTURNE_LIGHT_VARS}
   }
 `;
 
-export const TopBarRow = styled.div`
-  display: flex;
+export const StyledTopBarRow = styled.div`
   align-items: flex-end;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 22px 24px 18px;
   border-bottom: 1px solid var(--p-line);
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  padding: 22px 24px 18px;
 
   @media (max-width: ${DESK_STACK_BREAKPOINT_PX}px) {
     align-items: stretch;
@@ -54,11 +54,11 @@ export const TopBarRow = styled.div`
   }
 `;
 
-export const TopBarActions = styled.div`
-  display: flex;
+export const StyledTopBarActions = styled.div`
   align-items: center;
-  gap: 12px;
+  display: flex;
   flex: none;
+  gap: 12px;
 
   @media (max-width: ${DESK_STACK_BREAKPOINT_PX}px) {
     flex-wrap: wrap;
@@ -66,8 +66,8 @@ export const TopBarActions = styled.div`
 
   @media (max-width: ${DESK_PHONE_BREAKPOINT_PX}px) {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
 
     > * {
@@ -78,19 +78,19 @@ export const TopBarActions = styled.div`
   }
 `;
 
-export const TodayStripGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1px;
+export const StyledTodayStripGrid = styled.div`
   background: var(--p-line);
   border-bottom: 1px solid var(--p-line);
+  display: grid;
+  gap: 1px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 
   @media (max-width: ${DESK_STACK_BREAKPOINT_PX}px) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 `;
 
-export const DeskBody = styled.div`
+export const StyledDeskBody = styled.div`
   display: flex;
   flex: 1;
   min-height: 0;

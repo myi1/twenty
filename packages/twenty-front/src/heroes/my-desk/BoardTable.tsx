@@ -338,19 +338,19 @@ const VtoggleBtn = styled.button<{ $on: boolean }>`
   svg { width: 12px; height: 12px; }
 `;
 
-const BoardShell = styled.div`
+const StyledBoardShell = styled.div`
+  border-right: 1px solid var(--p-line);
   display: flex;
   flex: 1;
   flex-direction: column;
   min-width: 0;
-  border-right: 1px solid var(--p-line);
   overflow-y: auto;
   @media (max-width: ${DESK_STACK_BREAKPOINT_PX}px) {
-    flex: none;
-    width: 100%;
-    overflow-y: visible;
-    border-right: 0;
     border-bottom: 1px solid var(--p-line);
+    border-right: 0;
+    flex: none;
+    overflow-y: visible;
+    width: 100%;
   }
 `;
 
@@ -625,7 +625,7 @@ export const BoardTable = ({
   };
 
   return (
-    <BoardShell>
+    <StyledBoardShell>
       <div
         style={{
           display: 'flex',
@@ -1118,6 +1118,6 @@ export const BoardTable = ({
       )}
 
       <Tooltip tooltip={tooltip} />
-    </BoardShell>
+    </StyledBoardShell>
   );
 };

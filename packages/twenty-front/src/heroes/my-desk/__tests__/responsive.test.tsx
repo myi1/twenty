@@ -1,10 +1,10 @@
 import { act, render } from '@testing-library/react';
 
 import {
-  DeskBody,
-  MyDeskNocturne,
-  TodayStripGrid,
-  TopBarActions,
+  StyledDeskBody,
+  StyledMyDeskNocturne,
+  StyledTodayStripGrid,
+  StyledTopBarActions,
   useDeskStackedLayout,
 } from '../responsive';
 
@@ -22,7 +22,7 @@ const rulesFor = (element: Element): string => {
 
 it('bridges only My Desk to the host light-theme token ledger', () => {
   const { getByTestId } = render(
-    <MyDeskNocturne data-testid="desk-theme">Desk</MyDeskNocturne>,
+    <StyledMyDeskNocturne data-testid="desk-theme">Desk</StyledMyDeskNocturne>,
   );
   const rules = rulesFor(getByTestId('desk-theme')).toLowerCase();
 
@@ -34,9 +34,9 @@ it('bridges only My Desk to the host light-theme token ledger', () => {
 it('declares stacked body, two-column KPIs, and wrapped phone actions', () => {
   const { getByTestId } = render(
     <>
-      <DeskBody data-testid="body" />
-      <TodayStripGrid data-testid="strip" />
-      <TopBarActions data-testid="actions" />
+      <StyledDeskBody data-testid="body" />
+      <StyledTodayStripGrid data-testid="strip" />
+      <StyledTopBarActions data-testid="actions" />
     </>,
   );
 
