@@ -338,6 +338,24 @@ export function OffplanPitchWizard({
             ...r,
             [id]: { status: 'done', url: res.url, filename: res.filename },
           }));
+          // Phase 2 — record the client↔project interest as queryable pipeline.
+          // Fire-and-forget + non-fatal: the pitch already succeeded; a failed
+          // side-record must never surface as a pitch error. Idempotent server-side
+          // on (contact, projectId), so a re-pitch just bumps status/lastTouch.
+          if (state.client?.id) {
+            const pt = byId.get(id);
+            void callPropelRoute('/offplan/assist', {
+              action: 'saveInterest',
+              personId: state.client.id,
+              projectId: String(id),
+              projectName: pt?.name ?? `Project ${id}`,
+              clientName: state.client.name,
+              developer: state.hideDeveloper ? undefined : pt?.developerName ?? undefined,
+              priceFrom: pt?.priceFromAed ?? undefined,
+              status: 'PITCHED',
+              source: 'PITCH',
+            }).catch(() => {});
+          }
         } else {
           setGenRows((r) => ({
             ...r,
