@@ -182,16 +182,20 @@ type GenRow = {
 export function OffplanPitchWizard({
   initialProjectIds,
   initialAnchor,
+  initialClient,
   byId,
   onClose,
 }: {
   initialProjectIds: number[];
   initialAnchor?: { projectId: number; unitId?: number };
+  // Pre-attached client when the Studio was launched "for this client" from a
+  // Person record — the wizard opens with the client already selected.
+  initialClient?: PitchClient | null;
   byId: Map<number, OffplanMapPoint>;
   onClose: () => void;
 }) {
   const [state, setState] = useState<PitchWizardState>(() =>
-    initWizard(initialProjectIds, initialAnchor),
+    initWizard(initialProjectIds, initialAnchor, initialClient),
   );
   const [maxReached, setMaxReached] = useState(0);
 

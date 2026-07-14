@@ -34,6 +34,7 @@ export type PitchWizardState = {
 export function initWizard(
   projectIds: number[],
   anchorUnit?: { projectId: number; unitId?: number },
+  initialClient?: PitchClient | null,
 ): PitchWizardState {
   const ids: number[] = [];
   for (const id of projectIds) {
@@ -47,7 +48,10 @@ export function initWizard(
     step: 0,
     projectIds: ids,
     anchorUnits,
-    client: null,
+    // Pre-attached when the Studio was launched "for this client" from a Person
+    // record — the agent skips the client-search step and every pitch is addressed
+    // to them. Falls back to null (normal in-Studio flow: pick a client in step 2).
+    client: initialClient ?? null,
     clientSkipped: false,
     theme: 'nocturne',
     language: 'English',

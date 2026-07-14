@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Box, LoadingOverlay, Text } from '@mantine/core';
 import { IconMap } from 'twenty-ui/display';
 import { PropelMantineProvider } from '@/propel/components/PropelMantineProvider';
+import { callPropelRoute } from '@/propel/lib/callPropelRoute';
+import type { PitchClient } from '@/propel/offplan/types';
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { useOffplanBrowse } from '@/propel/offplan/useOffplanBrowse';
@@ -14,7 +16,7 @@ import { OffplanDeveloperDrawer } from '@/propel/offplan/OffplanDeveloperDrawer'
 import { OffplanShortlistTray } from '@/propel/offplan/OffplanShortlistTray';
 import { OffplanPitchWizard } from '@/propel/offplan/OffplanPitchWizard';
 
-export const OffplanStudioPage = () => {
+export const OffplanStudioPage = ({ clientId }: { clientId?: string }) => {
   const b = useOffplanBrowse();
   const sl = useOffplanShortlist();
   const [wizard, setWizard] = useState<{
@@ -22,6 +24,30 @@ export const OffplanStudioPage = () => {
     anchor?: { projectId: number; unitId?: number };
   } | null>(null);
   const [selectedDeveloperSlug, setSelectedDeveloperSlug] = useState<string | null>(null);
+
+  // "Find off-plan for this client" entry point: the Studio was opened from a Person
+  // record with only the opaque person id in the URL (?client=<uuid>). Resolve the
+  // client (name + phone) server-side once, then pre-attach it to every pitch built
+  // this session — so the agent never re-searches the client in the wizard. A failed
+  // lookup just leaves the normal in-Studio flow intact (pick a client in step 2).
+  const [client, setClient] = useState<PitchClient | null>(null);
+  useEffect(() => {
+    if (!clientId) return;
+    let cancelled = false;
+    void callPropelRoute<{ ok?: boolean; person?: PitchClient }>(
+      '/offplan/assist',
+      { action: 'personById', personId: clientId },
+    )
+      .then((res) => {
+        if (!cancelled && res?.ok && res.person) setClient(res.person);
+      })
+      .catch(() => {
+        /* non-fatal: fall back to the normal client-search step */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId]);
 
   // Gold-ring a district bubble when any of its projects is shortlisted.
   const favoritedDistrictIds = useMemo(() => {
@@ -36,7 +62,10 @@ export const OffplanStudioPage = () => {
   return (
     <PropelMantineProvider>
       <PageContainer style={{ flex: 1, minHeight: 0 }}>
-        <PageHeader title="Off-Plan Studio" Icon={IconMap} />
+        <PageHeader
+          title={client ? `Off-Plan Studio — for ${client.name}` : 'Off-Plan Studio'}
+          Icon={IconMap}
+        />
         <Box style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
           <OffplanFilters points={b.points} filters={b.filters}
             onChange={(patch) => b.setFilters((f) => ({ ...f, ...patch }))}
@@ -88,7 +117,7 @@ export const OffplanStudioPage = () => {
         )}
         {wizard && (
           <OffplanPitchWizard initialProjectIds={wizard.ids} initialAnchor={wizard.anchor}
-            byId={b.byId} onClose={() => setWizard(null)} />
+            initialClient={client} byId={b.byId} onClose={() => setWizard(null)} />
         )}
       </PageContainer>
     </PropelMantineProvider>
