@@ -20,6 +20,7 @@ import { FONT_MONO, FONT_UI, P } from '../_pulse/pulse';
 
 import { bandOf } from './banding';
 import { formatClock } from './format';
+import { TodayStripGrid } from './responsive';
 import { SkeletonBar } from './shared';
 import type { DeskRailOk, DeskRow } from './types';
 
@@ -161,15 +162,7 @@ export const TodayStrip = ({
   ];
 
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(4, 1fr)',
-        gap: 1,
-        background: 'var(--p-line)',
-        borderBottom: '1px solid var(--p-line)',
-      }}
-    >
+    <TodayStripGrid>
       {tiles.map((tile) => {
         const active = activeFilter === tile.key;
         const showPulse = Boolean(tile.urgent) && tile.status === 'ready' && (tile.figure ?? 0) > 0;
@@ -242,6 +235,6 @@ export const TodayStrip = ({
           </TileButton>
         );
       })}
-    </div>
+    </TodayStripGrid>
   );
 };

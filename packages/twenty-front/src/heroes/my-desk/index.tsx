@@ -16,14 +16,13 @@
 // Reads use the shared route wrapper; host supplies navigation, dialer and toasts.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import styled from '@emotion/styled';
 import { IconLayoutDashboard } from 'twenty-ui/display';
 import { PropelMantineProvider } from '@/propel/components/PropelMantineProvider';
 import { PageContainer } from '@/ui/layout/page/components/PageContainer';
 import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { type PropelHeroHost } from '@/propel/runtime/heroHost';
 
-import { Btn, FONT_DISPLAY, FONT_UI, PulseFonts, PulseNocturne } from '../_pulse/pulse';
+import { Btn, FONT_DISPLAY, FONT_UI, PulseFonts } from '../_pulse/pulse';
 
 import { AskPipeline } from './AskPipeline';
 import { createBoardLoadCoordinator } from './boardLoad';
@@ -33,6 +32,13 @@ import { deskRecordPath, PeekDrawer, type DrawerMode } from './PeekDrawer';
 import { KeyGlyph, ReidinDrawer } from './ReidinDrawer';
 import { railRowsFrom } from './railRows';
 import { RightRail } from './RightRail';
+import {
+  DeskBody,
+  MyDeskNocturne,
+  TopBarActions,
+  TopBarRow,
+  useDeskStackedLayout,
+} from './responsive';
 import { TodayStrip, type StripFilter } from './TodayStrip';
 import { fetchBoard, fetchRail, fetchTimeline, runDeskAction } from './deskApi';
 import { StagePicker, type StagePickerAnchor } from './StagePicker';
@@ -108,23 +114,6 @@ const buildGreeting = (nowMs: number, firstName: string | null): { date: string;
   };
 };
 
-// Header row above the Today Strip (mockup .topbar, L853–862). space-between so
-// the greeting sits left and the actions right, right-aligned to a normal 24px
-// edge margin. (The old 172px right reserve guarded the *mockup's* dark/light
-// toggle — a mockup-only element; the real Twenty shell has no floating toggle
-// there, so the corner is clear and the buttons right-align cleanly.)
-const TopBarRow = styled.div`
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 22px 24px 18px 24px;
-  border-bottom: 1px solid var(--p-line);
-  @media (max-width: 720px) {
-    flex-wrap: wrap;
-  }
-`;
-
 export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
   const [boardStatus, setBoardStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [boardRows, setBoardRows] = useState<DeskRow[]>([]);
@@ -177,6 +166,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
   // actingMemberName, resolved server-side from the acting member). We greet
   // name-lessly until it lands and if it's ever absent — never a hardcoded name.
   const greeting = buildGreeting(nowMs, firstName);
+  const stackedLayout = useDeskStackedLayout();
   // The Today Strip's active filter tile, ANDed against BoardTable's own
   // lane/going-cold chip filter — set by TodayStrip, consumed by BoardTable.
   // Seeded from the persisted blob (one of the two remembered filter chips).
@@ -502,7 +492,8 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
             </span>
           }
         />
-        <PulseNocturne
+        <MyDeskNocturne
+          data-testid="my-desk-root"
           style={{
             flex: 1,
             minHeight: 0,
@@ -522,7 +513,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
                 ) : null}
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 'none' }}>
+            <TopBarActions>
               <AskPipeline host={host} />
               <Btn
                 type="button"
@@ -561,7 +552,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
               >
                 + New lead
               </Btn>
-            </div>
+            </TopBarActions>
           </TopBarRow>
           <BriefingCard />
           <TodayStrip
@@ -579,7 +570,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
               })
             }
           />
-          <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+          <DeskBody>
             <BoardTable
               status={boardStatus}
               rows={boardRows}
@@ -616,8 +607,9 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
                 setRailArrangement(next);
                 persist({ order: next.order, folds: next.folds, collapsed: next.collapsed });
               }}
+              forceExpanded={stackedLayout}
             />
-          </div>
+          </DeskBody>
           {reidinOpen && <ReidinDrawer onClose={() => setReidinOpen(false)} />}
           {drawer && (() => {
             const row = resolveRow(drawer.rowId);
@@ -668,7 +660,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
               </div>
             );
           })()}
-        </PulseNocturne>
+        </MyDeskNocturne>
       </PageContainer>
     </PropelMantineProvider>
   );
