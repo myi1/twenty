@@ -45,7 +45,7 @@ function areasToGeoJSON(areas: OffplanMapArea[]): FeatureCollection {
 const TILE_BASE =
   (window as any)._env_?.REACT_APP_PROPEL_TILE_BASE ??
   (window as any).__propelConfig?.tileBase ??
-  'http://localhost:3006/tiles';
+  '/tiles';
 const REMAX_RED = '#dc1c2e';
 const GOLD = '#d4af37';
 
