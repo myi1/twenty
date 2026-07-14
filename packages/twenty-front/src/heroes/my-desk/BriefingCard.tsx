@@ -15,6 +15,7 @@ import { DUR, EASE } from '../_pulse/pulse-tokens';
 import { FONT_MONO, FONT_UI } from '../_pulse/pulse';
 
 import { assistBriefing, writeBriefingDisposition } from './deskApi';
+import { DESK_PHONE_BREAKPOINT_PX } from './responsive';
 import type { DeskBriefingItem } from './types';
 
 const Card = styled.div`
@@ -95,6 +96,10 @@ const ActionButton = styled.button`
   background: var(--p-surface-3, var(--p-surface-2));
   color: var(--p-ink-2);
   cursor: pointer;
+  @media (max-width: ${DESK_PHONE_BREAKPOINT_PX}px) {
+    width: 40px;
+    height: 40px;
+  }
   @media (prefers-reduced-motion: no-preference) {
     transition:
       color ${DUR.press}ms ${EASE.out},
@@ -127,6 +132,9 @@ const SnoozeMenu = styled.div`
   border-radius: 8px;
   background: var(--p-surface-1);
   box-shadow: 0 12px 28px rgb(0 0 0 / 22%);
+  @media (max-width: ${DESK_PHONE_BREAKPOINT_PX}px) {
+    top: 46px;
+  }
 `;
 
 const SnoozeOption = styled.button`

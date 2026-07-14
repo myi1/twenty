@@ -56,6 +56,17 @@ it('renders an accessible section with visible circular controls for each task a
     name: `Dismiss ${A.line}`,
   });
   const snoozeB = screen.getByRole('button', { name: `Snooze ${B.line}` });
+  const className = [...snoozeB.classList].find((value) =>
+    value.startsWith('css-'),
+  );
+  const responsiveRule = [...document.styleSheets]
+    .flatMap((sheet) => [...sheet.cssRules])
+    .map((rule) => rule.cssText)
+    .find(
+      (rule) =>
+        rule.includes('max-width: 720px') &&
+        (className ? rule.includes(`.${className}`) : false),
+    );
   expect(section).toBeVisible();
   expect(dismissA).toBeVisible();
   expect(snoozeB).toBeVisible();
@@ -65,6 +76,8 @@ it('renders an accessible section with visible circular controls for each task a
     boxSizing: 'border-box',
   });
   expect(snoozeB).toHaveStyle({ borderRadius: '50%' });
+  expect(responsiveRule).toContain('width: 40px');
+  expect(responsiveRule).toContain('height: 40px');
   expect(
     screen.queryByRole('button', { name: 'Dismiss the briefing' }),
   ).not.toBeInTheDocument();
