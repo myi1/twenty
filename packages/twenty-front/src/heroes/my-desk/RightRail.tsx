@@ -575,7 +575,7 @@ export const RightRail = ({
 
   const order = arrangement.order;
   const folds = arrangement.folds;
-  const collapsed = arrangement.collapsed && !forceExpanded;
+  const effectiveCollapsed = arrangement.collapsed && !forceExpanded;
 
   const [hoverHeadId, setHoverHeadId] = useState<RailPanelId | null>(null);
   const [hoverItemId, setHoverItemId] = useState<string | null>(null);
@@ -588,10 +588,10 @@ export const RightRail = ({
   const skipFoldRef = useRef(false);
 
   const emit = (patch: Partial<RailArrangement>) =>
-    onArrangementChange({ order, folds, collapsed, ...patch });
+    onArrangementChange({ order, folds, collapsed: arrangement.collapsed, ...patch });
 
   const toggleFold = (id: RailPanelId) => emit({ folds: { ...folds, [id]: !folds[id] } });
-  const toggleCollapse = () => emit({ collapsed: !collapsed });
+  const toggleCollapse = () => emit({ collapsed: !arrangement.collapsed });
 
   const reorder = (dragId: RailPanelId, targetId: RailPanelId, before: boolean) => {
     const next = order.filter((id) => id !== dragId);
@@ -761,7 +761,7 @@ export const RightRail = ({
   };
 
   // ── Collapsed: the slim count strip ──────────────────────────────────────────
-  if (collapsed) {
+  if (effectiveCollapsed) {
     return (
       <Aside $collapsed>
         <RailToggle
@@ -868,18 +868,19 @@ export const RightRail = ({
                 }}
               >
                 <PhTitle>
-                  <Grip
-                    $show={!forceExpanded && (hoverHeadId === id || dragEnabledId === id)}
-                    title="Drag to reorder"
-                    onMouseDown={() => {
-                      if (forceExpanded) return;
-                      skipFoldRef.current = true;
-                      setDragEnabledId(id);
-                    }}
-                    onMouseUp={() => setDragEnabledId(null)}
-                  >
-                    <GripDots />
-                  </Grip>
+                  {!forceExpanded && (
+                    <Grip
+                      $show={hoverHeadId === id || dragEnabledId === id}
+                      title="Drag to reorder"
+                      onMouseDown={() => {
+                        skipFoldRef.current = true;
+                        setDragEnabledId(id);
+                      }}
+                      onMouseUp={() => setDragEnabledId(null)}
+                    >
+                      <GripDots />
+                    </Grip>
+                  )}
                   <span
                     style={{
                       fontFamily: FONT_UI,
