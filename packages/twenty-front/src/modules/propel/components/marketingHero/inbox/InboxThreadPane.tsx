@@ -595,6 +595,11 @@ export const InboxThreadPane = ({
             onPendingFailed={markPendingFailed}
             onPendingSent={markPendingSent}
             onSent={() => setLocalReload((v) => v + 1)}
+            lineType={thread.lineType}
+            sessionWindowOpen={thread.sessionWindowOpen}
+            sessionWindowEndsAtMs={thread.sessionWindowEndsAtMs}
+            approvedTemplates={thread.approvedTemplates}
+            suggestedTemplate={thread.suggestedTemplate}
           />
         ) : (
           <Box

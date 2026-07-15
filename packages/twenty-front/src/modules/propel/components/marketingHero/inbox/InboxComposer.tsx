@@ -7,6 +7,7 @@ import {
   Group,
   Image,
   Progress,
+  Select,
   Stack,
   Text,
   Textarea,
@@ -59,6 +60,11 @@ export const InboxComposer = ({
   onPending,
   onPendingFailed,
   onPendingSent,
+  lineType,
+  sessionWindowOpen,
+  sessionWindowEndsAtMs,
+  suggestedTemplate,
+  approvedTemplates,
 }: {
   id: string;
   channel: InboxChannel;
@@ -77,6 +83,13 @@ export const InboxComposer = ({
   ) => string;
   onPendingFailed: (tempId: string) => void;
   onPendingSent: (tempId: string) => void;
+  // #83 — OFFICIAL-line + 24h window state (from the thread payload) so the composer
+  // renders the right mode up front instead of only after a failed send.
+  lineType?: 'EVERYDAY' | 'OFFICIAL';
+  sessionWindowOpen?: boolean;
+  sessionWindowEndsAtMs?: number | null;
+  suggestedTemplate?: { name: string; languageCode: string; preview: string } | null;
+  approvedTemplates?: { name: string; languageCode: string; preview: string }[];
 }) => {
   const notify = usePropelToast();
   // FB/IG DMs fall under Meta's 24-hour standard-messaging window; comments don't,
@@ -89,14 +102,28 @@ export const InboxComposer = ({
   // Sticky inline error shown ABOVE the composer when a send fails (a 24h-window /
   // COMPLIANCE_BLOCK rejection used to surface only as a missable snackbar).
   const [sendError, setSendError] = useState<string | null>(null);
-  // #83 — the re-engagement template offered when an OFFICIAL thread's 24h window
-  // has closed (the route blocks free-form and returns this suggestion).
+  // #83 — REACTIVE fallback: the re-engagement template returned by the route when a
+  // send is rejected because an OFFICIAL thread's 24h window closed BETWEEN load and
+  // send (the thread said open, the send came back windowClosed). The primary path is
+  // the PROACTIVE card below, driven by the thread payload at load.
   const [suggested, setSuggested] = useState<{
     name: string;
     languageCode: 'EN' | 'AR';
     preview: string;
   } | null>(null);
   const [sendingTemplate, setSendingTemplate] = useState(false);
+  // #83 — PROACTIVE window state, from the thread payload. When the OFFICIAL 24h window
+  // is already closed at load, the composer swaps the free-text box for a ready-to-send
+  // template card (no dead-end typing). `activeTemplate` is the picker choice, defaulting
+  // to the suggested re-engagement template.
+  const isOfficial = lineType === 'OFFICIAL';
+  const windowClosed = isOfficial && sessionWindowOpen === false;
+  const [pickedName, setPickedName] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const activeTemplate =
+    (pickedName ? (approvedTemplates ?? []).find((t) => t.name === pickedName) : null) ??
+    suggestedTemplate ??
+    null;
   const [aiBusy, setAiBusy] = useState<null | 'suggest' | 'improve'>(null);
   const aiInFlight = useRef(false);
   // Bumped on every user edit AND on send. runAi captures it at start and only
@@ -256,13 +283,16 @@ export const InboxComposer = ({
   // window closed). The route reads templateName + fills {{1}} with the contact's
   // first name; a success re-opens the conversation once the customer replies.
   const sendTemplate = useCallback(async () => {
-    if (!suggested || sendingTemplate) return;
+    // Proactive card (window closed at load) sends the picker/suggested template;
+    // the reactive fallback sends the route-returned `suggested`.
+    const templateToSend = windowClosed ? activeTemplate : suggested;
+    if (!templateToSend || sendingTemplate) return;
     setSendingTemplate(true);
     const res = await sendInboxReply({
       id,
       channel,
       body: '',
-      templateName: suggested.name,
+      templateName: templateToSend.name,
     }).catch(() => null);
     setSendingTemplate(false);
     const outcome = interpretSendResult(res);
@@ -271,10 +301,21 @@ export const InboxComposer = ({
       return;
     }
     setSuggested(null);
+    setPickerOpen(false);
+    setPickedName(null);
     setSendError(null);
-    notify('Re-engagement template sent.', 'success');
+    notify(windowClosed ? 'Template sent.' : 'Re-engagement template sent.', 'success');
     onSent();
-  }, [suggested, sendingTemplate, id, channel, notify, onSent]);
+  }, [
+    windowClosed,
+    activeTemplate,
+    suggested,
+    sendingTemplate,
+    id,
+    channel,
+    notify,
+    onSent,
+  ]);
 
   // Suggest (blank → draft) / Improve (draft → tighten). Both call the same authed
   // route and replace the textarea with the returned text — unless the agent
@@ -461,29 +502,45 @@ export const InboxComposer = ({
       }}
     >
       <Stack gap={9}>
-        {/* AI assist row — Suggest when blank, Improve when there's a draft */}
-        <Group gap={8} align="center" mih={30}>
-          <Button
-            size="compact-sm"
-            variant="light"
-            color="red"
-            leftSection={<IconSparkles size={15} />}
-            disabled={aiBusy !== null || sending}
-            loading={aiBusy !== null}
-            onClick={() => void runAi(hasDraft ? 'improve' : 'suggest')}
-          >
-            {hasDraft
-              ? aiBusy === 'improve'
-                ? 'Improving…'
-                : 'Improve with AI'
-              : aiBusy === 'suggest'
-                ? 'Suggesting…'
-                : 'Suggest with AI'}
-          </Button>
-          <Text size="xs" c="dimmed">
-            {aiBusy ? 'Thinking…' : hasDraft ? 'Tighten your draft' : 'Draft a reply for you'}
-          </Text>
-        </Group>
+        {/* #83 — OFFICIAL line + open window: a small countdown so the agent knows the
+            free-reply clock is ticking before it closes. */}
+        {isOfficial && !windowClosed && sessionWindowEndsAtMs ? (
+          <Group gap={6} wrap="nowrap">
+            <IconClock size={12} color="var(--mantine-color-green-7)" style={{ flex: 'none' }} />
+            <Text size="xs" c="green.7">
+              Official campaign line · reply window open
+              {sessionWindowEndsAtMs - Date.now() > 0
+                ? ` · ~${Math.max(1, Math.round((sessionWindowEndsAtMs - Date.now()) / 3600000))}h left`
+                : ''}
+            </Text>
+          </Group>
+        ) : null}
+        {/* AI assist row — Suggest when blank, Improve when there's a draft. Hidden when
+            the OFFICIAL 24h window is closed (the proactive template card takes over). */}
+        {!windowClosed ? (
+          <Group gap={8} align="center" mih={30}>
+            <Button
+              size="compact-sm"
+              variant="light"
+              color="red"
+              leftSection={<IconSparkles size={15} />}
+              disabled={aiBusy !== null || sending}
+              loading={aiBusy !== null}
+              onClick={() => void runAi(hasDraft ? 'improve' : 'suggest')}
+            >
+              {hasDraft
+                ? aiBusy === 'improve'
+                  ? 'Improving…'
+                  : 'Improve with AI'
+                : aiBusy === 'suggest'
+                  ? 'Suggesting…'
+                  : 'Suggest with AI'}
+            </Button>
+            <Text size="xs" c="dimmed">
+              {aiBusy ? 'Thinking…' : hasDraft ? 'Tighten your draft' : 'Draft a reply for you'}
+            </Text>
+          </Group>
+        ) : null}
 
         {/* Sticky inline send error — stays put (unlike the snackbar) so the agent
             actually sees why a reply didn't go out; the draft is restored alongside. */}
@@ -507,9 +564,10 @@ export const InboxComposer = ({
           </Group>
         ) : null}
 
-        {/* #83 — re-engagement offer: an OFFICIAL thread past its 24h window can't
-            send free-form, so offer the approved template in one click. */}
-        {suggested ? (
+        {/* #83 — REACTIVE re-engagement offer: shown ONLY when a send just failed with
+            windowClosed while the thread had loaded as open (the proactive card below
+            already covers the load-time closed case, so it's suppressed there). */}
+        {suggested && !windowClosed ? (
           <Stack
             gap={7}
             p="xs"
@@ -546,6 +604,73 @@ export const InboxComposer = ({
                 Send template
               </Button>
             </Group>
+          </Stack>
+        ) : null}
+
+        {/* #83 — PROACTIVE card: an OFFICIAL thread whose 24h window is already closed at
+            load shows the template card INSTEAD of a free-text box (no dead-end typing).
+            "Pick another template" opens a picker of all approved templates. */}
+        {windowClosed ? (
+          <Stack
+            gap={8}
+            p="sm"
+            style={{
+              border:
+                '1px solid color-mix(in oklch, var(--mantine-color-blue-6) 30%, transparent)',
+              background:
+                'color-mix(in oklch, var(--mantine-color-blue-6) 8%, transparent)',
+              borderRadius: 9,
+            }}
+          >
+            <Group gap={7} wrap="nowrap">
+              <IconClock size={16} color="var(--mantine-color-blue-6)" style={{ flex: 'none' }} />
+              <Text size="sm" fw={600} c="blue">
+                24-hour reply window closed — re-open with a template
+              </Text>
+            </Group>
+            {activeTemplate ? (
+              <>
+                <Text size="sm" c="dimmed" style={{ whiteSpace: 'pre-wrap' }}>
+                  {activeTemplate.preview}
+                </Text>
+                {pickerOpen ? (
+                  <Select
+                    size="xs"
+                    label="Template"
+                    data={(approvedTemplates ?? []).map((t) => ({ value: t.name, label: t.name }))}
+                    value={activeTemplate.name}
+                    onChange={(v) => v && setPickedName(v)}
+                    allowDeselect={false}
+                    comboboxProps={{ zIndex: 5000 }}
+                  />
+                ) : null}
+                <Group gap={8} justify="flex-end">
+                  {(approvedTemplates?.length ?? 0) > 1 && !pickerOpen ? (
+                    <Button
+                      size="xs"
+                      variant="subtle"
+                      color="gray"
+                      onClick={() => setPickerOpen(true)}
+                      disabled={sendingTemplate}
+                    >
+                      Pick another template
+                    </Button>
+                  ) : null}
+                  <Button
+                    size="xs"
+                    color="blue"
+                    onClick={() => void sendTemplate()}
+                    loading={sendingTemplate}
+                  >
+                    Send {activeTemplate.name === 'reengagement' ? 're-engagement' : activeTemplate.name}
+                  </Button>
+                </Group>
+              </>
+            ) : (
+              <Text size="xs" c="dimmed">
+                No approved template is available yet — they may still be in Meta review.
+              </Text>
+            )}
           </Stack>
         ) : null}
 
@@ -670,7 +795,8 @@ export const InboxComposer = ({
           </Text>
         ) : null}
 
-        <Group gap={10} align="flex-end" wrap="nowrap">
+        {!windowClosed ? (
+          <Group gap={10} align="flex-end" wrap="nowrap">
           {/* Quick replies — the ⚡ picker (search + manage) and the `/`-shortcut
               trigger; a chosen reply resolves merge tags and inserts into the draft. */}
           <InboxQuickReplyPicker
@@ -731,7 +857,8 @@ export const InboxComposer = ({
           >
             {uploading ? 'Uploading…' : 'Send'}
           </Button>
-        </Group>
+          </Group>
+        ) : null}
 
         {showDmWindowHint ? (
           <Group gap={6} wrap="nowrap">
@@ -742,9 +869,11 @@ export const InboxComposer = ({
             </Text>
           </Group>
         ) : null}
-        <Text size="xs" c="dimmed">
-          Enter to send · Shift+Enter for a new line
-        </Text>
+        {!windowClosed ? (
+          <Text size="xs" c="dimmed">
+            Enter to send · Shift+Enter for a new line
+          </Text>
+        ) : null}
       </Stack>
     </Box>
   );
