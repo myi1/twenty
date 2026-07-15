@@ -1,4 +1,4 @@
-import { Badge, Box, Group, Text, UnstyledButton } from '@mantine/core';
+import { Badge, Box, Checkbox, Group, Text, UnstyledButton } from '@mantine/core';
 import {
   type InboxThreadRow as InboxThreadRowData,
   type InboxTriageClass,
@@ -38,10 +38,14 @@ export const InboxThreadRow = ({
   row,
   active,
   onClick,
+  selected,
+  onToggleSelect,
 }: {
   row: InboxThreadRowData;
   active: boolean;
   onClick: () => void;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }) => {
   // Effective class folds in the fork-side FB/IG derivation (DM→opportunity,
   // comment→browser) when the server left a social row UNKNOWN. WhatsApp + already-
@@ -59,8 +63,17 @@ export const InboxThreadRow = ({
       display: 'flex',
       gap: 11,
       alignItems: 'flex-start',
+      opacity: row.likelyJunk && !selected ? 0.6 : 1,
     }}
   >
+    <Checkbox
+      size="xs"
+      checked={!!selected}
+      onChange={() => onToggleSelect?.()}
+      onClick={(e) => e.stopPropagation()}
+      aria-label="Select conversation"
+      style={{ marginTop: 2, flex: 'none' }}
+    />
     <ChannelBadge channel={row.channel} />
     <Box style={{ flex: 1, minWidth: 0 }}>
       <Group gap={6} wrap="nowrap">

@@ -13,7 +13,7 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
-import { IconInbox, IconRefresh, IconSearch } from 'twenty-ui/display';
+import { IconInbox, IconRefresh, IconSearch, IconX } from 'twenty-ui/display';
 import {
   type ConversationStatusTab,
   type InboxChannel,
@@ -22,6 +22,7 @@ import {
 } from '@/propel/types/inbox';
 import {
   type ViewerContext,
+  bulkSetInboxStatus,
   fetchInbox,
   fetchViewerContext,
 } from '@/propel/lib/inboxApi';
@@ -86,10 +87,31 @@ export const InboxTab = () => {
     id: string;
     channel: InboxChannel;
   } | null>(null);
+  // Inbox cleanup — bulk selection, keyed "channel:id". Cleared when the view changes.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const selKey = (t: { channel: InboxChannel; id: string }) => `${t.channel}:${t.id}`;
+  const toggleSelected = useCallback((t: { channel: InboxChannel; id: string }) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const k = `${t.channel}:${t.id}`;
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+  }, []);
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
   // Bumped on each successful (re)load so the open thread pane re-fetches its body
   // in lockstep with the list — not just the list rows.
   const [reloadToken, setReloadToken] = useState(0);
   const listInFlightRef = useRef(false);
+
+  // Clear the bulk selection whenever the view changes underneath it (a different
+  // status tab, triage segment, or search means the selected rows may no longer be
+  // visible together).
+  useEffect(() => {
+    clearSelection();
+  }, [statusTab, triage, filter, clearSelection]);
 
   // `silent` skips the full loading flip — used by the background poll + manual
   // refresh so the list updates in place. The first mount + error-retry show the
@@ -251,6 +273,7 @@ export const InboxTab = () => {
       OPEN: 0,
       SNOOZED: 0,
       DONE: 0,
+      ARCHIVED: 0,
     };
     for (const t of payload?.threads ?? []) counts[effectiveTab(t, now)] += 1;
     return counts;
@@ -282,6 +305,37 @@ export const InboxTab = () => {
         t.preview.toLowerCase().includes(q),
     );
   }, [payload, filter, triage, search, viewerMemberId, statusTab, effectiveTab]);
+
+  // The likely-junk rows in the CURRENT view (Tidy up acts on the view).
+  const junkInView = useMemo(() => shown.filter((t) => t.likelyJunk), [shown]);
+
+  // Tidy up: pre-tick every likely-junk row in view. Nothing is mutated yet.
+  const tidyUp = useCallback(() => {
+    setSelectedIds(new Set(junkInView.map((t) => `${t.channel}:${t.id}`)));
+  }, [junkInView]);
+
+  // Run one action over the current selection: optimistically move the rows, call
+  // the bulk route, then reload + reconcile.
+  const runBulk = useCallback(
+    async (action: 'archive' | 'done' | 'snooze', snoozeUntil?: string) => {
+      const items = (payload?.threads ?? [])
+        .filter((t) => selectedIds.has(`${t.channel}:${t.id}`))
+        .map((t) => ({ id: t.id, channel: t.channel }));
+      if (items.length === 0) return;
+      setBulkBusy(true);
+      const status =
+        action === 'archive' ? 'ARCHIVED' : action === 'done' ? 'RESOLVED' : 'SNOOZED';
+      for (const it of items) applyStatusOverride(it.id, it.channel, status, snoozeUntil ?? null);
+      try {
+        await bulkSetInboxStatus({ items, action, snoozeUntil });
+      } finally {
+        setBulkBusy(false);
+        clearSelection();
+        load(true);
+      }
+    },
+    [payload, selectedIds, applyStatusOverride, clearSelection, load],
+  );
 
   if (phase === 'loading') {
     return (
@@ -391,6 +445,10 @@ export const InboxTab = () => {
                 value: 'DONE',
                 label: `Done${statusCounts.DONE ? ` (${statusCounts.DONE})` : ''}`,
               },
+              {
+                value: 'ARCHIVED',
+                label: `Archived${statusCounts.ARCHIVED ? ` (${statusCounts.ARCHIVED})` : ''}`,
+              },
             ]}
           />
           <TextInput
@@ -484,6 +542,48 @@ export const InboxTab = () => {
             ))}
           </Group>
         </Box>
+        {selectedIds.size > 0 ? (
+          <Group
+            gap={6}
+            p="xs"
+            mb="xs"
+            style={{
+              background: 'var(--mantine-color-red-light)',
+              borderRadius: 8,
+              flex: 'none',
+            }}
+          >
+            <Text size="xs" fw={500} c="red">
+              {selectedIds.size} selected
+            </Text>
+            <Button
+              size="compact-xs"
+              variant="default"
+              ml="auto"
+              loading={bulkBusy}
+              onClick={() => runBulk('archive')}
+            >
+              Archive
+            </Button>
+            <Button
+              size="compact-xs"
+              variant="default"
+              loading={bulkBusy}
+              onClick={() => runBulk('done')}
+            >
+              Done
+            </Button>
+            <ActionIcon
+              size="sm"
+              variant="subtle"
+              color="gray"
+              aria-label="Clear selection"
+              onClick={clearSelection}
+            >
+              <IconX size={14} />
+            </ActionIcon>
+          </Group>
+        ) : null}
         <Box style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
           {shown.length === 0 ? (
             <Text size="sm" c="dimmed" p="md">
@@ -500,14 +600,50 @@ export const InboxTab = () => {
                         : 'No open conversations in this channel.'}
             </Text>
           ) : (
-            shown.map((t) => (
-              <InboxThreadRow
-                key={`${t.channel}-${t.id}`}
-                row={t}
-                active={selected?.id === t.id}
-                onClick={() => setSelected({ id: t.id, channel: t.channel })}
-              />
-            ))
+            (() => {
+              const renderRow = (t: InboxThreadRowData) => (
+                <InboxThreadRow
+                  key={`${t.channel}-${t.id}`}
+                  row={t}
+                  active={selected?.id === t.id}
+                  onClick={() => setSelected({ id: t.id, channel: t.channel })}
+                  selected={selectedIds.has(selKey(t))}
+                  onToggleSelect={() => toggleSelected(t)}
+                />
+              );
+              const isOpenTab = statusTab === 'OPEN';
+              const real = isOpenTab ? shown.filter((t) => !t.likelyJunk) : shown;
+              const junk = isOpenTab ? shown.filter((t) => t.likelyJunk) : [];
+              return (
+                <>
+                  {real.map(renderRow)}
+                  {junk.length > 0 ? (
+                    <>
+                      <Group
+                        gap={8}
+                        px="sm"
+                        py={6}
+                        style={{ background: 'var(--mantine-color-default-hover)' }}
+                      >
+                        <Text size="xs" c="dimmed">
+                          Low-priority chatter ({junk.length})
+                        </Text>
+                        <Button
+                          size="compact-xs"
+                          variant="light"
+                          color="red"
+                          ml="auto"
+                          onClick={tidyUp}
+                        >
+                          Tidy up
+                        </Button>
+                      </Group>
+                      {junk.map(renderRow)}
+                    </>
+                  ) : null}
+                </>
+              );
+            })()
           )}
         </Box>
       </Box>
