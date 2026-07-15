@@ -6,6 +6,7 @@ import {
   Button,
   Group,
   Loader,
+  Select,
   Stack,
   Text,
   Timeline,
@@ -35,6 +36,7 @@ import {
 } from '@/propel/types/inbox';
 import {
   assignLead,
+  classifyContact,
   convertCommentThread,
   createLeadOpportunity,
   fetchInboxAi,
@@ -54,6 +56,26 @@ import {
   channelLabel,
   humanizeEnum,
 } from '@/propel/components/marketingHero/inbox/InboxBits';
+
+// Contact-type tag options — mirrors CONTACT_TYPE_OPTIONS in the app's identifiers.ts
+// (the /contact/classify route validates server-side, so this only needs to stay
+// label-compatible). Restores the in-Inbox tagging the hero rebuild dropped.
+const CONTACT_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'LEAD', label: 'Lead' },
+  { value: 'CLIENT', label: 'Client' },
+  { value: 'VENDOR', label: 'Vendor (property seller)' },
+  { value: 'REMAX_HUB_AGENT', label: 'RE/MAX Hub Agent' },
+  { value: 'AGENT', label: 'External Agent' },
+  { value: 'RCBI_PARTNER', label: 'RCBI Partner' },
+  { value: 'DEVELOPER_PARTNER', label: 'Developer Partner' },
+  { value: 'REFERRAL_PARTNER', label: 'Referral Partner' },
+  { value: 'MORTGAGE_PARTNER', label: 'Mortgage / Bank Partner' },
+  { value: 'LEGAL_PARTNER', label: 'Conveyancing / Legal Partner' },
+  { value: 'SUPPLIER_SALESPERSON', label: 'Supplier / Salesperson' },
+  { value: 'PARTNER', label: 'Other Partner' },
+  { value: 'SPAM', label: 'Spam' },
+  { value: 'OTHER', label: 'Other' },
+];
 
 // ── Lead Engine S1 — triage primitives ──────────────────────────────────────
 // The right-rail triage surface: class badge, SLA heat, owner/suggested agent, and
@@ -790,6 +812,9 @@ export const InboxContextRail = ({
   onActed: () => void;
 }) => {
   const navigate = useNavigate();
+  const notify = usePropelToast();
+  const [busy, setBusy] = useState(false);
+  const personId = thread.personId;
   const c = thread.contact;
   const d = thread.deal;
   const initial =
@@ -798,6 +823,21 @@ export const InboxContextRail = ({
       .charAt(0)
       .toUpperCase() || '?';
   const hasMethod = Boolean(c?.phone || c?.email);
+
+  // Staff-agent link picker state — shown ONLY when the contact is tagged as an
+  // internal RE/MAX Hub agent, to record WHICH workspace member this contact IS.
+  // Declared locally (hero builds don't typecheck; a sibling's identifier throws).
+  const [staffAgents, setStaffAgents] = useState<InboxAgentOption[]>([]);
+  const [staffAgentsLoaded, setStaffAgentsLoaded] = useState(false);
+  const isInternalAgent = c?.contactType === 'REMAX_HUB_AGENT';
+
+  // Lazy-load the workspace-member directory the first time a contact is shown as an
+  // internal agent. Guarded so it fires at most once per rail mount.
+  useEffect(() => {
+    if (!isInternalAgent || staffAgentsLoaded) return;
+    setStaffAgentsLoaded(true);
+    void listInboxAgents().then(setStaffAgents);
+  }, [isInternalAgent, staffAgentsLoaded]);
 
   return (
     <Box
@@ -902,6 +942,76 @@ export const InboxContextRail = ({
           >
             <IconUser size={14} /> Open contact
           </Anchor>
+        ) : null}
+        {thread.personId ? (
+          <Select
+            label="Contact type"
+            placeholder="Tag this contact…"
+            size="xs"
+            mt="sm"
+            searchable
+            allowDeselect={false}
+            data={CONTACT_TYPE_OPTIONS}
+            value={c?.contactType ?? null}
+            disabled={busy}
+            onChange={(v) => {
+              // Inlined per the hero-build DCE gotcha — do NOT extract to a helper.
+              if (!v || v === (c?.contactType ?? null) || !personId || busy) return;
+              setBusy(true);
+              void classifyContact({ personId, contactType: v }).then((res) => {
+                setBusy(false);
+                if (res?.ok) {
+                  notify(`Tagged as ${humanizeEnum(v)}.`, 'success');
+                  onActed();
+                } else {
+                  notify(
+                    res?.operatorAction ||
+                      res?.error ||
+                      'Couldn’t set the contact type — you may not have permission.',
+                    'error',
+                  );
+                }
+              });
+            }}
+            comboboxProps={{ withinPortal: true, zIndex: 5000 }}
+          />
+        ) : null}
+        {thread.personId && isInternalAgent ? (
+          <Select
+            label="Which agent"
+            placeholder={
+              staffAgentsLoaded && staffAgents.length === 0
+                ? 'Loading team…'
+                : 'Link to a team member…'
+            }
+            size="xs"
+            mt="sm"
+            searchable
+            allowDeselect={false}
+            data={staffAgents.map((a) => ({ value: a.id, label: a.name }))}
+            disabled={busy}
+            onChange={(v) => {
+              // Inlined per the hero-build DCE gotcha. POSTs teamMemberIdentityId ONLY.
+              if (!v || !personId || busy) return;
+              setBusy(true);
+              void classifyContact({ personId, teamMemberIdentityId: v }).then((res) => {
+                setBusy(false);
+                if (res?.ok) {
+                  const who = staffAgents.find((a) => a.id === v)?.name ?? 'that agent';
+                  notify(`Linked to ${who}.`, 'success');
+                  onActed();
+                } else {
+                  notify(
+                    res?.operatorAction ||
+                      res?.error ||
+                      'Couldn’t link the agent — you may not have permission.',
+                    'error',
+                  );
+                }
+              });
+            }}
+            comboboxProps={{ withinPortal: true, zIndex: 5000 }}
+          />
         ) : null}
       </Box>
 

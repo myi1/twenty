@@ -202,6 +202,21 @@ export const assignLead = (args: {
     agentWorkspaceMemberId: args.agentWorkspaceMemberId,
   });
 
+// POST /contact/classify — set a Person's contactType and/or link them to a staff
+// member (teamMemberIdentityId). Route + fields live on prod since v0.5.50. Body
+// carries only the provided keys, so you can set one without disturbing the other.
+export const classifyContact = (args: {
+  personId: string;
+  contactType?: string;
+  teamMemberIdentityId?: string | null;
+}): Promise<{ ok?: boolean; personId?: string; updated?: string[]; error?: string; operatorAction?: string } | null> => {
+  const body: Record<string, unknown> = { personId: args.personId };
+  if (args.contactType !== undefined) body.contactType = args.contactType;
+  if (args.teamMemberIdentityId !== undefined)
+    body.teamMemberIdentityId = args.teamMemberIdentityId;
+  return callPropelRoute('/contact/classify', body);
+};
+
 // POST /lead/create-opportunity — create the lane opportunity for this contact and
 // emit OPPORTUNITY_CREATED. lane ∈ {secondary, sell, offplan, institutional, rcbi}.
 export const createLeadOpportunity = (args: {
