@@ -652,7 +652,9 @@ export const InboxTab = () => {
                       ? 'Nothing snoozed right now.'
                       : statusTab === 'DONE'
                         ? 'No resolved conversations yet.'
-                        : 'No open conversations in this channel.'}
+                        : statusTab === 'ARCHIVED'
+                          ? 'Nothing archived.'
+                          : 'No open conversations in this channel.'}
             </Text>
           ) : (
             (() => {
