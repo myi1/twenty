@@ -9,6 +9,7 @@ import {
   Loader,
   SegmentedControl,
   Stack,
+  Switch,
   Text,
   TextInput,
   Title,
@@ -29,7 +30,10 @@ import {
 } from '@/propel/lib/inboxApi';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { tabForStatus } from '@/propel/lib/inboxStatusCore';
-import { effectiveNeedsTriage } from '@/propel/lib/inboxTriage';
+import {
+  effectiveNeedsTriage,
+  isNonLeadContact,
+} from '@/propel/lib/inboxTriage';
 import { channelLabel } from '@/propel/components/marketingHero/inbox/InboxBits';
 import { InboxThreadRow } from '@/propel/components/marketingHero/inbox/InboxThreadRow';
 import { InboxThreadPane } from '@/propel/components/marketingHero/inbox/InboxThreadPane';
@@ -56,6 +60,27 @@ const INBOX_LIST_POLL_MS = 8000;
 // body (top bar + page header + tab strip ≈ 168px). overflow stays inside the panes.
 const INBOX_HEIGHT = 'calc(100vh - 168px)';
 
+// "Hide non-leads" toggle persistence (founder ask, 2026-07-03). Same defensive
+// localStorage discipline as listingStudioConfig — storage disabled/full must never
+// break the Inbox; the toggle then simply lives for the session. Default OFF.
+const HIDE_NON_LEADS_KEY = 'propel-inbox-hide-non-leads';
+
+const readHideNonLeads = (): boolean => {
+  try {
+    return window.localStorage.getItem(HIDE_NON_LEADS_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
+const writeHideNonLeads = (on: boolean): void => {
+  try {
+    window.localStorage.setItem(HIDE_NON_LEADS_KEY, on ? '1' : '0');
+  } catch {
+    // localStorage disabled/full — the in-memory toggle still works this session.
+  }
+};
+
 export const InboxTab = () => {
   const notify = usePropelToast();
   const [payload, setPayload] = useState<InboxPayload | null>(null);
@@ -67,6 +92,11 @@ export const InboxTab = () => {
   // (viewerWorkspaceMemberId). An AGENT's list is already owner-scoped server-side,
   // so the segment is hidden for agents (every row is already theirs).
   const [triage, setTriage] = useState<'all' | 'needs' | 'mine'>('all');
+  // "Hide non-leads" — drops threads whose contact is explicitly tagged as a
+  // non-prospect contactType (anything except LEAD/CLIENT; untagged stays — it
+  // still needs triage). Persisted per-browser; default OFF so nothing changes
+  // until the founder flips it.
+  const [hideNonLeads, setHideNonLeads] = useState<boolean>(readHideNonLeads);
   // TM#92 — Open / Snoozed / Done tab over the thread list (default Open, the live
   // queue). Snoozed = SNOOZED (future wake); Done = RESOLVED; an overdue snooze
   // renders under Open (tabForStatus handles the belt-and-braces).
@@ -249,23 +279,36 @@ export const InboxTab = () => {
   // for the non-manager case).
   const viewerMemberId = payload?.viewerWorkspaceMemberId ?? '';
 
+  // The base list every segment/filter below works from. With "Hide non-leads" on,
+  // explicitly-tagged non-prospects drop out HERE so the status/triage/mine badge
+  // counts always match what's actually visible in the list.
+  const visibleThreads = useMemo(() => {
+    const all = payload?.threads ?? [];
+    return hideNonLeads
+      ? all.filter((t) => !isNonLeadContact(t.contactType))
+      : all;
+  }, [payload, hideNonLeads]);
+
+  // How many threads the toggle is currently hiding — surfaced on the switch label
+  // so a shorter list is never mysterious.
+  const hiddenCount = (payload?.threads?.length ?? 0) - visibleThreads.length;
+
   // Count of threads that want a human (unowned + real-intent/unclassified) — the
   // "Needs triage" segment size, shown as a badge on the chip. Uses the EFFECTIVE
   // needs-triage so the fork-derived FB/IG classification is reflected.
   const needsCount = useMemo(
-    () => (payload?.threads ?? []).filter((t) => effectiveNeedsTriage(t)).length,
-    [payload],
+    () => visibleThreads.filter((t) => effectiveNeedsTriage(t)).length,
+    [visibleThreads],
   );
 
   // Count of threads assigned to the current viewer — the "Mine" segment badge.
   const mineCount = useMemo(
     () =>
       viewerMemberId
-        ? (payload?.threads ?? []).filter(
-            (t) => t.assignedAgentId === viewerMemberId,
-          ).length
+        ? visibleThreads.filter((t) => t.assignedAgentId === viewerMemberId)
+            .length
         : 0,
-    [payload, viewerMemberId],
+    [visibleThreads, viewerMemberId],
   );
 
   // Per-tab counts (Open / Snoozed / Done) over the whole pool, honoring overrides —
@@ -278,13 +321,13 @@ export const InboxTab = () => {
       DONE: 0,
       ARCHIVED: 0,
     };
-    for (const t of payload?.threads ?? []) counts[effectiveTab(t, now)] += 1;
+    for (const t of visibleThreads) counts[effectiveTab(t, now)] += 1;
     return counts;
-  }, [payload, effectiveTab]);
+  }, [visibleThreads, effectiveTab]);
 
   const shown = useMemo(() => {
     const now = Date.now();
-    const all = payload?.threads ?? [];
+    const all = visibleThreads;
     // Status tab first — every list below is scoped to the active Open/Snoozed/Done.
     const byStatus = all.filter((t) => effectiveTab(t, now) === statusTab);
     const byTriage =
@@ -307,7 +350,15 @@ export const InboxTab = () => {
         t.contactName.toLowerCase().includes(q) ||
         t.preview.toLowerCase().includes(q),
     );
-  }, [payload, filter, triage, search, viewerMemberId, statusTab, effectiveTab]);
+  }, [
+    visibleThreads,
+    filter,
+    triage,
+    search,
+    viewerMemberId,
+    statusTab,
+    effectiveTab,
+  ]);
 
   // The likely-junk rows in the CURRENT view (Tidy up acts on the view).
   const junkInView = useMemo(() => shown.filter((t) => t.likelyJunk), [shown]);
@@ -594,6 +645,37 @@ export const InboxTab = () => {
               </Button>
             ))}
           </Group>
+          {/* "Hide non-leads" (founder ask) — drop threads whose contact is tagged
+              as a non-prospect type (agents / partners / suppliers / spam / other).
+              LEAD, CLIENT and UNTAGGED stay — unclassified still needs triage.
+              Persisted per-browser; default OFF. Shown to every role: agents get
+              tagged non-lead threads too. */}
+          <Switch
+            size="xs"
+            mt={8}
+            color="red"
+            checked={hideNonLeads}
+            onChange={(e) => {
+              const on = e.currentTarget.checked;
+              setHideNonLeads(on);
+              writeHideNonLeads(on);
+              // drop the open thread if the new filter hides it (mirrors the
+              // channel chips' behavior)
+              if (on && selected) {
+                const sel = (payload?.threads ?? []).find(
+                  (t) => t.id === selected.id && t.channel === selected.channel,
+                );
+                if (sel && isNonLeadContact(sel.contactType)) setSelected(null);
+              }
+            }}
+            label={
+              hideNonLeads && hiddenCount > 0
+                ? `Hide non-leads (${hiddenCount} hidden)`
+                : 'Hide non-leads'
+            }
+            aria-label="Hide non-leads"
+            title="Hide conversations tagged as agents, partners, suppliers, spam or other non-prospects. Untagged conversations stay visible."
+          />
         </Box>
         {selectedIds.size > 0 ? (
           <Group
@@ -654,7 +736,9 @@ export const InboxTab = () => {
                         ? 'No resolved conversations yet.'
                         : statusTab === 'ARCHIVED'
                           ? 'Nothing archived.'
-                          : 'No open conversations in this channel.'}
+                          : hideNonLeads && hiddenCount > 0
+                            ? `Nothing to show — ${hiddenCount} non-lead conversation${hiddenCount === 1 ? '' : 's'} hidden.`
+                            : 'No open conversations in this channel.'}
             </Text>
           ) : (
             (() => {

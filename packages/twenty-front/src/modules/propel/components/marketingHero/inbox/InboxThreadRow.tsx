@@ -90,6 +90,17 @@ export const InboxThreadRow = ({
           {row.title}
         </Text>
         <SurfaceBadge channel={row.channel} surface={row.surface} />
+        {row.lineType === 'OFFICIAL' ? (
+          <Badge
+            size="xs"
+            variant="light"
+            color="blue"
+            style={{ flex: 'none' }}
+            title="Meta Cloud-API campaign number (24h reply window)"
+          >
+            Official
+          </Badge>
+        ) : null}
         {row.whenLabel ? (
           <Text size="xs" c="dimmed" style={{ flex: 'none' }}>
             {row.whenLabel}

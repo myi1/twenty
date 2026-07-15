@@ -33,6 +33,11 @@ export type InboxViewerRole = 'ADMIN' | 'MANAGER' | 'AGENT';
 export interface InboxThreadRow {
   id: string;
   channel: InboxChannel;
+  // #83 — which WhatsApp line the thread runs on. OFFICIAL = the Meta Cloud-API
+  // campaign number (24h session-window rules apply); EVERYDAY = the wa-service
+  // number. FB/IG + everyday WA → 'EVERYDAY'. Optional: an old payload without it
+  // degrades to everyday. Lockstepped with marketing-inbox-route.
+  lineType?: 'EVERYDAY' | 'OFFICIAL';
   surface: InboxSurface; // COMMENT vs DM (FB/IG); WhatsApp → DM
   title: string; // contact / commenter name (or handle)
   preview: string; // last message body, trimmed (server-truncated)
@@ -266,6 +271,16 @@ export interface ReplySendEnvelope {
   warning?: string;
   error?: string;
   operatorAction?: string;
+  // #83 — an OFFICIAL (Meta Cloud-API) thread past its 24h session window: free-form
+  // is blocked, so the route returns the approved re-engagement template to offer.
+  windowClosed?: boolean;
+  message?: string; // human explanation for the window-closed case
+  note?: string; // set when no approved re-engagement template exists yet
+  suggestedTemplate?: {
+    name: string;
+    languageCode: 'EN' | 'AR';
+    preview: string;
+  } | null;
 }
 
 // ── Outbound media kind ──────────────────────────────────────────────────────

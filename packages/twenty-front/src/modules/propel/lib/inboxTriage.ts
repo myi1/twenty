@@ -95,3 +95,22 @@ export const effectiveNeedsTriage = (row: InboxThreadRow): boolean => {
   const cls = effectiveTriage(row).triageClass;
   return cls === 'OPPORTUNITY' || cls === 'LEAD' || cls === 'UNKNOWN';
 };
+
+// ── "Hide non-leads" list filter (founder ask, 2026-07-03) ────────────────────
+// A NON-LEAD is a contact EXPLICITLY tagged with any contactType outside the
+// active-prospect set {LEAD, CLIENT} — i.e. REMAX_HUB_AGENT, AGENT, VENDOR,
+// PARTNER, the *_PARTNER family, SUPPLIER_SALESPERSON, SPAM, OTHER, and any
+// future noise type (allow-list, so new non-prospect values hide by default).
+// This mirrors the app's cleanup exemption — CLEANUP_EXEMPT_CONTACT_TYPES in
+// propel-crm-integration src/shared/contact-retag-cleanup.ts — keep the two in
+// lockstep. UNTAGGED (null/'') is NOT a non-lead: an unclassified thread still
+// needs triage and must stay visible.
+export const PROSPECT_CONTACT_TYPES = ['LEAD', 'CLIENT'] as const;
+
+export const isNonLeadContact = (
+  contactType: string | null | undefined,
+): boolean => {
+  const ct = (contactType ?? '').trim().toUpperCase();
+  if (!ct) return false; // untagged → keep visible (still needs triage)
+  return !(PROSPECT_CONTACT_TYPES as readonly string[]).includes(ct);
+};

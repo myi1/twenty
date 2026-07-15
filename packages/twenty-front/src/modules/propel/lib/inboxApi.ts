@@ -51,11 +51,15 @@ export const sendInboxReply = (args: {
   channel: InboxChannel;
   body: string;
   media?: { url: string; kind: OutboundMediaKind; fileName: string } | null;
+  // #83 — send the re-engagement TEMPLATE on an OFFICIAL thread past its 24h window
+  // (the route reads templateName instead of the free-form body).
+  templateName?: string;
 }): Promise<ReplySendEnvelope | null> =>
   callPropelRoute<ReplySendEnvelope>('/marketing/inbox-reply', {
     id: args.id,
     channel: args.channel,
     body: args.body,
+    ...(args.templateName ? { templateName: args.templateName } : {}),
     ...(args.media
       ? {
           mediaUrl: args.media.url,
@@ -419,7 +423,13 @@ export const shouldSendOnKeyDown = (e: SendKeyEvent): boolean => {
 // `ok`), so a success-only clear never ran and there was no visible reason.
 export type SendOutcome =
   | { ok: true; message: string; tone: 'success' | 'info' }
-  | { ok: false; message: string };
+  // #83 — a failure MAY carry the re-engagement suggestion (OFFICIAL thread, 24h
+  // window closed). The composer offers it as a one-click template send.
+  | {
+      ok: false;
+      message: string;
+      suggestedTemplate?: ReplySendEnvelope['suggestedTemplate'];
+    };
 
 const DEFAULT_SEND_ERROR = 'Could not send the reply. Your text is saved.';
 
@@ -427,6 +437,15 @@ export const interpretSendResult = (
   res: ReplySendEnvelope | null,
 ): SendOutcome => {
   if (!res || res.error || !res.ok) {
+    // #83 — the 24h window closed on an OFFICIAL thread: surface the explanation +
+    // the re-engagement template to offer (or the "awaiting Meta approval" note).
+    if (res?.windowClosed) {
+      const message =
+        res.message ||
+        res.note ||
+        'The 24-hour reply window has closed — send an approved template instead.';
+      return { ok: false, message, suggestedTemplate: res.suggestedTemplate ?? null };
+    }
     const message = res?.operatorAction || res?.error || DEFAULT_SEND_ERROR;
     return { ok: false, message };
   }

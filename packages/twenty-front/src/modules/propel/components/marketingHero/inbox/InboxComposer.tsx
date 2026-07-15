@@ -89,6 +89,14 @@ export const InboxComposer = ({
   // Sticky inline error shown ABOVE the composer when a send fails (a 24h-window /
   // COMPLIANCE_BLOCK rejection used to surface only as a missable snackbar).
   const [sendError, setSendError] = useState<string | null>(null);
+  // #83 — the re-engagement template offered when an OFFICIAL thread's 24h window
+  // has closed (the route blocks free-form and returns this suggestion).
+  const [suggested, setSuggested] = useState<{
+    name: string;
+    languageCode: 'EN' | 'AR';
+    preview: string;
+  } | null>(null);
+  const [sendingTemplate, setSendingTemplate] = useState(false);
   const [aiBusy, setAiBusy] = useState<null | 'suggest' | 'improve'>(null);
   const aiInFlight = useRef(false);
   // Bumped on every user edit AND on send. runAi captures it at start and only
@@ -191,6 +199,7 @@ export const InboxComposer = ({
     );
     setSending(true);
     setSendError(null);
+    setSuggested(null);
     setText('');
     clearMedia();
 
@@ -215,6 +224,8 @@ export const InboxComposer = ({
         setMediaKind(stagedMedia.kind);
         setUploadName(stagedMedia.fileName);
       }
+      // #83 — if the OFFICIAL 24h window closed, offer the re-engagement template.
+      setSuggested(outcome.suggestedTemplate ?? null);
       setSendError(friendlyError(outcome.message, 'generic'));
       notify(friendlyError(outcome.message, 'generic'), 'error');
       return;
@@ -240,6 +251,30 @@ export const InboxComposer = ({
     onPendingSent,
     onSent,
   ]);
+
+  // #83 — one-click send of the offered re-engagement template (OFFICIAL thread, 24h
+  // window closed). The route reads templateName + fills {{1}} with the contact's
+  // first name; a success re-opens the conversation once the customer replies.
+  const sendTemplate = useCallback(async () => {
+    if (!suggested || sendingTemplate) return;
+    setSendingTemplate(true);
+    const res = await sendInboxReply({
+      id,
+      channel,
+      body: '',
+      templateName: suggested.name,
+    }).catch(() => null);
+    setSendingTemplate(false);
+    const outcome = interpretSendResult(res);
+    if (!outcome.ok) {
+      notify(outcome.message, 'error');
+      return;
+    }
+    setSuggested(null);
+    setSendError(null);
+    notify('Re-engagement template sent.', 'success');
+    onSent();
+  }, [suggested, sendingTemplate, id, channel, notify, onSent]);
 
   // Suggest (blank → draft) / Improve (draft → tighten). Both call the same authed
   // route and replace the textarea with the returned text — unless the agent
@@ -470,6 +505,48 @@ export const InboxComposer = ({
               {sendError}
             </Text>
           </Group>
+        ) : null}
+
+        {/* #83 — re-engagement offer: an OFFICIAL thread past its 24h window can't
+            send free-form, so offer the approved template in one click. */}
+        {suggested ? (
+          <Stack
+            gap={7}
+            p="xs"
+            style={{
+              border:
+                '1px solid color-mix(in oklch, var(--mantine-color-blue-6) 30%, transparent)',
+              background:
+                'color-mix(in oklch, var(--mantine-color-blue-6) 8%, transparent)',
+              borderRadius: 9,
+            }}
+          >
+            <Text size="xs" fw={600} c="blue">
+              Send the “{suggested.name}” re-engagement template?
+            </Text>
+            <Text size="sm" c="dimmed" style={{ whiteSpace: 'pre-wrap' }}>
+              {suggested.preview}
+            </Text>
+            <Group gap={8} justify="flex-end">
+              <Button
+                size="xs"
+                variant="subtle"
+                color="gray"
+                onClick={() => setSuggested(null)}
+                disabled={sendingTemplate}
+              >
+                Dismiss
+              </Button>
+              <Button
+                size="xs"
+                color="blue"
+                onClick={() => void sendTemplate()}
+                loading={sendingTemplate}
+              >
+                Send template
+              </Button>
+            </Group>
+          </Stack>
         ) : null}
 
         {/* In-flight upload chip — filename + a progress bar. The large/presigned
