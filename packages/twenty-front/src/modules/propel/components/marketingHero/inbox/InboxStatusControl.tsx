@@ -154,6 +154,23 @@ export const InboxStatusControl = ({
     );
   }
 
+  if (tab === 'ARCHIVED') {
+    return (
+      <Group gap={7} wrap="nowrap" style={{ flex: 'none' }}>
+        <Button
+          size="compact-sm"
+          variant="default"
+          leftSection={<IconArrowBackUp size={14} />}
+          disabled={busy}
+          loading={busy}
+          onClick={() => onAction('reopen')}
+        >
+          Reopen
+        </Button>
+      </Group>
+    );
+  }
+
   if (tab === 'SNOOZED') {
     return (
       <Group gap={7} wrap="nowrap" style={{ flex: 'none' }}>

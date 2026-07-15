@@ -18,6 +18,7 @@ import {
   type ConversationStatusTab,
   type InboxChannel,
   type InboxPayload,
+  type InboxStatusAction,
   type InboxThreadRow as InboxThreadRowData,
 } from '@/propel/types/inbox';
 import {
@@ -26,6 +27,7 @@ import {
   fetchInbox,
   fetchViewerContext,
 } from '@/propel/lib/inboxApi';
+import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { tabForStatus } from '@/propel/lib/inboxStatusCore';
 import { effectiveNeedsTriage } from '@/propel/lib/inboxTriage';
 import { channelLabel } from '@/propel/components/marketingHero/inbox/InboxBits';
@@ -55,6 +57,7 @@ const INBOX_LIST_POLL_MS = 8000;
 const INBOX_HEIGHT = 'calc(100vh - 168px)';
 
 export const InboxTab = () => {
+  const notify = usePropelToast();
   const [payload, setPayload] = useState<InboxPayload | null>(null);
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading');
   const [filter, setFilter] = useState<'all' | InboxChannel>('all');
@@ -111,7 +114,7 @@ export const InboxTab = () => {
   // visible together).
   useEffect(() => {
     clearSelection();
-  }, [statusTab, triage, filter, clearSelection]);
+  }, [statusTab, triage, filter, search, clearSelection]);
 
   // `silent` skips the full loading flip — used by the background poll + manual
   // refresh so the list updates in place. The first mount + error-retry show the
@@ -315,26 +318,76 @@ export const InboxTab = () => {
   }, [junkInView]);
 
   // Run one action over the current selection: optimistically move the rows, call
-  // the bulk route, then reload + reconcile.
+  // the bulk route, then revert anything that didn't actually succeed (a network
+  // error, or a per-item skip/fail) before reloading + reconciling. The reconcile
+  // loop in `load` only drops an override once the server row MATCHES it, so a
+  // skipped/failed row left overridden would stay wrongly moved forever.
   const runBulk = useCallback(
-    async (action: 'archive' | 'done' | 'snooze', snoozeUntil?: string) => {
-      const items = (payload?.threads ?? [])
-        .filter((t) => selectedIds.has(`${t.channel}:${t.id}`))
-        .map((t) => ({ id: t.id, channel: t.channel }));
-      if (items.length === 0) return;
+    async (action: InboxStatusAction, snoozeUntil?: string) => {
+      const targets = (payload?.threads ?? []).filter((t) =>
+        selectedIds.has(`${t.channel}:${t.id}`),
+      );
+      if (targets.length === 0) return;
+      const items = targets.map((t) => ({ id: t.id, channel: t.channel }));
+      // Snapshot each item's CURRENT status/snoozeUntil (keyed `channel:id`) before
+      // applying the optimistic override, so a not-succeeded item can be reverted.
+      const prior = new Map<
+        string,
+        { status: string; snoozeUntil: string | null }
+      >();
+      for (const t of targets)
+        prior.set(`${t.channel}:${t.id}`, {
+          status: t.status,
+          snoozeUntil: t.snoozeUntil,
+        });
+
       setBulkBusy(true);
       const status =
-        action === 'archive' ? 'ARCHIVED' : action === 'done' ? 'RESOLVED' : 'SNOOZED';
-      for (const it of items) applyStatusOverride(it.id, it.channel, status, snoozeUntil ?? null);
+        action === 'archive'
+          ? 'ARCHIVED'
+          : action === 'done'
+            ? 'RESOLVED'
+            : action === 'reopen'
+              ? 'OPEN'
+              : 'SNOOZED';
+      for (const it of items)
+        applyStatusOverride(it.id, it.channel, status, snoozeUntil ?? null);
+
       try {
-        await bulkSetInboxStatus({ items, action, snoozeUntil });
+        const res = await bulkSetInboxStatus({ items, action, snoozeUntil }).catch(
+          () => null,
+        );
+
+        const revert = (id: string, channel: InboxChannel) => {
+          const p = prior.get(`${channel}:${id}`);
+          if (p) applyStatusOverride(id, channel, p.status, p.snoozeUntil);
+        };
+
+        if (!res) {
+          // Transport/network failure — nothing on the server changed for any item.
+          for (const it of items) revert(it.id, it.channel);
+          notify(
+            "Couldn't update those conversations. Nothing was changed.",
+            'error',
+          );
+        } else {
+          const notSucceeded = [...(res.skipped ?? []), ...(res.failed ?? [])];
+          if (notSucceeded.length > 0) {
+            for (const x of notSucceeded) {
+              const target = items.find((it) => it.id === x.id);
+              if (target) revert(target.id, target.channel);
+            }
+            const doneCount = res.counts?.done ?? items.length - notSucceeded.length;
+            notify(`Updated ${doneCount}, skipped ${notSucceeded.length}.`, 'warning');
+          }
+        }
       } finally {
         setBulkBusy(false);
         clearSelection();
         load(true);
       }
     },
-    [payload, selectedIds, applyStatusOverride, clearSelection, load],
+    [payload, selectedIds, applyStatusOverride, clearSelection, load, notify],
   );
 
   if (phase === 'loading') {
@@ -561,9 +614,11 @@ export const InboxTab = () => {
               variant="default"
               ml="auto"
               loading={bulkBusy}
-              onClick={() => runBulk('archive')}
+              onClick={() =>
+                runBulk(statusTab === 'ARCHIVED' ? 'reopen' : 'archive')
+              }
             >
-              Archive
+              {statusTab === 'ARCHIVED' ? 'Reopen' : 'Archive'}
             </Button>
             <Button
               size="compact-xs"
