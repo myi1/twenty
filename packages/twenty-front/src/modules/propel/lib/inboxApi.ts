@@ -161,6 +161,30 @@ export const setInboxStatus = (args: {
       : {}),
   });
 
+export interface InboxBulkStatusResponse {
+  ok?: boolean;
+  action?: string;
+  status?: string;
+  counts?: { done: number; skipped: number; failed: number };
+  done?: string[];
+  skipped?: Array<{ id: string; reason: string }>;
+  failed?: Array<{ id: string; reason: string }>;
+  error?: string;
+  operatorAction?: string;
+}
+
+// POST /marketing/inbox-status-bulk — one action for many threads (Inbox cleanup).
+export const bulkSetInboxStatus = (args: {
+  items: Array<{ id: string; channel: InboxChannel }>;
+  action: InboxStatusAction;
+  snoozeUntil?: string;
+}): Promise<InboxBulkStatusResponse | null> =>
+  callPropelRoute<InboxBulkStatusResponse>('/marketing/inbox-status-bulk', {
+    items: args.items,
+    action: args.action,
+    ...(args.snoozeUntil ? { snoozeUntil: args.snoozeUntil } : {}),
+  });
+
 // ── Lead-triage quick actions (Lead Engine S1) ───────────────────────────────
 // GATED routes — the component NEVER mutates a record directly; the route enforces
 // policy (manager/admin), performs the write, and emits the leadEvent. Flat body

@@ -61,6 +61,10 @@ export interface InboxThreadRow {
   suggestedAgentId: string | null; // deterministic suggestion (null when none)
   suggestedAgentName: string; // resolved suggested-agent name ('' when none)
   suggestedReason: string; // why this agent ('' when none)
+  // Inbox cleanup — true = person-less FB/IG comment with no buyer intent. Drives
+  // the muted "Low-priority chatter" group + Tidy-up pre-select. Optional for
+  // back-compat with an older route response (treated as false when absent).
+  likelyJunk?: boolean;
 }
 
 export interface InboxPresence {
@@ -332,9 +336,9 @@ export interface QuickReplySeedResponse {
 
 // ── Inbox status (POST /marketing/inbox-status) — TM#92 ──────────────────────
 // The three hero tabs the status enum folds into.
-export type ConversationStatusTab = 'OPEN' | 'SNOOZED' | 'DONE';
+export type ConversationStatusTab = 'OPEN' | 'SNOOZED' | 'DONE' | 'ARCHIVED';
 // The setter-route actions a status button fires.
-export type InboxStatusAction = 'done' | 'reopen' | 'snooze';
+export type InboxStatusAction = 'done' | 'reopen' | 'snooze' | 'archive';
 
 export interface InboxStatusResponse {
   ok?: boolean;

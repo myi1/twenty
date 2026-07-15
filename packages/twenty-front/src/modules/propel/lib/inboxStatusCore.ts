@@ -36,6 +36,7 @@ export const tabForStatus = (
   snoozeUntil?: string | null,
   now: number = Date.now(),
 ): ConversationStatusTab => {
+  if (status === 'ARCHIVED') return 'ARCHIVED';
   if (status === 'RESOLVED') return 'DONE';
   if (status === 'SNOOZED') {
     return isSnoozeExpired(snoozeUntil, now) ? 'OPEN' : 'SNOOZED';
