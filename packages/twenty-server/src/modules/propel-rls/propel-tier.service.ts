@@ -80,10 +80,9 @@ export class PropelTierService {
       // directly instead (same repository pattern the cache provider that
       // *builds* that context uses, which works standalone for the same
       // reason).
-      const roleTarget = await this.roleTargetRepository.findOne(
-        workspaceId,
-        { where: { userWorkspaceId: authContext.userWorkspaceId } },
-      );
+      const roleTarget = await this.roleTargetRepository.findOne(workspaceId, {
+        where: { userWorkspaceId: authContext.userWorkspaceId },
+      });
 
       const roleId = roleTarget?.roleId;
 
@@ -100,7 +99,9 @@ export class PropelTierService {
       }
 
       // Admin: match by the stable standard-role universalIdentifier (rename-safe).
-      if (role.universalIdentifier === STANDARD_ROLE.admin.universalIdentifier) {
+      if (
+        role.universalIdentifier === STANDARD_ROLE.admin.universalIdentifier
+      ) {
         return 'MANAGER';
       }
 
