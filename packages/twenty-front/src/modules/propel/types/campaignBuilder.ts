@@ -308,6 +308,13 @@ export interface ImportColMap {
   fullName: number | null;
 }
 
+// An assignable agent for the "Assign new contacts to" picker. Returned by the
+// import route's `mode: 'agents'` branch (managers + agents in the workspace).
+export interface ImportAgentOption {
+  id: string;
+  label: string;
+}
+
 export interface ImportPreviewResponse extends RouteEnvelopeError {
   ok?: boolean;
   mode?: string;
@@ -316,6 +323,10 @@ export interface ImportPreviewResponse extends RouteEnvelopeError {
   sampleRows?: string[][];
   totalRows?: number;
   format?: string;
+  // Present only on the `mode: 'agents'` response: the assignable roster and the
+  // uploader's own id (so the picker can default to "me" without a second call).
+  agents?: ImportAgentOption[];
+  selfId?: string;
 }
 
 export interface ImportCommitResponse extends RouteEnvelopeError {
@@ -328,6 +339,8 @@ export interface ImportCommitResponse extends RouteEnvelopeError {
   inFileDuplicates?: number;
   unusable?: number;
   createFailed?: number;
+  // The agent the new contacts were assigned to (echoed back for confirmation).
+  assignedAgentId?: string | null;
   capped?: boolean;
 }
 

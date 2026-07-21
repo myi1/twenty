@@ -44,6 +44,7 @@ import {
 } from '@/propel/lib/campaignBuilderConfig';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import {
+  type ImportAgentOption,
   type ImportColMap,
   type ImportCommitResponse,
   type ImportPreviewResponse,
@@ -106,6 +107,12 @@ export const SegmentCreateModal = ({
   const [committing, setCommitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const inFlightRef = useRef(false);
+
+  // Assign new contacts to an agent (so the campaign's replies route to them).
+  // The roster + the uploader's own id load once when the CSV tab is shown; the
+  // picker defaults to the uploader. Only NEW contacts are stamped server-side.
+  const [agents, setAgents] = useState<ImportAgentOption[] | null>(null);
+  const [assignAgentId, setAssignAgentId] = useState<string | null>(null);
 
   // Criteria state — the 2 common axes (always visible) + S5's progressive axes
   // (behind "More filters").
@@ -182,7 +189,9 @@ export const SegmentCreateModal = ({
     setIncludeActive(false);
     setPoolResolve(null);
     setPoolErr('');
-    // Keep poolCatalog cached across opens (it's static) — only the selection resets.
+    // Keep poolCatalog + agents cached across opens (static) — only the picked
+    // agent resets, and it re-defaults to the uploader when the roster loads.
+    setAssignAgentId(null);
   }, []);
 
   const handleClose = useCallback(() => {
@@ -190,6 +199,28 @@ export const SegmentCreateModal = ({
     resetAll();
     onClose();
   }, [uploading, committing, savingCriteria, savingPool, resetAll, onClose]);
+
+  // ── CSV: load the assignable agent roster once when the CSV tab is shown ────
+  // Reused for the "Assign new contacts to" picker; defaults the selection to the
+  // uploader (selfId). A failed load just leaves the picker empty — the commit
+  // then sends no agent and the server falls back to the uploader, so an upload
+  // is never blocked on this fetch.
+  useEffect(() => {
+    if (!opened || mode !== 'csv' || agents !== null) return;
+    let active = true;
+    void callPropelRoute<ImportPreviewResponse>('/marketing/import-segment', {
+      mode: 'agents',
+    }).then((res) => {
+      if (!active) return;
+      if (res && res.ok && Array.isArray(res.agents)) {
+        setAgents(res.agents);
+        setAssignAgentId((prev) => prev ?? res.selfId ?? null);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [opened, mode, agents]);
 
   // ── Pools: load the catalog once when the Pools tab is first shown ──────────
   // The catalog is static (a pool is a named criteria recipe, no DB row), so we
@@ -413,6 +444,7 @@ export const SegmentCreateModal = ({
           contentBase64: fileB64,
           mode: 'commit',
           columnMap: colMap,
+          assignedAgentId: assignAgentId,
         },
       );
       if (res && res.ok && res.segmentId) {
@@ -448,6 +480,7 @@ export const SegmentCreateModal = ({
     fileName,
     fileType,
     fileB64,
+    assignAgentId,
     onCreated,
     notify,
     resetAll,
@@ -712,6 +745,20 @@ export const SegmentCreateModal = ({
                       </Table.Tbody>
                     </Table>
                   </Box>
+                )}
+                {/* Who owns the NEW contacts — so the campaign's replies route
+                    to them. Existing contacts keep their current agent. Defaults
+                    to the uploader; only shown once the roster has loaded. */}
+                {agents !== null && agents.length > 0 && (
+                  <Select
+                    label="Assign new contacts to"
+                    description="Their replies come back to this agent. Contacts already in the CRM keep their current agent."
+                    data={agents.map((a) => ({ value: a.id, label: a.label }))}
+                    value={assignAgentId}
+                    onChange={setAssignAgentId}
+                    searchable
+                    comboboxProps={{ zIndex: 5000, withinPortal: true }}
+                  />
                 )}
                 {uploadErr !== '' && (
                   <Alert
