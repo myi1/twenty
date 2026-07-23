@@ -242,7 +242,7 @@ export const BlogPostDrawer = ({
   const ghostUrl = detail?.ghostUrl ?? '';
   // Link to the SITE copy (the page that ranks and carries the site chrome),
   // falling back to the Ghost URL only if no slug can be recovered.
-  const livePostUrl = siteBlogUrlFromGhostUrl(ghostUrl) ?? ghostUrl;
+  const livePostUrl = siteBlogUrlFromGhostUrl(ghostUrl, undefined, post.locale) ?? ghostUrl;
   const criticNotes = detail?.criticNotesList ?? [];
   const grounding = detail?.groundingList ?? [];
   const pipelineLog = detail?.pipelineLog ?? [];

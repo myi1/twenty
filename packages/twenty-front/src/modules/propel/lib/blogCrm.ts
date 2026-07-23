@@ -239,6 +239,7 @@ export const SITE_BLOG_BASE = 'https://remaxhub.ae';
 export const siteBlogUrlFromGhostUrl = (
   ghostUrl: string | null | undefined,
   base: string = SITE_BLOG_BASE,
+  locale?: string | null,
 ): string | null => {
   const raw = (ghostUrl ?? '').trim();
   if (raw === '') return null;
@@ -249,7 +250,12 @@ export const siteBlogUrlFromGhostUrl = (
     path = raw;
   }
   const slug = path.split('/').filter(Boolean).pop() ?? '';
-  return slug ? `${base.replace(/\/+$/, '')}/blog/${slug}` : null;
+  if (!slug) return null;
+  // The site serves English at /blog/<slug> and every other locale at
+  // /<locale>/blog/<slug> — a locale-blind link 404s for Arabic posts.
+  const loc = (locale ?? 'en').trim().toLowerCase();
+  const prefix = loc && loc !== 'en' ? `/${loc}` : '';
+  return `${base.replace(/\/+$/, '')}${prefix}/blog/${slug}`;
 };
 
 const toStringList = (raw: unknown): string[] => {
