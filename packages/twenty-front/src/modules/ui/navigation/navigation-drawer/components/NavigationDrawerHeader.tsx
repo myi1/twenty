@@ -4,6 +4,7 @@ import { IconSearch } from 'twenty-ui/display';
 import { LightIconButton } from 'twenty-ui/input';
 import { MOBILE_VIEWPORT, themeCssVariables } from 'twenty-ui/theme-constants';
 
+import { QuickNoteButton } from '@/propel/quick-note/components/QuickNoteButton';
 import { useOpenRecordsSearchPageInSidePanel } from '@/side-panel/hooks/useOpenRecordsSearchPageInSidePanel';
 import { PAGE_BAR_MIN_HEIGHT } from '@/ui/layout/page/constants/PageBarMinHeight';
 import { MultiWorkspaceDropdownButton } from '@/ui/navigation/navigation-drawer/components/MultiWorkspaceDropdown/MultiWorkspaceDropdownButton';
@@ -77,26 +78,32 @@ export const NavigationDrawerHeader = ({
   );
 
   return (
-    <StyledContainer isExpanded={isNavigationDrawerExpanded}>
-      <StyledWorkspaceDropdownContainer>
-        <MultiWorkspaceDropdownButton />
-      </StyledWorkspaceDropdownContainer>
-      <StyledRightActions isExpanded={isNavigationDrawerExpanded}>
-        {!isMobile && (
-          <LightIconButton
-            Icon={IconSearch}
-            accent="secondary"
-            size="small"
-            onClick={openRecordsSearchPage}
-            aria-label={t`Search`}
-          />
-        )}
-        {isNavigationDrawerExpanded && showCollapseButton && (
-          <StyledNavigationDrawerCollapseButtonContainer>
-            <NavigationDrawerCollapseButton direction="left" />
-          </StyledNavigationDrawerCollapseButtonContainer>
-        )}
-      </StyledRightActions>
-    </StyledContainer>
+    <>
+      <StyledContainer isExpanded={isNavigationDrawerExpanded}>
+        <StyledWorkspaceDropdownContainer>
+          <MultiWorkspaceDropdownButton />
+        </StyledWorkspaceDropdownContainer>
+        <StyledRightActions isExpanded={isNavigationDrawerExpanded}>
+          {!isMobile && (
+            <LightIconButton
+              Icon={IconSearch}
+              accent="secondary"
+              size="small"
+              onClick={openRecordsSearchPage}
+              aria-label={t`Search`}
+            />
+          )}
+          {isNavigationDrawerExpanded && showCollapseButton && (
+            <StyledNavigationDrawerCollapseButtonContainer>
+              <NavigationDrawerCollapseButton direction="left" />
+            </StyledNavigationDrawerCollapseButtonContainer>
+          )}
+        </StyledRightActions>
+      </StyledContainer>
+      {/* Propel: floats fixed in the bottom-right corner, above the WhatsApp/
+      Dialer docks — rendered here only so it stays inside the authenticated
+      React tree its data hooks need; position is CSS-fixed, not layout-flow. */}
+      <QuickNoteButton />
+    </>
   );
 };
