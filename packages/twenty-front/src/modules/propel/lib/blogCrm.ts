@@ -229,6 +229,29 @@ export const sanitizeBlogHtml = (html: string): string =>
 
 // Coerce an unknown criticNotes/grounding blob (parsed array, object, or JSON
 // string) into a flat list of display strings. Never throws.
+// The public home of a post is the SITE (remaxhub.ae/blog/<slug>), not the Ghost
+// instance that stores it (blog.remaxhub.ae/<slug>/). Ghost owns slug generation, so
+// the slug is taken FROM the URL Ghost returned — that keeps this correct for
+// transliterated/encoded (Arabic) slugs too. Mirrors shared/blog-public-url.ts in the
+// CRM repo. Returns null rather than guessing, so the caller can fall back.
+export const SITE_BLOG_BASE = 'https://remaxhub.ae';
+
+export const siteBlogUrlFromGhostUrl = (
+  ghostUrl: string | null | undefined,
+  base: string = SITE_BLOG_BASE,
+): string | null => {
+  const raw = (ghostUrl ?? '').trim();
+  if (raw === '') return null;
+  let path: string;
+  try {
+    path = new URL(raw).pathname;
+  } catch {
+    path = raw;
+  }
+  const slug = path.split('/').filter(Boolean).pop() ?? '';
+  return slug ? `${base.replace(/\/+$/, '')}/blog/${slug}` : null;
+};
+
 const toStringList = (raw: unknown): string[] => {
   let val = raw;
   if (typeof val === 'string') {
@@ -265,7 +288,19 @@ const toStringList = (raw: unknown): string[] => {
       .filter((s) => s.length > 0);
   }
   if (val && typeof val === 'object') {
-    return Object.values(val as Record<string, unknown>)
+    const o = val as Record<string, unknown>;
+    // The critic notes blob is an OBJECT whose useful content lives in nested arrays
+    // (`issues` from the editor, `revisionNotes` written when a rejection is fed back
+    // into a rewrite). Prefer those; flattening the object's string values instead
+    // would surface the timestamp and stage name and drop the actual notes.
+    for (const key of ['revisionNotes', 'issues', 'ungroundedFigures', 'strengths']) {
+      const nested = o[key];
+      if (Array.isArray(nested)) {
+        const list = nested.map((v) => (typeof v === 'string' ? v.trim() : '')).filter((s) => s.length > 0);
+        if (list.length > 0) return list;
+      }
+    }
+    return Object.values(o)
       .map((v) => (typeof v === 'string' ? v : ''))
       .filter((s) => s.length > 0);
   }

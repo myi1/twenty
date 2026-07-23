@@ -56,6 +56,7 @@ import {
   type BlogPostDetail,
   type BlogReviseChatEntry,
   type BlogStatus,
+  siteBlogUrlFromGhostUrl,
 } from '@/propel/lib/blogCrm';
 
 // Right-side detail drawer for a single blog post (Website → Blog). Opens on any
@@ -239,6 +240,9 @@ export const BlogPostDrawer = ({
   const meta = STATUS_META[post.status] ?? { color: 'gray', label: post.status };
   const bodyHtml = detail?.bodyHtml ?? row.bodyHtml ?? '';
   const ghostUrl = detail?.ghostUrl ?? '';
+  // Link to the SITE copy (the page that ranks and carries the site chrome),
+  // falling back to the Ghost URL only if no slug can be recovered.
+  const livePostUrl = siteBlogUrlFromGhostUrl(ghostUrl) ?? ghostUrl;
   const criticNotes = detail?.criticNotesList ?? [];
   const grounding = detail?.groundingList ?? [];
   const pipelineLog = detail?.pipelineLog ?? [];
@@ -412,6 +416,20 @@ export const BlogPostDrawer = ({
                 notes and pipeline history load once the blog detail route is
                 deployed to this workspace.
               </Text>
+            </Alert>
+          ) : null}
+
+          {/* Escalated to the copy desk: the pipeline retried, couldn't clear the
+              editor, and handed it over rather than stranding it. Show WHY, or the
+              reviewer is judging the draft blind. */}
+          {post.status === 'NEEDS_APPROVAL' && post.lastError ? (
+            <Alert
+              color="yellow"
+              variant="light"
+              icon={<IconAlertTriangle size={16} />}
+              title="Sent to you after automatic rewrites"
+            >
+              <Text size="sm">{friendlyError(post.lastError, 'pipeline')}</Text>
             </Alert>
           ) : null}
 
@@ -820,7 +838,7 @@ export const BlogPostDrawer = ({
           {post.status === 'PUBLISHED' && ghostUrl ? (
             <Button
               component="a"
-              href={ghostUrl}
+              href={livePostUrl}
               target="_blank"
               rel="noopener noreferrer"
               variant="light"
