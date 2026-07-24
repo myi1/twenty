@@ -64,6 +64,10 @@ export interface SendRulesPayload {
   quietEnd: string;
   fridayPauseEnabled: boolean;
   fridayPauseUntil: string;
+  // Approval routing (2026-07-24) — arrays of workspaceMember ids + hours.
+  approverMemberIds?: string[];
+  escalationMemberIds?: string[];
+  escalationHours?: number;
 }
 
 // ── /marketing/hub (the subset the builder needs for its pickers) ────────────

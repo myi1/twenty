@@ -7,6 +7,7 @@ import {
   Divider,
   Group,
   Loader,
+  MultiSelect,
   NumberInput,
   Paper,
   SegmentedControl,
@@ -287,6 +288,107 @@ const SendRulesSection = ({
 // publisher member needs a widened metadata query (spec §4 — deferred), so this
 // wave shows the model + a deep-link into Twenty Settings → Roles, where the
 // PROPEL_MARKETING_PUBLISH flag is actually assigned. ──────────────────────────
+const ApprovalsSection = ({
+  rules,
+  members,
+  reload,
+}: {
+  rules: SendRulesPayload;
+  members: { id: string; name: string }[];
+  reload: () => void;
+}) => {
+  const notify = usePropelToast();
+  const [approvers, setApprovers] = useState<string[]>(rules.approverMemberIds ?? []);
+  const [escalators, setEscalators] = useState<string[]>(rules.escalationMemberIds ?? []);
+  const [hours, setHours] = useState<number>(rules.escalationHours ?? 24);
+  const [saving, setSaving] = useState(false);
+
+  const options = useMemo(
+    () => members.map((m) => ({ value: m.id, label: m.name })),
+    [members],
+  );
+
+  const same = (a: string[], b: string[]) =>
+    a.length === b.length && a.every((x, i) => x === b[i]);
+  const dirty =
+    !same(approvers, rules.approverMemberIds ?? []) ||
+    !same(escalators, rules.escalationMemberIds ?? []) ||
+    hours !== (rules.escalationHours ?? 24);
+
+  const save = async () => {
+    if (saving || !dirty) return;
+    setSaving(true);
+    const res = await callPropelRoute<SaveRulesResponse>('/marketing/save-rules', {
+      // CSV — the settings singleton stores these as TEXT.
+      approverMemberIds: approvers.join(','),
+      escalationMemberIds: escalators.join(','),
+      escalationHours: hours,
+    });
+    setSaving(false);
+    if (res === null || res.error !== undefined || res.ok !== true) {
+      notify(res?.operatorAction || friendlyError(res?.error, 'save'), 'error');
+      return;
+    }
+    notify('Approval routing saved.', 'success');
+    reload();
+  };
+
+  return (
+    <Stack gap="lg" maw={640}>
+      <SurfaceIntro
+        eyebrow="The rulebook"
+        title="Approvals"
+        icon={<IconShield size={20} />}
+      />
+      <Text size="sm" c="dimmed" style={{ lineHeight: 1.55 }}>
+        When an agent submits marketing work, whoever is listed here gets a
+        WhatsApp straight away. Leave a field empty and it falls back to everyone
+        who can publish — so approvals are never lost, just noisier.
+      </Text>
+
+      <MultiSelect
+        label="Approvals go to"
+        description="Notified the moment an agent submits work"
+        placeholder={approvers.length ? undefined : 'Everyone who can publish'}
+        data={options}
+        value={approvers}
+        onChange={setApprovers}
+        searchable
+        clearable
+      />
+
+      <MultiSelect
+        label="Overdue approvals go to"
+        description="Notified when work has waited too long"
+        placeholder={escalators.length ? undefined : 'Same as above'}
+        data={options}
+        value={escalators}
+        onChange={setEscalators}
+        searchable
+        clearable
+      />
+
+      <NumberInput
+        label="Escalate after (hours)"
+        description="How long work may wait before the overdue nudge"
+        min={1}
+        max={720}
+        clampBehavior="strict"
+        allowDecimal={false}
+        value={hours}
+        onChange={(v) => setHours(typeof v === 'number' ? v : hours)}
+        maw={220}
+      />
+
+      <Group justify="flex-end">
+        <Button onClick={save} loading={saving} disabled={!dirty}>
+          Save
+        </Button>
+      </Group>
+    </Stack>
+  );
+};
+
 const PublishingSection = () => {
   const navigate = useNavigate();
   const { canPublish, loading } = useCanPublish();
@@ -427,6 +529,7 @@ const MyPreferencesSection = () => {
 
 type SettingsSection =
   | 'send-rules'
+  | 'approvals'
   | 'merge-tags'
   | 'publishing'
   | 'my-preferences';
@@ -459,6 +562,11 @@ export const SettingsTab = ({
         value: 'send-rules',
         label: 'Send rules',
         icon: <IconMessage size={16} />,
+      });
+      rail.push({
+        value: 'approvals',
+        label: 'Approvals',
+        icon: <IconShield size={16} />,
       });
       rail.push({
         value: 'merge-tags',
@@ -537,6 +645,22 @@ export const SettingsTab = ({
                   <SendRulesSection
                     key={rules.id ?? 'default'}
                     rules={rules}
+                    reload={reload}
+                  />
+                )
+              ) : null}
+            </Tabs.Panel>
+            <Tabs.Panel value="approvals">
+              {activeSub === 'approvals' ? (
+                isLoading && payload === null ? (
+                  <Center mih={240}>
+                    <Loader color="red" />
+                  </Center>
+                ) : (
+                  <ApprovalsSection
+                    key={rules.id ?? 'default'}
+                    rules={rules}
+                    members={payload?.members ?? []}
                     reload={reload}
                   />
                 )

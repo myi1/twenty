@@ -286,6 +286,8 @@ export interface MarketingHubPayload {
   canSend?: boolean;
   /** May create/edit/delete templates, vs. read-only pick-from-list. */
   canEditTemplates?: boolean;
+  /** Workspace members for the Settings → Approvals picker (COORDINATOR only). */
+  members?: { id: string; name: string }[];
   greeting?: string;
   generatedAtLabel?: string;
   sendingNow?: SendingNowRow[];
