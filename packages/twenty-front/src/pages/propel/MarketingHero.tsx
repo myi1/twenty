@@ -310,16 +310,26 @@ export const MarketingHero = () => {
         >
           {/* Funnel zones (option C). Home stands alone; each stage's tabs sit in
               a pale tinted tray led by its label. `border: none` drops the pills
-              variant's list baseline so the trays read cleanly; the row scrolls
-              horizontally if it ever outgrows the width rather than wrapping. */}
+              variant's list baseline so the trays read cleanly.
+
+              WRAPS, never scrolls. This row used to be `nowrap` + `overflowX:auto`,
+              which HID tabs: the full strip measures ~1587px, so below a ~1920px
+              window the right-hand end fell off — Settings was unreachable on every
+              MacBook, and Numbers and Media Studio went with it on a 1440. macOS
+              hides scrollbars until you scroll, so there was no hint anything was
+              there; the tabs simply did not exist as far as the user could tell.
+              Wrapping to a second line costs one row of height and can never hide
+              a tab. Each band stays intact on one line (the Group below is
+              `nowrap`/`flexShrink:0`), so a break only ever falls BETWEEN stages —
+              a stage label is never orphaned from its tabs. */}
           <Tabs.List
             px="md"
             style={{
               border: 'none',
-              flexWrap: 'nowrap',
+              flexWrap: 'wrap',
+              rowGap: 'var(--mantine-spacing-xs)',
               gap: 'var(--mantine-spacing-sm)',
               alignItems: 'center',
-              overflowX: 'auto',
             }}
           >
             <Tabs.Tab value="home" leftSection={TAB_ICON.home}>
