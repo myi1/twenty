@@ -82,6 +82,14 @@ export interface SocialEngagement {
 // ── POST /s/marketing/analytics ──────────────────────────────────────────────
 export interface MarketingAnalyticsPayload {
   tier?: string;
+  /** Tabs this caller may open — decided server-side by shared/marketing-access.ts.
+      Absent on older payloads, in which case the hero keeps its previous
+      role-based behaviour rather than blanking the strip. */
+  tabs?: string[];
+  /** May trigger a real send, vs. submit-for-approval (maker-checker). */
+  canSend?: boolean;
+  /** May create/edit/delete templates, vs. read-only pick-from-list. */
+  canEditTemplates?: boolean;
   range?: AnalyticsRange;
   generatedAtLabel?: string;
   kpis?: {
@@ -270,6 +278,14 @@ export interface CustomFieldOption {
 
 export interface MarketingHubPayload {
   tier?: string;
+  /** Tabs this caller may open — decided server-side by shared/marketing-access.ts.
+      Absent on older payloads, in which case the hero keeps its previous
+      role-based behaviour rather than blanking the strip. */
+  tabs?: string[];
+  /** May trigger a real send, vs. submit-for-approval (maker-checker). */
+  canSend?: boolean;
+  /** May create/edit/delete templates, vs. read-only pick-from-list. */
+  canEditTemplates?: boolean;
   greeting?: string;
   generatedAtLabel?: string;
   sendingNow?: SendingNowRow[];

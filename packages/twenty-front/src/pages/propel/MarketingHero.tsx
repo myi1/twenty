@@ -187,16 +187,40 @@ export const MarketingHero = () => {
   const canSeeLeadRouting = isManagerRole(viewerRole);
 
   const requestedTab: HeroTab = isHeroTab(rawTab) ? rawTab : 'home';
-  const activeTab: HeroTab =
-    requestedTab === 'lead-routing' && !canSeeLeadRouting
-      ? 'home'
-      : requestedTab;
 
   // Campaigns + Templates read the same fuller hub payload; one fetch, shared
   // reload. (Mounted at hero level so switching between the two tabs doesn't
   // re-fetch, and a mutation in one is reflected after reload.)
   const { payload: hub, isLoading: hubLoading, reload: reloadHub } =
     useMarketingHub();
+
+  // WHICH TABS THIS PERSON MAY OPEN — decided SERVER-SIDE and carried on the hub
+  // payload (shared/marketing-access.ts). A manager/admin gets all nine; an agent
+  // gets Home, Campaigns and Templates; an agent who runs social media also gets
+  // Social and Media Studio. Every tab's own route is independently fail-closed,
+  // so this is presentation, not the security boundary — it just stops us showing
+  // someone a tab that would only ever answer "blocked".
+  //
+  // null => "the server hasn't told us yet" (still loading, or an older payload
+  // without `tabs`). We deliberately fall back to the previous role-based
+  // behaviour there rather than blanking the strip, so a manager never sees their
+  // tabs flicker away on a slow fetch.
+  const allowedTabs = useMemo(
+    () => (hub?.tabs?.length ? new Set(hub.tabs as HeroTab[]) : null),
+    [hub],
+  );
+  const isTabAllowed = useCallback(
+    (value: HeroTab) =>
+      (allowedTabs === null || allowedTabs.has(value)) &&
+      (value !== 'lead-routing' || canSeeLeadRouting),
+    [allowedTabs, canSeeLeadRouting],
+  );
+
+  // A deep link to a tab this person may not open lands on Home instead of an
+  // error or an empty shell — same posture the lead-routing gate had, now applied
+  // to every gated tab. Home is always allowed.
+  const activeTab: HeroTab = isTabAllowed(requestedTab) ? requestedTab : 'home';
+
 
   const setTab = useCallback(
     (value: string | null) => {
@@ -336,9 +360,7 @@ export const MarketingHero = () => {
               {TAB_LABEL.home}
             </Tabs.Tab>
             {FUNNEL_BANDS.map((band) => {
-              const bandTabs = band.tabs.filter(
-                (value) => value !== 'lead-routing' || canSeeLeadRouting,
-              );
+                const bandTabs = band.tabs.filter(isTabAllowed);
               if (bandTabs.length === 0) return null;
               const color = STAGE_COLOR[band.stage];
               return (
