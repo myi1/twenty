@@ -15,7 +15,14 @@ import { useCanPublish } from '@/propel/lib/canPublish';
 // view), which is the safe default: an agent shown "submit" is harmless; a manager
 // mis-shown the agent home still has every backend capability. While the capability
 // is loading we show a neutral spinner rather than flashing the wrong home.
-export const MarketingHomeTab = () => {
+export const MarketingHomeTab = ({
+  allowedTabs,
+}: {
+  // Forwarded to MyDeskHome so the agent's "make something" tiles only offer
+  // surfaces they can actually open. Publishers (NightDeskHome) see everything, so
+  // they don't need it.
+  allowedTabs?: string[];
+} = {}) => {
   const { canPublish, loading } = useCanPublish();
 
   if (loading) {
@@ -26,5 +33,5 @@ export const MarketingHomeTab = () => {
     );
   }
 
-  return canPublish ? <NightDeskHome /> : <MyDeskHome />;
+  return canPublish ? <NightDeskHome /> : <MyDeskHome allowedTabs={allowedTabs} />;
 };

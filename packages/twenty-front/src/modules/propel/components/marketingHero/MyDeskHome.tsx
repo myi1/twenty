@@ -224,7 +224,14 @@ const WorkItemRow = ({
   );
 };
 
-export const MyDeskHome = () => {
+export const MyDeskHome = ({
+  allowedTabs,
+}: {
+  // The tabs THIS viewer may open, from the hub payload (marketing-access.ts).
+  // Gates the "make something" tiles so an agent is never offered a shortcut to a
+  // surface they can't reach (which would only bounce them back to Home).
+  allowedTabs?: string[];
+} = {}) => {
   const navigate = useNavigate();
   const member = useAtomStateValue(currentWorkspaceMemberState);
   const firstName = member?.name?.firstName ?? null;
@@ -405,26 +412,53 @@ export const MyDeskHome = () => {
             />
           </Box>
         </Collapse>
-        <Group gap="sm" align="stretch" wrap="wrap">
-          <CreateTile
-            icon={<IconWorld size={18} />}
-            title="Landing page"
-            hint="Build a page for a listing or campaign"
-            onClick={() => navigate(`${AppPath.MarketingHub}?tab=website&sub=landing-pages`)}
-          />
-          <CreateTile
-            icon={<IconMessage size={18} />}
-            title="Social post"
-            hint="Draft posts for the calendar"
-            onClick={() => navigate(`${AppPath.MarketingHub}?tab=social`)}
-          />
-          <CreateTile
-            icon={<IconPhoto size={18} />}
-            title="Media Studio"
-            hint="Generate & edit images"
-            onClick={() => navigate(`${AppPath.MarketingHub}?tab=media-studio`)}
-          />
-        </Group>
+        {/* One tile per creatable surface, shown ONLY if this viewer can open
+            that surface's tab. A plain agent (Home/Campaigns/Templates) sees none
+            of these and relies on "Start a campaign" above; an agent with the
+            social capability (e.g. Ziba) sees Social post + Media Studio. Gating
+            on `allowedTabs` — the same server-authoritative list the tab strip
+            uses — means we never render a shortcut that just bounces the agent
+            back to Home. Fail-closed: unknown (loading / no payload) hides a tile
+            rather than showing a dead one. */}
+        {(() => {
+          const tiles = [
+            {
+              tab: 'website',
+              icon: <IconWorld size={18} />,
+              title: 'Landing page',
+              hint: 'Build a page for a listing or campaign',
+              path: `${AppPath.MarketingHub}?tab=website&sub=landing-pages`,
+            },
+            {
+              tab: 'social',
+              icon: <IconMessage size={18} />,
+              title: 'Social post',
+              hint: 'Draft posts for the calendar',
+              path: `${AppPath.MarketingHub}?tab=social`,
+            },
+            {
+              tab: 'media-studio',
+              icon: <IconPhoto size={18} />,
+              title: 'Media Studio',
+              hint: 'Generate & edit images',
+              path: `${AppPath.MarketingHub}?tab=media-studio`,
+            },
+          ].filter((t) => allowedTabs?.includes(t.tab) ?? false);
+          if (tiles.length === 0) return null;
+          return (
+            <Group gap="sm" align="stretch" wrap="wrap">
+              {tiles.map((t) => (
+                <CreateTile
+                  key={t.tab}
+                  icon={t.icon}
+                  title={t.title}
+                  hint={t.hint}
+                  onClick={() => navigate(t.path)}
+                />
+              ))}
+            </Group>
+          );
+        })()}
       </Paper>
 
       {/* Shared review drawers, hosted here so the agent edits in place. */}

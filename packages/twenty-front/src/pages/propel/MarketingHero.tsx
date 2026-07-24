@@ -242,7 +242,9 @@ export const MarketingHero = () => {
     () => (
       <>
         <Tabs.Panel value="home">
-          {activeTab === 'home' ? <MarketingHomeTab /> : null}
+          {activeTab === 'home' ? (
+            <MarketingHomeTab allowedTabs={hub?.tabs} />
+          ) : null}
         </Tabs.Panel>
         <Tabs.Panel value="campaigns">
           {activeTab === 'campaigns' ? (
