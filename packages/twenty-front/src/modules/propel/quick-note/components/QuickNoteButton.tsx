@@ -1,5 +1,7 @@
 import { QuickNoteModal } from '@/propel/quick-note/components/QuickNoteModal';
 import { useModal } from '@/ui/layout/modal/hooks/useModal';
+import { isModalOpenedComponentState } from '@/ui/layout/modal/states/isModalOpenedComponentState';
+import { useAtomComponentStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomComponentStateValue';
 import { dockColor, noteAccent } from '@/ui/theme/dockColorTokens';
 import { QUICK_NOTE_MODAL_ID } from '@/propel/quick-note/constants/QuickNoteModalId';
 import { styled } from '@linaria/react';
@@ -53,6 +55,19 @@ const StyledLauncher = styled.button`
 export const QuickNoteButton = () => {
   const { openModal } = useModal();
 
+  // Mount the modal ONLY while it is open. Its body calls
+  // useOpenCreateActivityDrawer(Note) and useQuickNoteSearchResults at render,
+  // and both need object metadata to be loaded — rendering it eagerly on every
+  // page threw "Object metadata item 'note' cannot be found in an array of 0
+  // elements" before the metadata store had filled, which the error boundary
+  // turned into a full-app error page. Gating on open also means the picker
+  // does no work until someone actually wants it. The open/close animation is
+  // unaffected: ModalStatefulWrapper drives it from the same atom.
+  const isQuickNoteModalOpened = useAtomComponentStateValue(
+    isModalOpenedComponentState,
+    QUICK_NOTE_MODAL_ID,
+  );
+
   return (
     <>
       <StyledLauncherContainer>
@@ -67,7 +82,7 @@ export const QuickNoteButton = () => {
           </span>
         </StyledLauncher>
       </StyledLauncherContainer>
-      <QuickNoteModal />
+      {isQuickNoteModalOpened && <QuickNoteModal />}
     </>
   );
 };
