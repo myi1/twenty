@@ -602,6 +602,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
               nowMs={nowMs}
               onRowAction={handleRowAction}
               onCompleteTask={completeTaskFromRail}
+              onOpenRow={(row) => setDrawer({ rowId: row.id, mode: 'overview' })}
               arrangement={railArrangement}
               onArrangementChange={(next) => {
                 setRailArrangement(next);

@@ -31,7 +31,7 @@
 // (deskState.ts owns the localStorage write). Reduced-motion drops every
 // transition (widths, folds, presses) — layout still changes, just instantly.
 
-import { useRef, useState, type ReactNode } from 'react';
+import { useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import styled from '@emotion/styled';
 import { useNavigate } from 'react-router-dom';
 import { AppPath } from 'twenty-shared/types';
@@ -300,9 +300,21 @@ const Item = styled.div`
     padding-bottom: 0;
   }
 `;
-const ItemBody = styled.div`
+const ItemBody = styled.div<{ $clickable?: boolean }>`
   min-width: 0;
   flex: 1;
+  ${({ $clickable }) =>
+    $clickable
+      ? `
+  cursor: pointer;
+  border-radius: 4px;
+  &:hover > div:first-of-type { text-decoration: underline; }
+  &:focus-visible {
+    outline: 2px solid var(--p-ink);
+    outline-offset: 2px;
+  }
+`
+      : ''}
 `;
 const T1 = styled.div<{ $done?: boolean }>`
   font-family: ${FONT_UI};
@@ -554,6 +566,7 @@ export const RightRail = ({
   nowMs,
   onRowAction,
   onCompleteTask,
+  onOpenRow,
   arrangement,
   onArrangementChange,
   forceExpanded = false,
@@ -566,6 +579,11 @@ export const RightRail = ({
   /** The board's own action handler (dialer / drawer) — reused, never re-built.
    *  Rail items reach it with a synthetic DeskRow built from their own data. */
   onRowAction: (action: RowAction, row: DeskRow) => void;
+  /** Open a rail row in the board's PeekDrawer. The rail's priority leads are
+   *  already full DeskRows and index.tsx's resolveRow falls back to railRows,
+   *  so a rail-only lead resolves fine — the row click was simply never wired,
+   *  which is why tapping a priority lead did nothing. */
+  onOpenRow?: (row: DeskRow) => void;
   /** Existing `completeTask` route write; resolves true on success. */
   onCompleteTask: (row: DeskRow, taskId: string) => Promise<boolean>;
   /** Restored rail arrangement (order / folds / collapse). */
@@ -744,7 +762,27 @@ export const RightRail = ({
             onMouseEnter={() => setHoverItemId(r.id)}
             onMouseLeave={() => setHoverItemId((prev) => (prev === r.id ? null : prev))}
           >
-            <ItemBody>
+            <ItemBody
+              $clickable={!!onOpenRow}
+              {...(onOpenRow
+                ? {
+                    role: 'button' as const,
+                    tabIndex: 0,
+                    // aria-label (not title) — the row's own text would otherwise
+                    // BE the accessible name, which reads as the lead's details
+                    // rather than the action.
+                    'aria-label': `Open ${r.name}`,
+                    title: `Open ${r.name}`,
+                    onClick: () => onOpenRow(r),
+                    onKeyDown: (e: KeyboardEvent) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onOpenRow(r);
+                      }
+                    },
+                  }
+                : {})}
+            >
               <T1>{r.name}</T1>
               <T2>{r.meta}</T2>
             </ItemBody>
