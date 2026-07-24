@@ -81,3 +81,11 @@ export const dialerAccent = {
   pillBg: 'var(--t-color-blue9)',
   pillBgHover: 'var(--t-color-blue10)',
 } as const;
+
+// Quick Note launcher — amber, for the sticky-note association, and kept visually
+// distinct from the dialer (blue) and WhatsApp (green) launchers so the three
+// stacked buttons in the bottom-right corner stay tellable apart at a glance.
+export const noteAccent = {
+  pillBg: 'var(--t-color-orange9)',
+  pillBgHover: 'var(--t-color-orange10)',
+} as const;
