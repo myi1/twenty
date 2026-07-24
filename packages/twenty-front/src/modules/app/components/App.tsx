@@ -1,7 +1,6 @@
 import { AppRouter } from '@/app/components/AppRouter';
 import { ApolloDevLogEffect } from '@/debug/components/ApolloDevLogEffect';
 import { DialerDock } from '@/dialer-dock/components/DialerDock';
-import { QuickNoteButton } from '@/propel/quick-note/components/QuickNoteButton';
 import { WhatsAppDock } from '@/whatsapp-dock/components/WhatsAppDock';
 import { AppErrorBoundary } from '@/error-handler/components/AppErrorBoundary';
 import { AppRootErrorFallback } from '@/error-handler/components/AppRootErrorFallback';
@@ -39,11 +38,14 @@ export const App = () => {
                     <AppRouter />
                     <DialerDock />
                     <WhatsAppDock />
-                    {/* Third floating launcher, same bottom-right column as the two
-                        docks above. Mounted here (not in the nav drawer) so it sits
-                        beside its siblings and inside the authenticated tree its
-                        search hook needs. */}
-                    <QuickNoteButton />
+                    {/* NOTE: the Quick Note launcher is a THIRD floating button in
+                        this same bottom-right column, but it cannot be mounted here.
+                        This tree sits OUTSIDE ApolloProvider (Apollo is provided
+                        inside AppRouter, in AppRouterProviders), and Quick Note's
+                        record picker uses Apollo — mounting it here threw an Apollo
+                        invariant that took down the whole app. The two docks above
+                        survive here only because they use fetch/localStorage, never
+                        Apollo. Quick Note is mounted in AppRouterProviders instead. */}
                   </ClickOutsideListenerContext.Provider>
                 </HelmetProvider>
               </ExceptionHandlerProvider>
