@@ -4,6 +4,7 @@ import { IconSearch } from 'twenty-ui/display';
 import { LightIconButton } from 'twenty-ui/input';
 import { MOBILE_VIEWPORT, themeCssVariables } from 'twenty-ui/theme-constants';
 
+import { NotificationBell } from '@/propel/notification-bell/components/NotificationBell';
 import { QuickNoteButton } from '@/propel/quick-note/components/QuickNoteButton';
 import { useOpenRecordsSearchPageInSidePanel } from '@/side-panel/hooks/useOpenRecordsSearchPageInSidePanel';
 import { PAGE_BAR_MIN_HEIGHT } from '@/ui/layout/page/constants/PageBarMinHeight';
@@ -93,6 +94,7 @@ export const NavigationDrawerHeader = ({
               aria-label={t`Search`}
             />
           )}
+          {!isMobile && <NotificationBell />}
           {isNavigationDrawerExpanded && showCollapseButton && (
             <StyledNavigationDrawerCollapseButtonContainer>
               <NavigationDrawerCollapseButton direction="left" />

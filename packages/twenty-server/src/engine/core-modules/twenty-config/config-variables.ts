@@ -1691,6 +1691,30 @@ export class ConfigVariables {
   @ConfigVariablesMetadata({
     group: ConfigVariablesGroup.ADVANCED_SETTINGS,
     isSensitive: true,
+    description:
+      'Base URL of the propel-crm app (for the security-event WhatsApp notify route)',
+    isEnvOnly: true,
+    isHiddenInAdminPanel: true,
+    type: ConfigVariableType.STRING,
+  })
+  @IsOptional()
+  SECURITY_EVENT_NOTIFY_URL: string;
+
+  @ConfigVariablesMetadata({
+    group: ConfigVariablesGroup.ADVANCED_SETTINGS,
+    isSensitive: true,
+    description:
+      'Shared secret for the security-event WhatsApp notify route (propel-crm SECURITY_EVENT_NOTIFY_KEY)',
+    isEnvOnly: true,
+    isHiddenInAdminPanel: true,
+    type: ConfigVariableType.STRING,
+  })
+  @IsOptional()
+  SECURITY_EVENT_NOTIFY_KEY: string;
+
+  @ConfigVariablesMetadata({
+    group: ConfigVariablesGroup.ADVANCED_SETTINGS,
+    isSensitive: true,
     description: 'Mintlify subdomain for documentation search',
     isEnvOnly: true,
     isHiddenInAdminPanel: true,

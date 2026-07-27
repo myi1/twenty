@@ -65,6 +65,9 @@ import { GuardRedirectService } from 'src/engine/core-modules/guard-redirect/ser
 import { I18nService } from 'src/engine/core-modules/i18n/i18n.service';
 import { TwentyConfigService } from 'src/engine/core-modules/twenty-config/twenty-config.service';
 import { UserWorkspaceService } from 'src/engine/core-modules/user-workspace/user-workspace.service';
+import { SecurityEventType } from 'src/engine/core-modules/security-event/security-event.entity';
+import { SecurityEventWhatsappNotifierService } from 'src/engine/core-modules/security-event/security-event-whatsapp-notifier.service';
+import { SecurityEventService } from 'src/engine/core-modules/security-event/security-event.service';
 import { UserService } from 'src/engine/core-modules/user/services/user.service';
 import { UserEntity } from 'src/engine/core-modules/user/user.entity';
 import { WorkspaceInvitationService } from 'src/engine/core-modules/workspace-invitation/services/workspace-invitation.service';
@@ -104,6 +107,8 @@ export class AuthService {
     private readonly applicationRegistrationService: ApplicationRegistrationService,
     private readonly featureFlagService: FeatureFlagService,
     private readonly createSSOConnectedAccountService: CreateSSOConnectedAccountService,
+    private readonly securityEventService: SecurityEventService,
+    private readonly securityEventWhatsappNotifierService: SecurityEventWhatsappNotifierService,
   ) {}
 
   private async checkAccessAndUseInvitationOrThrow(
@@ -404,6 +409,22 @@ export class AuthService {
       authProvider,
       targetedTokenType: JwtTokenTypeEnum.ACCESS,
     });
+
+    // Best-effort in-app + WhatsApp notification (never blocks/breaks login on
+    // failure — both calls swallow their own errors).
+    await this.securityEventService.record(
+      user.id,
+      SecurityEventType.LOGIN_SUCCESS,
+    );
+    const loginWorkspaceMemberId =
+      await this.userWorkspaceService.getWorkspaceMemberId(
+        user.id,
+        workspaceId,
+      );
+    await this.securityEventWhatsappNotifierService.notify(
+      loginWorkspaceMemberId,
+      SecurityEventType.LOGIN_SUCCESS,
+    );
 
     return {
       tokens: {
@@ -734,6 +755,21 @@ export class AuthService {
       text,
       html,
     });
+
+    // Best-effort in-app + WhatsApp notification, same non-blocking guarantee as above.
+    await this.securityEventService.record(
+      userId,
+      SecurityEventType.PASSWORD_CHANGED,
+    );
+    const passwordChangeWorkspaceMemberId =
+      await this.userWorkspaceService.getWorkspaceMemberId(
+        userId,
+        firstUserWorkspace.workspaceId,
+      );
+    await this.securityEventWhatsappNotifierService.notify(
+      passwordChangeWorkspaceMemberId,
+      SecurityEventType.PASSWORD_CHANGED,
+    );
 
     return { success: true };
   }

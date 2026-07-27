@@ -1,6 +1,6 @@
 import { useLingui } from '@lingui/react/macro';
 import { SettingsPath } from 'twenty-shared/types';
-import { IconHelpCircle, IconSettings } from 'twenty-ui/display';
+import { IconBell, IconHelpCircle, IconSettings } from 'twenty-ui/display';
 import { AnimatedExpandableContainer } from 'twenty-ui/layout';
 
 // Propel: the graduated hero hub nav entries (Inbox, Marketing, Weekly 1:1,
@@ -94,6 +94,14 @@ export const NavigationDrawerOtherSection = () => {
           propelNavEntries.map((entry) => (
             <PropelHeroNavItem key={entry.key} entry={entry} />
           ))}
+        {/* Propel: the full Notifications screen — a plain bundled page (see
+            useCreateAppRouter.tsx), not a config-driven hero, so it's a fixed
+            item here rather than part of propelNavEntries. */}
+        <NavigationDrawerItem
+          label={t`Notifications`}
+          to="/notifications"
+          Icon={IconBell}
+        />
         <NavigationDrawerItem
           label={t`Settings`}
           Icon={IconSettings}

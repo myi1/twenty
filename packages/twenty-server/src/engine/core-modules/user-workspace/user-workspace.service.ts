@@ -181,6 +181,39 @@ export class UserWorkspaceService extends TypeOrmQueryService<UserWorkspaceEntit
     }, authContext);
   }
 
+  // Best-effort lookup — returns null (never throws) rather than assert/fail, since
+  // callers (security-event WhatsApp notify) treat this as a non-blocking side
+  // channel: a missing/renamed workspace member must never break login or a
+  // password change.
+  async getWorkspaceMemberId(
+    userId: string,
+    workspaceId: string,
+  ): Promise<string | null> {
+    try {
+      const authContext = buildSystemAuthContext(workspaceId);
+
+      return await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+        async () => {
+          const workspaceMemberRepository =
+            await this.globalWorkspaceOrmManager.getRepository<WorkspaceMemberWorkspaceEntity>(
+              workspaceId,
+              'workspaceMember',
+              { shouldBypassPermissionChecks: true },
+            );
+
+          const workspaceMember = await workspaceMemberRepository.findOne({
+            where: { userId },
+          });
+
+          return workspaceMember?.id ?? null;
+        },
+        authContext,
+      );
+    } catch {
+      return null;
+    }
+  }
+
   async addUserToWorkspaceIfUserNotInWorkspace(
     user: UserEntity,
     workspace: WorkspaceEntity,
