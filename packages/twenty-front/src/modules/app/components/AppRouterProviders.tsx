@@ -17,6 +17,7 @@ import { PromiseRejectionEffect } from '@/error-handler/components/PromiseReject
 import { MinimalMetadataLoadEffect } from '@/metadata-store/effect-components/MinimalMetadataLoadEffect';
 import { UserMetadataProviderInitialEffect } from '@/metadata-store/effect-components/UserMetadataProviderInitialEffect';
 import { ApolloCoreProvider } from '@/object-metadata/components/ApolloCoreProvider';
+import { PropelCallOnQueryParamEffect } from '@/dialer-dock/components/PropelCallOnQueryParamEffect';
 import { QuickNoteButton } from '@/propel/quick-note/components/QuickNoteButton';
 import { PreComputedChipGeneratorsProvider } from '@/object-metadata/components/PreComputedChipGeneratorsProvider';
 import { ApolloAdminProvider } from '@/settings/admin-panel/apollo/components/ApolloAdminProvider';
@@ -80,6 +81,11 @@ export const AppRouterProviders = () => {
                                       Mounting it in App.tsx threw an Apollo
                                       invariant on every page load. */}
                                   <QuickNoteButton />
+                                  {/* Propel: places the call when the Call
+                                      action navigates here with ?call=1. Must
+                                      live inside ApolloCoreProvider — it reads
+                                      the contact. */}
+                                  <PropelCallOnQueryParamEffect />
                                   <CommandMenuConfirmationModalManager />
                                   <CommandRunner />
                                 </StrictMode>
