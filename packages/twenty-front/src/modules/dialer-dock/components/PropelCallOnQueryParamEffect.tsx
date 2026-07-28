@@ -1,9 +1,9 @@
-import { CoreObjectNameSingular } from '@/object-metadata/types/CoreObjectNameSingular';
 import { useFindOneRecord } from '@/object-record/hooks/useFindOneRecord';
 import { useSnackBar } from '@/ui/feedback/snack-bar-manager/hooks/useSnackBar';
 import { startPropelCall } from '@/dialer-dock/utils/startPropelCall';
 import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { CoreObjectNameSingular } from 'twenty-shared/types';
 
 // Propel: the bridge between the "Call" action on a Person and the dialer dock.
 //
