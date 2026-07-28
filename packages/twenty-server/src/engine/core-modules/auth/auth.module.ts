@@ -49,6 +49,7 @@ import { KeyValuePairEntity } from 'src/engine/core-modules/key-value-pair/key-v
 import { MetricsModule } from 'src/engine/core-modules/metrics/metrics.module';
 import { OnboardingModule } from 'src/engine/core-modules/onboarding/onboarding.module';
 import { SecureHttpClientModule } from 'src/engine/core-modules/secure-http-client/secure-http-client.module';
+import { SecurityEventModule } from 'src/engine/core-modules/security-event/security-event.module';
 import { WorkspaceSSOModule } from 'src/engine/core-modules/sso/sso.module';
 import { WorkspaceSSOIdentityProviderEntity } from 'src/engine/core-modules/sso/workspace-sso-identity-provider.entity';
 import { TwoFactorAuthenticationMethodEntity } from 'src/engine/core-modules/two-factor-authentication/entities/two-factor-authentication-method.entity';
@@ -84,6 +85,7 @@ import { JwtAuthStrategy } from './strategies/jwt.auth.strategy';
     WorkspaceDomainsModule,
     TokenModule,
     UserModule,
+    SecurityEventModule,
     TypeOrmModule.forFeature([
       WorkspaceEntity,
       UserEntity,

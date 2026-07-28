@@ -33,6 +33,12 @@ const RecordShowPage = lazy(() =>
   })),
 );
 
+const NotificationsPage = lazy(() =>
+  import('~/pages/propel/NotificationsPage').then((module) => ({
+    default: module.NotificationsPage,
+  })),
+);
+
 // All Propel heroes are runtime-loaded via <HeroRoute name="…"/> — none of them
 // ship in the app bundle. HeroRoute fetches each one from the /heroes volume at
 // navigation time (see HeroRoute.tsx). Their ROUTES are also config-driven now: the
@@ -241,6 +247,18 @@ export const useCreateAppRouter = (
             element={
               <LazyRoute>
                 <RecordShowPage />
+              </LazyRoute>
+            }
+          />
+          {/* Propel: the full Notifications screen (bell "View all"). A plain
+              bundled page, NOT a runtime-loaded hero — registered directly so it
+              renders inside DefaultLayout's <Outlet/> (sidebar included) like any
+              other page, with no /heroes volume dependency. */}
+          <Route
+            path="/notifications"
+            element={
+              <LazyRoute>
+                <NotificationsPage />
               </LazyRoute>
             }
           />
