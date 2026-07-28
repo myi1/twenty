@@ -4,6 +4,8 @@ import { IconSearch } from 'twenty-ui/display';
 import { LightIconButton } from 'twenty-ui/input';
 import { MOBILE_VIEWPORT, themeCssVariables } from 'twenty-ui/theme-constants';
 
+import { useDoObjectMetadataItemsExist } from '@/object-metadata/hooks/useDoObjectMetadataItemsExist';
+import { NotificationBell } from '@/propel/notification-bell/components/NotificationBell';
 import { QuickNoteButton } from '@/propel/quick-note/components/QuickNoteButton';
 import { useOpenRecordsSearchPageInSidePanel } from '@/side-panel/hooks/useOpenRecordsSearchPageInSidePanel';
 import { PAGE_BAR_MIN_HEIGHT } from '@/ui/layout/page/constants/PageBarMinHeight';
@@ -76,6 +78,15 @@ export const NavigationDrawerHeader = ({
   const isNavigationDrawerExpanded = useAtomStateValue(
     isNavigationDrawerExpandedState,
   );
+  // Guard against a real crash: NotificationBell/QuickNoteButton mount
+  // unconditionally here, but useFindManyRecords/useCreateOneRecord throw
+  // synchronously (not just skip) when the object metadata array hasn't
+  // loaded yet (0 items) — e.g. right after login, before the first metadata
+  // fetch resolves. Don't mount either until their objects actually exist.
+  const isNotificationLogMetadataReady = useDoObjectMetadataItemsExist([
+    'notificationLog',
+  ]);
+  const isNoteMetadataReady = useDoObjectMetadataItemsExist(['note']);
 
   return (
     <>
@@ -93,6 +104,7 @@ export const NavigationDrawerHeader = ({
               aria-label={t`Search`}
             />
           )}
+          {!isMobile && isNotificationLogMetadataReady && <NotificationBell />}
           {isNavigationDrawerExpanded && showCollapseButton && (
             <StyledNavigationDrawerCollapseButtonContainer>
               <NavigationDrawerCollapseButton direction="left" />
@@ -103,7 +115,7 @@ export const NavigationDrawerHeader = ({
       {/* Propel: floats fixed in the bottom-right corner, above the WhatsApp/
       Dialer docks — rendered here only so it stays inside the authenticated
       React tree its data hooks need; position is CSS-fixed, not layout-flow. */}
-      <QuickNoteButton />
+      {isNoteMetadataReady && <QuickNoteButton />}
     </>
   );
 };

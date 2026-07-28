@@ -60,6 +60,7 @@ import { TelemetryModule } from 'src/engine/core-modules/telemetry/telemetry.mod
 import { TwentyConfigModule } from 'src/engine/core-modules/twenty-config/twenty-config.module';
 import { TwentyConfigService } from 'src/engine/core-modules/twenty-config/twenty-config.service';
 import { UsageModule } from 'src/engine/core-modules/usage/usage.module';
+import { SecurityEventModule } from 'src/engine/core-modules/security-event/security-event.module';
 import { UserModule } from 'src/engine/core-modules/user/user.module';
 import { WorkflowApiModule } from 'src/engine/core-modules/workflow/workflow-api.module';
 import { WorkspaceInvitationModule } from 'src/engine/core-modules/workspace-invitation/workspace-invitation.module';
@@ -107,6 +108,7 @@ import { FileModule } from './file/file.module';
     TimelineMessagingModule,
     TimelineCalendarEventModule,
     UserModule,
+    SecurityEventModule,
     WorkspaceModule,
     WorkspaceInvitationModule,
     WorkspaceSSOModule,

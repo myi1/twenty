@@ -26,6 +26,7 @@ import {
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { getTokenPair } from '@/apollo/utils/getTokenPair';
+import { MainContainerLayoutWithSidePanel } from '@/object-record/components/MainContainerLayoutWithSidePanel';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import { useSnackBar } from '@/ui/feedback/snack-bar-manager/hooks/useSnackBar';
 import { REACT_APP_SERVER_BASE_URL } from '~/config';
@@ -181,10 +182,12 @@ export const HeroRoute = ({ name }: { name: string }) => {
   const displayName = getHeroDisplayName(name);
 
   return (
-    <HeroErrorBoundary displayName={displayName}>
-      <Suspense fallback={<HeroLoading />}>
-        <Hero host={host} />
-      </Suspense>
-    </HeroErrorBoundary>
+    <MainContainerLayoutWithSidePanel>
+      <HeroErrorBoundary displayName={displayName}>
+        <Suspense fallback={<HeroLoading />}>
+          <Hero host={host} />
+        </Suspense>
+      </HeroErrorBoundary>
+    </MainContainerLayoutWithSidePanel>
   );
 };
