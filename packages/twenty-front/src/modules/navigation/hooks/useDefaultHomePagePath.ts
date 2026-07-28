@@ -1,4 +1,6 @@
 import { currentUserState } from '@/auth/states/currentUserState';
+import { getDefaultHomeRoute } from '@/propel/runtime/propelNavConfig';
+import { usePropelNavConfig } from '@/propel/runtime/usePropelNavConfig';
 import { metadataStoreState } from '@/metadata-store/states/metadataStoreState';
 import { lastVisitedObjectMetadataItemIdState } from '@/navigation/states/lastVisitedObjectMetadataItemIdState';
 import { type ObjectPathInfo } from '@/navigation/types/ObjectPathInfo';
@@ -17,6 +19,13 @@ import { useStore } from 'jotai';
 export const useDefaultHomePagePath = () => {
   const store = useStore();
   const currentUser = useAtomStateValue(currentUserState);
+  // Propel (2026-07-08): deterministic "/" landing. When the nav registry
+  // (baked default ∪ mounted nav.config.json) configures `defaultHome`, it
+  // wins over Twenty's stock heuristic below — whose fallback is the
+  // ALPHABETICALLY-FIRST readable object (here: agreementDocument), dumping
+  // every fresh login on the A2A Documents table. Editable on the heroes
+  // mount without a rebuild.
+  const propelNavConfig = usePropelNavConfig();
   const { objectPermissionsByObjectMetadataId } = useObjectPermissions();
   const metadataStore = useAtomFamilyStateValue(
     metadataStoreState,
@@ -100,6 +109,11 @@ export const useDefaultHomePagePath = () => {
       return AppPath.SignInUp;
     }
 
+    const propelDefaultHome = getDefaultHomeRoute(propelNavConfig);
+    if (isDefined(propelDefaultHome)) {
+      return propelDefaultHome;
+    }
+
     if (isEmpty(readableNonSystemObjectMetadataItems)) {
       // Object metadata may legitimately be empty for a user with no readable
       // objects, in which case /settings/profile is the intended fallback.
@@ -129,6 +143,7 @@ export const useDefaultHomePagePath = () => {
     );
   }, [
     currentUser,
+    propelNavConfig,
     getDefaultObjectPathInfo,
     readableNonSystemObjectMetadataItems,
     areObjectMetadataItemsLoaded,

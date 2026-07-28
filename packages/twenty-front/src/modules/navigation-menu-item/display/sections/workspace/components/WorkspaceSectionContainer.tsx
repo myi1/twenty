@@ -10,6 +10,10 @@ import { NavigationMenuItemDroppableIds } from '@/navigation-menu-item/common/co
 import { NavigationDropTargetContext } from '@/navigation-menu-item/common/contexts/NavigationDropTargetContext';
 import { type NavigationMenuItemClickParams } from '@/navigation-menu-item/display/hooks/useNavigationMenuItemSectionItems';
 import { getObjectMetadataForNavigationMenuItem } from '@/navigation-menu-item/display/object/utils/getObjectMetadataForNavigationMenuItem';
+import {
+  getPropelExcludedFolderIds,
+  isPropelExcludedFolderItem,
+} from '@/navigation-menu-item/display/utils/getPropelPromotedFolderItems';
 import { WorkspaceSectionListReadOnly } from '@/navigation-menu-item/display/sections/workspace/components/WorkspaceSectionListReadOnly';
 import { NavigationMenuItemSection } from '@/navigation-menu-item/display/sections/components/NavigationMenuItemSection';
 import type { EditModeProps } from '@/object-metadata/components/EditModeProps';
@@ -42,6 +46,11 @@ type WorkspaceSectionContainerProps = {
     objectMetadataItem: EnrichedObjectMetadataItem,
     navigationMenuItemId: string,
   ) => void;
+  // Propel (config-driven nav sections): app-side folders to OMIT from the
+  // READ-ONLY workspace display because they've been promoted to their own
+  // top-level section. Not applied in edit mode (the DnD editor keeps the real
+  // structure so the nav metadata can still be reordered/edited).
+  excludeFolders?: readonly string[];
 };
 
 export const WorkspaceSectionContainer = ({
@@ -51,6 +60,7 @@ export const WorkspaceSectionContainer = ({
   selectedNavigationMenuItemId = null,
   onNavigationMenuItemClick,
   onActiveObjectMetadataItemClick,
+  excludeFolders,
 }: WorkspaceSectionContainerProps) => {
   const isLayoutCustomizationModeEnabled = useAtomStateValue(
     isLayoutCustomizationModeEnabledState,
@@ -111,6 +121,17 @@ export const WorkspaceSectionContainer = ({
     }
     return false;
   });
+
+  // Propel: drop promoted folders (and their child rows) from the READ-ONLY
+  // display so a folder shown as its own top-level section isn't listed twice.
+  // Edit mode is untouched — the DnD editor keeps the real folder structure.
+  const excludedFolderIds = getPropelExcludedFolderIds(items, excludeFolders);
+  const readOnlyFilteredItems =
+    excludedFolderIds.size > 0
+      ? filteredItems.filter(
+          (item) => !isPropelExcludedFolderItem(item, excludedFolderIds),
+        )
+      : filteredItems;
 
   const workspaceOrphanItemsForSection = isLayoutCustomizationModeEnabled
     ? flatItems
@@ -180,7 +201,7 @@ export const WorkspaceSectionContainer = ({
         </Suspense>
       ) : (
         <WorkspaceSectionListReadOnly
-          filteredItems={filteredItems}
+          filteredItems={readOnlyFilteredItems}
           folderChildrenById={folderChildrenById}
           onActiveObjectMetadataItemClick={onActiveObjectMetadataItemClick}
         />

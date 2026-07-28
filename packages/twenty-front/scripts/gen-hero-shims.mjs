@@ -80,7 +80,7 @@ const SHARED_SPECIFIERS = [
 // is the source of truth for the values anyway.
 const HOST_INTERNAL_EXPORTS = {
   '@/apollo/utils/getTokenPair': { named: ['getTokenPair'], hasDefault: false },
-  '@/propel/lib/callPropelRoute': { named: ['callPropelRoute'], hasDefault: false },
+  '@/propel/lib/callPropelRoute': { named: ['callPropelRoute', 'callPropelRouteWithStatus'], hasDefault: false },
   '@/ui/layout/page/components/PageContainer': {
     named: ['PageContainer'],
     hasDefault: false,

@@ -6,3 +6,4 @@ const M = (window.__propelShared || {})["@/propel/lib/callPropelRoute"];
 if (!M) throw new Error('[propel-hero] window.__propelShared[' + "\"@/propel/lib/callPropelRoute\"" + '] missing — host boot (heroShared) did not run before this hero loaded');
 export default M;
 export const callPropelRoute = M["callPropelRoute"];
+export const callPropelRouteWithStatus = M["callPropelRouteWithStatus"];

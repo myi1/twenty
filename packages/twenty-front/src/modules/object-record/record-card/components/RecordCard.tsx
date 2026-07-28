@@ -1,6 +1,11 @@
 import { styled } from '@linaria/react';
 import { themeCssVariables } from 'twenty-ui/theme-constants';
 
+// PROPEL-NOCTURNE PATCH (Tier B) — re-apply on Twenty upgrade.
+// 3px left-edge stage bar (DESIGN.md §4): the board card wrapper sets
+// --propel-stage-bar-color from its column's semantic (brass=active,
+// sage=won-path, blue=new, muted=nurture); rendered as a clipped
+// pseudo-element so border shorthands (hover/active) never clobber it.
 const StyledBoardCard = styled.div<{
   isDragging?: boolean;
   isSecondaryDragged?: boolean;
@@ -12,6 +17,18 @@ const StyledBoardCard = styled.div<{
   color: ${themeCssVariables.font.color.primary};
   cursor: pointer;
   opacity: ${({ isSecondaryDragged }) => (isSecondaryDragged ? '0.3' : '1')};
+  overflow: hidden;
+  position: relative;
+
+  &::before {
+    background: var(--propel-stage-bar-color, transparent);
+    bottom: 0;
+    content: '';
+    left: 0;
+    position: absolute;
+    top: 0;
+    width: 3px;
+  }
 
   width: 100%;
 

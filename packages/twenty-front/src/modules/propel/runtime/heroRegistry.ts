@@ -29,7 +29,8 @@ export type HeroName =
   | 'sequence-editor'
   | 'one-on-one-runner'
   | 'social-calendar'
-  | 'a2a-studio';
+  | 'a2a-studio'
+  | 'settings-hub';
 
 // Look up a hero's display name (for the loading / error UI). Reads the live nav
 // config first (so a mounted relabel is reflected), then the baked default,

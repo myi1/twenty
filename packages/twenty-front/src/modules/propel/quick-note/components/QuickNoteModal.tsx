@@ -3,7 +3,6 @@ import { QUICK_NOTE_MODAL_ID } from '@/propel/quick-note/constants/QuickNoteModa
 import { useQuickNoteSearchResults } from '@/propel/quick-note/hooks/useQuickNoteSearchResults';
 import { ModalStatefulWrapper } from '@/ui/layout/modal/components/ModalStatefulWrapper';
 import { useModal } from '@/ui/layout/modal/hooks/useModal';
-import { useSnackBar } from '@/ui/feedback/snack-bar-manager/hooks/useSnackBar';
 import { styled } from '@linaria/react';
 import { t } from '@lingui/core/macro';
 import { useState } from 'react';
@@ -37,9 +36,7 @@ const StyledEmptyState = styled.div`
 
 export const QuickNoteModal = () => {
   const { closeModal } = useModal();
-  const { enqueueErrorSnackBar } = useSnackBar();
   const [searchInput, setSearchInput] = useState('');
-  const [selectingId, setSelectingId] = useState<string | null>(null);
   const { loading, searchResultItems } =
     useQuickNoteSearchResults(searchInput);
 
@@ -49,31 +46,18 @@ export const QuickNoteModal = () => {
 
   const handleClose = () => {
     setSearchInput('');
-    setSelectingId(null);
     closeModal(QUICK_NOTE_MODAL_ID);
   };
 
   const handleSelectRecord = async (
     item: (typeof searchResultItems)[number],
   ) => {
-    if (selectingId !== null) return;
-    setSelectingId(item.id);
-    try {
-      await openCreateNoteDrawer({
-        targetableObjects: [
-          { id: item.id, targetObjectNameSingular: item.objectNameSingular },
-        ],
-      });
-      handleClose();
-    } catch (error) {
-      setSelectingId(null);
-      enqueueErrorSnackBar({
-        message:
-          error instanceof Error
-            ? error.message
-            : t`Could not create the note — please try again.`,
-      });
-    }
+    handleClose();
+    await openCreateNoteDrawer({
+      targetableObjects: [
+        { id: item.id, targetObjectNameSingular: item.objectNameSingular },
+      ],
+    });
   };
 
   return (
@@ -84,7 +68,7 @@ export const QuickNoteModal = () => {
       padding="medium"
       renderInDocumentBody
       smallBorderRadius
-      size="medium"
+      narrowWidth
       autoHeight
     >
       <StyledTitleContainer>

@@ -39,10 +39,16 @@
     },
     "generateThemeConstants": {
       "executor": "nx:run-commands",
-      "dependsOn": ["build"],
       "cache": true,
-      "inputs": ["{projectRoot}/scripts/generateThemeConstants.ts"],
-      "outputs": ["{projectRoot}/src/theme-constants/generated"],
+      "inputs": [
+        "{projectRoot}/scripts/generateThemeConstants.ts",
+        "{projectRoot}/src/theme/constants/**/*"
+      ],
+      "outputs": [
+        "{projectRoot}/src/theme-constants/theme-dark.css",
+        "{projectRoot}/src/theme-constants/theme-light.css",
+        "{projectRoot}/src/theme-constants/themeCssVariables.ts"
+      ],
       "options": {
         "command": "tsx {projectRoot}/scripts/generateThemeConstants.ts"
       }

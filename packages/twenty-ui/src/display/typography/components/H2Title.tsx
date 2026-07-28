@@ -21,10 +21,15 @@ const StyledTitleContainer = styled.div`
   justify-content: space-between;
 `;
 
+// PROPEL-NOCTURNE PATCH (Tier B) — re-apply on Twenty upgrade.
+// Section headers render in the Fraunces display face; size raised md → lg
+// (titles never below 15px, DESIGN.md §2.2) and weight capped at 500
+// (Fraunces is loaded at 400/500 only).
 const StyledTitle = styled.h2`
   color: ${themeCssVariables.font.color.primary};
-  font-size: ${themeCssVariables.font.size.md};
-  font-weight: ${themeCssVariables.font.weight.semiBold};
+  font-family: ${themeCssVariables.font.familyDisplay};
+  font-size: ${themeCssVariables.font.size.lg};
+  font-weight: ${themeCssVariables.font.weight.medium};
   margin: 0;
 `;
 

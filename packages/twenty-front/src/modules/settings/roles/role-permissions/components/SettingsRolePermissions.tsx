@@ -1,6 +1,7 @@
 import { type EnrichedObjectMetadataItem } from '@/object-metadata/types/EnrichedObjectMetadataItem';
 import { SettingsRolePermissionsObjectLevelSection } from '@/settings/roles/role-permissions/object-level-permissions/components/SettingsRolePermissionsObjectLevelSection';
 import { SettingsRolePermissionsObjectsSection } from '@/settings/roles/role-permissions/objects-permissions/components/SettingsRolePermissionsObjectsSection';
+import { SettingsRolePermissionsPropelFeaturesSection } from '@/settings/roles/role-permissions/permission-flags/components/SettingsRolePermissionsPropelFeaturesSection';
 import { SettingsRolePermissionsSettingsSection } from '@/settings/roles/role-permissions/permission-flags/components/SettingsRolePermissionsSettingsSection';
 import { SettingsRolePermissionsToolSection } from '@/settings/roles/role-permissions/permission-flags/components/SettingsRolePermissionsToolSection';
 import { styled } from '@linaria/react';
@@ -44,6 +45,10 @@ export const SettingsRolePermissions = ({
         isEditable={isEditable}
       />
       <SettingsRolePermissionsToolSection
+        roleId={roleId}
+        isEditable={isEditable}
+      />
+      <SettingsRolePermissionsPropelFeaturesSection
         roleId={roleId}
         isEditable={isEditable}
       />

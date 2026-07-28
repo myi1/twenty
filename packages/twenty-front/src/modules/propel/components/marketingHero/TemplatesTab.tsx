@@ -393,6 +393,9 @@ export const TemplatesTab = ({
                   subject: seed.subject,
                   bodyText: seed.bodyText,
                   languageCode: seed.languageCode === 'AR' ? 'AR' : 'EN',
+                  // Seed the editor with the saved GrapesJS project JSON so the
+                  // canvas restores the exact node graph (#59), not the starter.
+                  designProjectJson: seed.designProjectJson,
                 }
               : null
           }

@@ -20,9 +20,9 @@ import { useStore } from 'jotai';
 
 import { styled } from '@linaria/react';
 import { motion } from 'framer-motion';
-import { useCallback, useContext, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import { LINK_CHIP_CLICK_OUTSIDE_ID } from 'twenty-ui/components';
-import { ThemeContext, themeCssVariables } from 'twenty-ui/theme-constants';
+import { themeCssVariables } from 'twenty-ui/theme-constants';
 import { useIsMobile } from 'twenty-ui/utilities';
 const StyledCommandMenuBase = styled.div`
   background: ${themeCssVariables.background.primary};
@@ -44,7 +44,6 @@ const StyledCommandMenu = motion.create(StyledCommandMenuBase);
 export const CommandMenuOpenContainer = ({
   children,
 }: React.PropsWithChildren) => {
-  const { theme } = useContext(ThemeContext);
   const isMobile = useIsMobile();
 
   const targetVariantForAnimation: SidePanelAnimationVariant = isMobile
@@ -87,6 +86,8 @@ export const CommandMenuOpenContainer = ({
     ],
   });
 
+  // PROPEL-NOCTURNE PATCH (Tier B) — the drawer transition now lives on the
+  // variants (EASE.drawer, 320ms in / 200ms out); no transition override.
   return (
     <StyledCommandMenu
       data-testid="command-menu"
@@ -96,9 +97,6 @@ export const CommandMenuOpenContainer = ({
       initial="closed"
       exit="closed"
       variants={SIDE_PANEL_ANIMATION_VARIANTS}
-      transition={{
-        duration: theme.animation.duration.normal,
-      }}
       onAnimationStart={() => setIsSidePanelAnimating(true)}
       onAnimationComplete={() => setIsSidePanelAnimating(false)}
     >

@@ -1,7 +1,7 @@
 import { AppRouterProviders } from '@/app/components/AppRouterProviders';
 import { LazyRoute } from '@/app/components/LazyRoute';
 import { SettingsRoutes } from '@/app/components/SettingsRoutes';
-import { HeroRoute } from '@/propel/runtime/HeroRoute';
+import { HeroCatchAllRoute, HeroRoute } from '@/propel/runtime/HeroRoute';
 import {
   getAllNavEntries,
   getPropelNavConfig,
@@ -275,6 +275,20 @@ export const useCreateAppRouter = (
               element={<HeroRoute name={entry.bundle} />}
             />
           ))}
+          {/* Catch-all hero route — closes the "new hero needs a rebuild" gap.
+              The explicit per-hero routes above are baked from the SYNC nav config
+              at router-construction time, so a hero added ONLY to the host-mounted
+              nav.config.json (which resolves asynchronously, after the router is
+              already built) would get a nav drawer item but NO route → 404. This
+              wildcard resolves ANY hero bundle from the runtime config AT
+              NAVIGATION TIME instead: a new hero's nav.config.json entry uses
+              route '/h/<bundle>' and HeroCatchAllRoute loads it with no rebuild.
+              Registered AFTER the explicit routes so those win by specificity
+              (back-compat). The :bundle param is sanitized in HeroCatchAllRoute. */}
+          <Route
+            path={AppPath.HeroCatchAll}
+            element={<HeroCatchAllRoute />}
+          />
           <Route
             path={AppPath.PageLayoutPage}
             element={

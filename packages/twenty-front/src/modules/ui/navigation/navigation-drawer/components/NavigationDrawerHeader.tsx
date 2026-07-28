@@ -6,7 +6,6 @@ import { MOBILE_VIEWPORT, themeCssVariables } from 'twenty-ui/theme-constants';
 
 import { useDoObjectMetadataItemsExist } from '@/object-metadata/hooks/useDoObjectMetadataItemsExist';
 import { NotificationBell } from '@/propel/notification-bell/components/NotificationBell';
-import { QuickNoteButton } from '@/propel/quick-note/components/QuickNoteButton';
 import { useOpenRecordsSearchPageInSidePanel } from '@/side-panel/hooks/useOpenRecordsSearchPageInSidePanel';
 import { PAGE_BAR_MIN_HEIGHT } from '@/ui/layout/page/constants/PageBarMinHeight';
 import { MultiWorkspaceDropdownButton } from '@/ui/navigation/navigation-drawer/components/MultiWorkspaceDropdown/MultiWorkspaceDropdownButton';
@@ -78,15 +77,14 @@ export const NavigationDrawerHeader = ({
   const isNavigationDrawerExpanded = useAtomStateValue(
     isNavigationDrawerExpandedState,
   );
-  // Guard against a real crash: NotificationBell/QuickNoteButton mount
-  // unconditionally here, but useFindManyRecords/useCreateOneRecord throw
+  // Guard against a real crash: NotificationBell mounts
+  // unconditionally here, but useFindManyRecords throws
   // synchronously (not just skip) when the object metadata array hasn't
   // loaded yet (0 items) — e.g. right after login, before the first metadata
   // fetch resolves. Don't mount either until their objects actually exist.
   const isNotificationLogMetadataReady = useDoObjectMetadataItemsExist([
     'notificationLog',
   ]);
-  const isNoteMetadataReady = useDoObjectMetadataItemsExist(['note']);
 
   return (
     <>
@@ -112,10 +110,10 @@ export const NavigationDrawerHeader = ({
           )}
         </StyledRightActions>
       </StyledContainer>
-      {/* Propel: floats fixed in the bottom-right corner, above the WhatsApp/
-      Dialer docks — rendered here only so it stays inside the authenticated
-      React tree its data hooks need; position is CSS-fixed, not layout-flow. */}
-      {isNoteMetadataReady && <QuickNoteButton />}
+      {/* Propel: the Quick Note launcher is NOT mounted here. It lives in
+      AppRouterProviders, inside ApolloCoreProvider — its record picker uses
+      Apollo, and a second mount would also render a duplicate floating
+      button. See the comment at that mount site. */}
     </>
   );
 };

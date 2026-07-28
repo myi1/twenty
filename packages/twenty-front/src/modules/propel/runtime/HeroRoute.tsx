@@ -23,7 +23,7 @@ import {
   type ErrorInfo,
   type ReactNode,
 } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import { getTokenPair } from '@/apollo/utils/getTokenPair';
 import { MainContainerLayoutWithSidePanel } from '@/object-record/components/MainContainerLayoutWithSidePanel';
@@ -44,6 +44,26 @@ const heroesBaseUrl = (): string =>
   window._env_?.REACT_APP_HEROES_BASE_URL ||
   import.meta.env.REACT_APP_HEROES_BASE_URL ||
   '/heroes';
+
+// SECURITY — sanitize a hero bundle name before it ever reaches the fetch URL.
+// `name` is interpolated raw into `${heroesBaseUrl()}/${name}/index.js`, so an
+// unsanitized value from the catch-all route param (/h/:bundle) could attempt path
+// traversal ("../../etc"), an absolute/protocol-relative URL ("//evil.com/x"), or a
+// query/hash injection. The hero bundle convention is a lowercase kebab slug (the
+// `<heroes>/<bundle>/` dir name), so we hard-restrict to [A-Za-z0-9-]: anything else
+// yields '' and HeroRoute then fetches `/heroes//index.js`, which 404s and surfaces
+// the existing friendly error UI — never an arbitrary path. Length-capped as a
+// belt-and-braces guard against pathological inputs.
+const HERO_BUNDLE_MAX_LENGTH = 64;
+export const sanitizeHeroBundle = (raw: string | undefined): string => {
+  if (typeof raw !== 'string') {
+    return '';
+  }
+  // Keep only alphanumerics and dashes; drop everything else (dots, slashes,
+  // colons, whitespace, %-encoding). No traversal, no URL, no protocol survives.
+  const cleaned = raw.replace(/[^A-Za-z0-9-]/g, '');
+  return cleaned.slice(0, HERO_BUNDLE_MAX_LENGTH);
+};
 
 // Module-level cache of lazy components keyed by hero name, so re-navigating to a
 // hero doesn't re-trigger the dynamic import (React.lazy already memoizes per
@@ -190,4 +210,18 @@ export const HeroRoute = ({ name }: { name: string }) => {
       </HeroErrorBoundary>
     </MainContainerLayoutWithSidePanel>
   );
+};
+
+// ── Catch-all hero route ──────────────────────────────────────────────────────
+// THE rebuild-free new-hero path. Registered once as `/h/:bundle` (AppPath.
+// HeroCatchAll) in useCreateAppRouter, AFTER the explicit per-hero routes (which
+// win by route specificity for back-compat). A brand-new hero added ONLY to the
+// host-mounted nav.config.json with `route: '/h/<bundle>'` resolves here AT
+// NAVIGATION TIME — no engine rebuild, no source change. The :bundle param is
+// sanitized (sanitizeHeroBundle) before it reaches the fetch, so a bad/hostile
+// value can never load an arbitrary path: a non-existent (or sanitized-to-empty)
+// bundle 404s and falls through to HeroRoute's existing friendly error UI.
+export const HeroCatchAllRoute = () => {
+  const { bundle } = useParams<{ bundle: string }>();
+  return <HeroRoute name={sanitizeHeroBundle(bundle)} />;
 };

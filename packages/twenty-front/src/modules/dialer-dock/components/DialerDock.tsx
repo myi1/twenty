@@ -4,16 +4,20 @@ import {
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
+  type PointerEventHandler,
 } from 'react';
+import { IconPhone } from 'twenty-ui/display';
 
 import { REACT_APP_SERVER_BASE_URL } from '~/config';
 import { getTokenPair } from '@/apollo/utils/getTokenPair';
+import { fetchWithRenewal } from '@/apollo/utils/renewAndRetryFetch';
 import {
   createPersonWithPhone,
   lookupPeopleByNumbers,
   navigateCrm,
   openWhatsAppInCrm,
 } from '@/dialer-dock/utils/dialerCrmBridge';
+import { dialerAccent, dockColor } from '@/ui/theme/dockColorTokens';
 
 // Resolved once at module load, same dual mechanism as REACT_APP_SERVER_BASE_URL
 // (src/config/index.ts): window._env_ for the Docker runtime injection,
@@ -43,8 +47,9 @@ const DIALER_DOCK_EXPANDED_STORAGE_KEY = 'propel-dialer-dock-expanded';
 const DIALER_DOCK_POSITION_STORAGE_KEY = 'propel-dialer-dock-position';
 
 // Default offsets: right-aligned but ABOVE the record side-panel footer (the
-// "Options ⌘O / Open" strip occupies the bottom ~56px), so the collapsed pill
-// never covers those buttons. The dock is draggable; this is only the fallback.
+// "Options ⌘O / Open" strip occupies the bottom ~56px), so the collapsed
+// launcher never covers those buttons. The dock is draggable; this is only the
+// fallback.
 const DEFAULT_DOCK_POSITION = { right: 14, bottom: 72 };
 const DOCK_EDGE_MARGIN_PX = 8;
 const DOCK_DRAG_THRESHOLD_PX = 4;
@@ -86,9 +91,15 @@ const readStoredDockPosition = (): DockPosition => {
 // RootModalBackDrop (39) so modals and dialogs still cover the dock.
 const DIALER_DOCK_Z_INDEX = 30;
 
-// The dock lives OUTSIDE the router AND outside BaseThemeProvider (which is
-// mounted inside the router tree), so it must not read the emotion theme.
-// Styling is intentionally self-contained and theme-neutral.
+// The dock lives OUTSIDE the router AND outside BaseThemeProvider's React
+// tree — but it is themed anyway, the same way the WhatsApp dock is: Twenty's
+// real `--t-*` CSS custom properties cascade via the DOM (a class on <html>),
+// not via React context, so they resolve correctly here regardless of where
+// in the component tree this renders. See
+// modules/ui/theme/dockColorTokens.ts for the full explanation. (Note: this
+// only re-skins the dock's own CHROME — the softphone UI itself lives inside
+// a cross-origin <iframe>, a separate app this repo doesn't own, so it can't
+// be retheme'd from here.)
 // right/bottom offsets come from the drag position (inline style) — the dock is
 // user-movable and the position persists per browser.
 const StyledDockContainer = styled.div`
@@ -99,10 +110,10 @@ const StyledDockContainer = styled.div`
 `;
 
 const StyledPanel = styled.div<{ isExpanded: boolean }>`
-  background: #17171c;
-  border: 1px solid #2a2a31;
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  background: ${dockColor.bgPrimary};
+  border: 1px solid ${dockColor.borderMedium};
+  border-radius: ${dockColor.radiusMd};
+  box-shadow: ${dockColor.shadowStrong};
   display: flex;
   flex-direction: column;
   height: ${({ isExpanded }) => (isExpanded ? '560px' : '0')};
@@ -115,9 +126,9 @@ const StyledPanel = styled.div<{ isExpanded: boolean }>`
 // The header doubles as the drag handle while the panel is expanded.
 const StyledPanelHeader = styled.div`
   align-items: center;
-  background: #101014;
-  border-bottom: 1px solid #2a2a31;
-  color: #9a9aa2;
+  background: ${dockColor.bgSecondary};
+  border-bottom: 1px solid ${dockColor.borderLight};
+  color: ${dockColor.textSecondary};
   cursor: grab;
   display: flex;
   flex-shrink: 0;
@@ -136,13 +147,13 @@ const StyledPanelHeader = styled.div`
 const StyledCollapseButton = styled.button`
   background: transparent;
   border: 0;
-  color: #9a9aa2;
+  color: ${dockColor.textSecondary};
   cursor: pointer;
   font: inherit;
   padding: 2px 4px;
 
   &:hover {
-    color: #f2f2f7;
+    color: ${dockColor.textPrimary};
   }
 `;
 
@@ -155,28 +166,62 @@ const StyledIframe = styled.iframe`
   width: 100%;
 `;
 
-const StyledPill = styled.button`
+const StyledLauncher = styled.button`
   align-items: center;
   align-self: flex-end;
-  background: #2a5cab;
+  background: ${dialerAccent.pillBg};
   border: 0;
-  border-radius: 999px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  color: #fff;
+  border-radius: 50%;
+  box-shadow: ${dockColor.shadowStrong};
+  color: ${dockColor.iconOnAccent};
   cursor: pointer;
   display: flex;
-  font:
-    600 13px/1 ui-sans-serif,
-    system-ui,
-    sans-serif;
-  gap: 6px;
-  padding: 10px 16px;
+  height: 44px;
+  justify-content: center;
+  padding: 0;
   touch-action: none;
+  width: 44px;
 
   &:hover {
-    background: #3a6cbb;
+    background: ${dialerAccent.pillBgHover};
+  }
+
+  &:focus-visible {
+    outline: 2px solid ${dockColor.textPrimary};
+    outline-offset: 2px;
   }
 `;
+
+type DialerDockLauncherProps = {
+  onClick: () => void;
+  onPointerDown?: PointerEventHandler<HTMLButtonElement>;
+  onPointerMove?: PointerEventHandler<HTMLButtonElement>;
+  onPointerUp?: PointerEventHandler<HTMLButtonElement>;
+  onPointerCancel?: PointerEventHandler<HTMLButtonElement>;
+};
+
+export const DialerDockLauncher = ({
+  onClick,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+}: DialerDockLauncherProps) => (
+  <StyledLauncher
+    aria-label="Expand dialer"
+    title="Open dialer"
+    type="button"
+    onClick={onClick}
+    onPointerDown={onPointerDown}
+    onPointerMove={onPointerMove}
+    onPointerUp={onPointerUp}
+    onPointerCancel={onPointerCancel}
+  >
+    <span aria-hidden="true">
+      <IconPhone size={20} />
+    </span>
+  </StyledLauncher>
+);
 
 type DialerDockMessage = {
   type: 'propel:dial';
@@ -251,7 +296,7 @@ export const DialerDock = () => {
   );
   const [position, setPosition] = useState<DockPosition>(readStoredDockPosition);
   // Live drag bookkeeping. A drag and a click share the same pointer gesture on
-  // the pill — `moved` past the threshold turns the gesture into a drag, and
+  // the launcher — `moved` past the threshold turns the gesture into a drag, and
   // suppressClickRef swallows the click event the browser fires after pointerup.
   const dragStateRef = useRef<{
     pointerId: number;
@@ -440,12 +485,20 @@ export const DialerDock = () => {
 
     // Fetch THIS agent's line. The route requires auth — send the CRM session's
     // access token; identity is derived server-side from it (never sent by us).
-    const token = getTokenPair()?.accessOrWorkspaceAgnosticToken?.token;
-    if (token) {
-      void fetch(WEBPHONE_CONFIG_URL, {
-        headers: { authorization: `Bearer ${token}` },
-      })
-        .then((res) => (res.ok ? res.json() : null))
+    // Renew-and-retry: on an expired token (401) this now attempts the same
+    // renewal the main app's Apollo client does and retries once, instead of
+    // leaving the dialer stuck "Connecting…" until a hard reload (founder-
+    // confirmed hardening, WhatsApp dock redesign 2026-07-12 — bundled here,
+    // same class of gap as the two bridge files).
+    if (getTokenPair()?.accessOrWorkspaceAgnosticToken?.token) {
+      void fetchWithRenewal(() =>
+        fetch(WEBPHONE_CONFIG_URL, {
+          headers: {
+            authorization: `Bearer ${getTokenPair()?.accessOrWorkspaceAgnosticToken?.token ?? ''}`,
+          },
+        }),
+      )
+        .then((res) => (res && res.ok ? res.json() : null))
         .then((json) => {
           if (json && typeof json === 'object' && !('error' in json)) {
             credentialRef.current = json;
@@ -499,9 +552,11 @@ export const DialerDock = () => {
         />
       </StyledPanel>
       {!isExpanded && (
-        <StyledPill
-          aria-label="Expand dialer"
-          {...dragHandleProps}
+        <DialerDockLauncher
+          onPointerDown={handleDragPointerDown}
+          onPointerMove={handleDragPointerMove}
+          onPointerUp={handleDragPointerEnd}
+          onPointerCancel={handleDragPointerEnd}
           onClick={() => {
             if (suppressClickRef.current) {
               suppressClickRef.current = false;
@@ -509,9 +564,7 @@ export const DialerDock = () => {
             }
             toggleExpanded();
           }}
-        >
-          ☎ Dialer
-        </StyledPill>
+        />
       )}
     </StyledDockContainer>
   );

@@ -84,12 +84,13 @@ export const LEAD_SOURCE_OPTIONS: { value: string; label: string }[] = [
 // secondary-opportunity.object.ts) — the exact lane fetchAudience reads, so
 // these match the resolver's oppStages axis 1:1.
 export const OPP_STAGE_OPTIONS: { value: string; label: string }[] = [
-  { value: 'QUALIFY', label: 'Qualify' },
-  { value: 'MATCH_VIEW', label: 'Match & View' },
+  { value: 'NEW', label: 'New' },
+  { value: 'CONTACTED', label: 'Contacted' },
+  { value: 'QUALIFIED', label: 'Qualified' },
+  { value: 'VIEWING', label: 'Viewing' },
   { value: 'OFFER', label: 'Offer' },
+  { value: 'NEGOTIATION', label: 'Negotiation' },
   { value: 'AGREED', label: 'Agreed → Deal' },
-  { value: 'PARKED', label: 'Parked (nurture)' },
-  { value: 'LOST', label: 'Lost' },
 ];
 
 // 7 MB transport cap (mirrors marketing-media.MEDIA_MAX_DECODED_BYTES) — the

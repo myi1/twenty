@@ -1,5 +1,9 @@
 import { QuickNoteModal } from '@/propel/quick-note/components/QuickNoteModal';
+import { useReadableObjectMetadataItems } from '@/object-metadata/hooks/useReadableObjectMetadataItems';
 import { useModal } from '@/ui/layout/modal/hooks/useModal';
+import { isModalOpenedComponentState } from '@/ui/layout/modal/states/isModalOpenedComponentState';
+import { useAtomComponentStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomComponentStateValue';
+import { CoreObjectNameSingular } from 'twenty-shared/types';
 import { dockColor, noteAccent } from '@/ui/theme/dockColorTokens';
 import { QUICK_NOTE_MODAL_ID } from '@/propel/quick-note/constants/QuickNoteModalId';
 import { styled } from '@linaria/react';
@@ -53,6 +57,39 @@ const StyledLauncher = styled.button`
 export const QuickNoteButton = () => {
   const { openModal } = useModal();
 
+  // Mount the modal ONLY while it is open. Its body calls
+  // useOpenCreateActivityDrawer(Note) and useQuickNoteSearchResults at render,
+  // and both need object metadata to be loaded — rendering it eagerly on every
+  // page threw "Object metadata item 'note' cannot be found in an array of 0
+  // elements" before the metadata store had filled, which the error boundary
+  // turned into a full-app error page. Gating on open also means the picker
+  // does no work until someone actually wants it. The open/close animation is
+  // unaffected: ModalStatefulWrapper drives it from the same atom.
+  const isQuickNoteModalOpened = useAtomComponentStateValue(
+    isModalOpenedComponentState,
+    QUICK_NOTE_MODAL_ID,
+  );
+
+  // Show the launcher only once the Note object's metadata is actually loaded.
+  // This is both a correctness guard and the product behaviour we want:
+  //  · Signed out (/welcome, sign-in) the metadata store is empty, so the
+  //    button is hidden — a "jot a note against a contact" action makes no
+  //    sense before you have a workspace.
+  //  · It also makes the modal safe to open. QuickNoteModal calls
+  //    useOpenCreateActivityDrawer({ Note }), which does a hard
+  //    useObjectMetadataItem('note') lookup and THROWS
+  //    ("Object metadata item \"note\" cannot be found in an array of 0
+  //    elements") when the store is empty — an error the boundary turns into a
+  //    full-app error page. If the launcher isn't there, that path can't run.
+  const { readableObjectMetadataItems } = useReadableObjectMetadataItems();
+  const isNoteObjectReady = readableObjectMetadataItems.some(
+    (item) => item.nameSingular === CoreObjectNameSingular.Note,
+  );
+
+  if (!isNoteObjectReady) {
+    return null;
+  }
+
   return (
     <>
       <StyledLauncherContainer>
@@ -67,7 +104,7 @@ export const QuickNoteButton = () => {
           </span>
         </StyledLauncher>
       </StyledLauncherContainer>
-      <QuickNoteModal />
+      {isQuickNoteModalOpened && <QuickNoteModal />}
     </>
   );
 };

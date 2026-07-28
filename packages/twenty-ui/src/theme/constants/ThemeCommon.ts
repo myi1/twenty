@@ -19,7 +19,10 @@ export const THEME_COMMON = {
     horizontalCellPadding: '8px',
   },
   sidePanelWidth: '500px',
-  clickableElementBackgroundTransition: 'background 0.1s ease',
+  // PROPEL-NOCTURNE PATCH (Tier B) — 140ms press on the EASE.out curve
+  // (DESIGN.md §2.6); consumed by the shared Button via the CSS var.
+  clickableElementBackgroundTransition:
+    'background 140ms cubic-bezier(0.23, 1, 0.32, 1)',
   lastLayerZIndex: 2147483647,
   buttons: {
     secondaryTextColor: ACCENT_DARK.accent11,

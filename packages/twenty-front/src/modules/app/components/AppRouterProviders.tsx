@@ -17,6 +17,7 @@ import { PromiseRejectionEffect } from '@/error-handler/components/PromiseReject
 import { MinimalMetadataLoadEffect } from '@/metadata-store/effect-components/MinimalMetadataLoadEffect';
 import { UserMetadataProviderInitialEffect } from '@/metadata-store/effect-components/UserMetadataProviderInitialEffect';
 import { ApolloCoreProvider } from '@/object-metadata/components/ApolloCoreProvider';
+import { QuickNoteButton } from '@/propel/quick-note/components/QuickNoteButton';
 import { PreComputedChipGeneratorsProvider } from '@/object-metadata/components/PreComputedChipGeneratorsProvider';
 import { ApolloAdminProvider } from '@/settings/admin-panel/apollo/components/ApolloAdminProvider';
 
@@ -71,6 +72,14 @@ export const AppRouterProviders = () => {
                                   <PageFavicon />
                                   <Outlet />
                                   <GlobalFilePreviewModal />
+                                  {/* Propel: the Quick Note floating launcher +
+                                      its modal. Mounted HERE, not in App.tsx
+                                      beside the dialer/WhatsApp docks, because
+                                      its record picker uses Apollo — it must be
+                                      inside ApolloCoreProvider and AuthProvider.
+                                      Mounting it in App.tsx threw an Apollo
+                                      invariant on every page load. */}
+                                  <QuickNoteButton />
                                   <CommandMenuConfirmationModalManager />
                                   <CommandRunner />
                                 </StrictMode>

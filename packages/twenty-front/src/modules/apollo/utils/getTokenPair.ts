@@ -17,12 +17,16 @@ export const getTokenPair = (): AuthTokenPair | undefined => {
     const parsedTokenPair = JSON.parse(stringTokenPair);
 
     if (!isValidAuthTokenPair(parsedTokenPair)) {
+      // oxlint-disable-next-line no-console
+      console.log('tokenPair failed shape validation — clearing it');
       cookieStorage.removeItem('tokenPair');
       return undefined;
     }
 
     return parsedTokenPair;
   } catch {
+    // oxlint-disable-next-line no-console
+    console.log('tokenPair failed to parse — clearing it');
     cookieStorage.removeItem('tokenPair');
     return undefined;
   }

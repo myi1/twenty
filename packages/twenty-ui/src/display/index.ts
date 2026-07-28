@@ -135,6 +135,7 @@ export {
   IconBrandNpm,
   IconBrandOpenai,
   IconBrandTiktok,
+  IconBrandWhatsapp,
   IconBrandX,
   IconBriefcase,
   IconBroadcast,
