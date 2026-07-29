@@ -130,6 +130,26 @@ const waTrace = (label: string, detail?: unknown): void => {
   console.log(`[WA-DOCK-TRACE] fetchWithRenewal: ${label}`, detail ?? '');
 };
 
+
+/**
+ * True when a non-401 response is really an expired-session rejection.
+ *
+ * Reads a CLONE so the caller still gets an unconsumed body. Deliberately narrow:
+ * only a 500 whose body names an expired/invalid token qualifies, because the
+ * caller may be a POST and we must never retry one that actually ran.
+ */
+const isExpiredTokenBody = async (res: Response): Promise<boolean> => {
+  if (res.status !== 500) {
+    return false;
+  }
+  try {
+    const body = await res.clone().text();
+    return /token\s+has\s+expired|token\s+expired|jwt\s+expired|invalid\s+token/i.test(body);
+  } catch {
+    return false;
+  }
+};
+
 export const fetchWithRenewal = async (
   attempt: () => Promise<Response>,
 ): Promise<Response | null> => {
@@ -138,7 +158,16 @@ export const fetchWithRenewal = async (
     waTrace('firing first attempt()', { hasStaleAccessToken: staleAccessToken !== undefined });
     const first = await attempt();
     waTrace('first attempt() resolved', { status: first.status, ok: first.ok });
-    if (first.status !== 401) {
+    // 401 is the normal expired-token signal. But Propel's logic-function routes
+    // (/s/<path>) surface an expired session as **500 with the body
+    // "Token has expired."** — so the renewal below never fired for them. That is
+    // how the dialer dock silently lost its line: the config fetch 500'd, the dock
+    // pushed no credential, and the dialer fell back to another carrier.
+    //
+    // Retrying is safe in that case specifically: the request was rejected at the
+    // auth layer BEFORE the handler ran, so nothing was executed and there is no
+    // side effect to repeat. Any OTHER 500 is returned untouched.
+    if (first.status !== 401 && !(await isExpiredTokenBody(first))) {
       return first;
     }
     waTrace('got 401 — starting renewSessionOnce()');
