@@ -61,6 +61,22 @@ jobs:
           ref: ${{ github.event.inputs.source_branch }}
           fetch-depth: 1
 
+      # Branches cut before fe8180b711 COMMITTED `node_modules` as a symlink to
+      # a developer's local install. Checking one out lays that symlink down, and
+      # yarn then dies with `ENOTDIR: not a directory, mkdir .../node_modules`
+      # before a single type is checked. Without this the gate cannot run on any
+      # historical branch — including the one that shipped the outage it exists
+      # to prevent. Only ever removes a NON-directory at that path.
+      - name: Clear committed node_modules symlinks
+        run: |
+          for path in node_modules packages/*/node_modules; do
+            if [ -L "${path}" ] || { [ -e "${path}" ] && [ ! -d "${path}" ]; }; then
+              echo "removing non-directory ${path} ($(ls -ld "${path}" | awk '{print $1}'))"
+              rm -f "${path}"
+            fi
+          done
+          echo "node_modules paths are clear"
+
       - name: Install dependencies
         uses: ./.github/actions/yarn-install
 
