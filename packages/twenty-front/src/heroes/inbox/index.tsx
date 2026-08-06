@@ -24,7 +24,17 @@
 
 import { InboxPage } from '~/pages/propel/InboxPage';
 import { type PropelHeroHost } from '@/propel/runtime/heroHost';
+import { HeroTypingGuard } from '@/propel/runtime/HeroTypingGuard';
 
+// HeroTypingGuard: the Inbox is the highest-stakes case for this — agents type
+// long replies to real clients in the composer, and Twenty's global "g"-sequence
+// nav shortcuts fire from inside text fields with a STICKY pending state. A "g"
+// anywhere in a reply arms it; the next shortcut letter navigates away and the
+// half-written message is gone. See HeroTypingGuard for the mechanism.
 export default function InboxHero(_props: { host: PropelHeroHost }) {
-  return <InboxPage />;
+  return (
+    <HeroTypingGuard>
+      <InboxPage />
+    </HeroTypingGuard>
+  );
 }

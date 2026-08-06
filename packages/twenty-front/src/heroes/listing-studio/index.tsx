@@ -23,7 +23,16 @@
 
 import { ListingStudioPage } from '~/pages/propel/ListingStudioPage';
 import { type PropelHeroHost } from '@/propel/runtime/heroHost';
+import { HeroTypingGuard } from '@/propel/runtime/HeroTypingGuard';
 
+// HeroTypingGuard: a multi-step guided wizard holding an unsaved draft, so the
+// same "g"-sequence trap that cost a campaign draft applies here — a "g" typed
+// into a listing title or description arms it, and the next shortcut letter
+// navigates away. See HeroTypingGuard for the mechanism.
 export default function ListingStudioHero(_props: { host: PropelHeroHost }) {
-  return <ListingStudioPage />;
+  return (
+    <HeroTypingGuard>
+      <ListingStudioPage />
+    </HeroTypingGuard>
+  );
 }
