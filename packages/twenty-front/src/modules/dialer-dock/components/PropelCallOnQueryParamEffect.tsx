@@ -23,6 +23,10 @@ import { CoreObjectNameSingular } from 'twenty-shared/types';
 const PERSON_PATH = /^\/object\/person\/([0-9a-fA-F-]{36})$/;
 
 type PersonRecord = {
+  // useFindOneRecord constrains its type param to ObjectRecord, which requires
+  // __typename. Apollo returns it on every record, so this is descriptive, not a
+  // new requirement — without it the whole front package fails to typecheck.
+  __typename: string;
   id: string;
   name?: { firstName?: string | null; lastName?: string | null } | null;
   phones?: {
