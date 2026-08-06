@@ -25,6 +25,10 @@ on:
         description: 'Force a full no-cache rebuild (bust a stale frontend layer)'
         required: false
         default: 'false'
+      skip_typecheck:
+        description: 'EMERGENCY ONLY — skip the twenty-front typecheck gate. Say why in the run notes.'
+        required: false
+        default: 'false'
 
 permissions:
   contents: read
@@ -35,10 +39,101 @@ env:
   IMAGE_NAME: myi1/twenty-propel
 
 jobs:
+  # ── GATE: typecheck twenty-front before anything is built or pushed ─────────
+  # Why this exists: on 2026-08-06 a front-end change reached PRODUCTION that
+  # white-screened the sign-in page — anyone without a live session could not
+  # reach the login form. The shipped branch already had 2 tsc errors; nothing
+  # in this workflow looked. The image build does not typecheck (Vite/esbuild
+  # strip types without checking them), so tsc has to run here or not at all.
+  #
+  # Typecheck is architecture-independent, so this always runs on amd64 even
+  # for an arm64 image — no reason to spend arm64 runner time on it.
+  typecheck:
+    if: github.event.inputs.skip_typecheck != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NODE_OPTIONS: '--max-old-space-size=6144'
+    steps:
+      - name: Checkout source branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.source_branch }}
+          fetch-depth: 1
+
+      - name: Install dependencies
+        uses: ./.github/actions/yarn-install
+
+      # twenty-front's types resolve into twenty-shared/twenty-ui .d.ts files.
+      # `npm run build` in those packages is ONLY `vite build` and emits NO
+      # declarations — the nx target is what produces them. Skip this and tsc
+      # reads whatever stale .d.ts happens to be lying around, or none at all.
+      - name: Build the packages twenty-front's types resolve into
+        run: |
+          npx nx build twenty-shared
+          npx nx build twenty-ui
+
+      # A broken node_modules makes `npx tsc` exit 0 with NO output, which reads
+      # as a clean pass and is the most dangerous failure this gate can have —
+      # it would wave through exactly the breakage it exists to catch. So prove
+      # the compiler runs BEFORE trusting anything it says about the code.
+      - name: Prove the compiler actually runs
+        working-directory: packages/twenty-front
+        run: |
+          VERSION="$(npx tsc --version 2>&1 || true)"
+          echo "tsc reports: ${VERSION}"
+          case "${VERSION}" in
+            Version\ [0-9]*) echo "compiler is present and executable" ;;
+            *)
+              echo "::error::tsc did not run (got: '${VERSION}'). A silent exit is NOT a pass — refusing to build."
+              exit 1
+              ;;
+          esac
+
+      - name: Typecheck twenty-front
+        working-directory: packages/twenty-front
+        run: |
+          set +e
+          OUTPUT="$(npx tsc --noEmit 2>&1)"
+          CODE=$?
+          set -e
+          printf '%s\n' "${OUTPUT}"
+
+          if [ "${CODE}" -ne 0 ]; then
+            echo "::error::twenty-front failed typecheck (tsc exit ${CODE}). Fix the errors above, or re-dispatch with skip_typecheck=true and a written reason."
+            exit 1
+          fi
+
+          # Belt and braces: tsc has been known to report errors while still
+          # exiting 0 under some configurations. Trust the text too.
+          if printf '%s\n' "${OUTPUT}" | grep -q "error TS"; then
+            echo "::error::twenty-front reported type errors despite exit 0 — treating as a failure."
+            exit 1
+          fi
+
+          echo "twenty-front typechecks clean — safe to build the image."
+
   build-and-push:
+    # Never push an image whose front-end has not been typechecked. A skipped
+    # gate (skip_typecheck=true) is allowed through deliberately; a FAILED one
+    # is not, and neither is a cancelled run.
+    needs: typecheck
+    if: >-
+      !cancelled() &&
+      (needs.typecheck.result == 'success' || needs.typecheck.result == 'skipped')
     # Native runner per arch — both free for public repos (amd64 4c/16GB; arm64 GA).
     runs-on: ${{ github.event.inputs.platform == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     steps:
+      # Make a bypass impossible to miss when someone later asks "was this
+      # image checked?" — the answer has to be in the run's own log.
+      - name: Record whether the typecheck gate ran
+        run: |
+          if [ "${{ github.event.inputs.skip_typecheck }}" = "true" ]; then
+            echo "::warning::TYPECHECK GATE SKIPPED for this image (${{ github.event.inputs.output_tag }}) — built from ${{ github.event.inputs.source_branch }} WITHOUT a typecheck."
+          else
+            echo "typecheck gate passed for ${{ github.event.inputs.source_branch }}"
+          fi
+
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
