@@ -4,6 +4,12 @@
 .claude/
 .cursor/debug-*.log
 **/**/node_modules/
+# ...and node_modules as a SYMLINK. The rule above ends in "/", so it matches only
+# directories — a `node_modules -> /abs/path` symlink (the convenience link used in
+# git worktrees to share one install) sailed past it and got committed. Checking that
+# branch out in the folder the link points AT then replaced the real 4GB install with
+# a link to itself. The link is per-machine setup; it must never be tracked.
+**/node_modules
 .cache
 
 # yarn is the recommended package manager across the project
