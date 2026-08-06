@@ -1264,14 +1264,15 @@ const ComposeStep = ({
         <Select
           label="WhatsApp template"
           description="Only Meta-approved templates can send."
-          placeholder="Pick an approved template"
+          placeholder="Search or pick an approved template"
+          searchable
           value={waTemplateId}
           onChange={onWaTemplate}
           data={approvedTemplates.map((t) => ({
             value: t.id,
             label: `${t.name} (${t.languageCode})`,
           }))}
-          nothingFoundMessage="No approved templates"
+          nothingFoundMessage="No approved templates match"
         />
         <Text size="xs" c="dimmed">
           WhatsApp body comes from the approved template — there&rsquo;s nothing

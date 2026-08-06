@@ -10,7 +10,16 @@
 
 import { MarketingCampaignBuilderPage } from '~/pages/propel/MarketingCampaignBuilderPage';
 import { type PropelHeroHost } from '@/propel/runtime/heroHost';
+import { HeroTypingGuard } from '@/propel/runtime/HeroTypingGuard';
 
+// HeroTypingGuard: the builder is a long form with unsaved state, and Twenty's
+// global "g"-sequence nav shortcuts fire from inside text inputs. Typing a
+// campaign name containing a "g" armed the sequence and the next shortcut letter
+// navigated away, losing the whole draft. See HeroTypingGuard for the mechanism.
 export default function CampaignBuilderHero(_props: { host: PropelHeroHost }) {
-  return <MarketingCampaignBuilderPage />;
+  return (
+    <HeroTypingGuard>
+      <MarketingCampaignBuilderPage />
+    </HeroTypingGuard>
+  );
 }

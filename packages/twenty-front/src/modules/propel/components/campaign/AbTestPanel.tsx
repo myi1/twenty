@@ -331,14 +331,15 @@ const WaVariantB = ({
       <Select
         label="Template (B)"
         description="A different approved template to test against version A."
-        placeholder="Pick the variant-B template"
+        placeholder="Search or pick the variant-B template"
+        searchable
         value={ab.templateBId}
         onChange={(v) => onChange({ templateBId: v })}
         data={options.map((t) => ({
           value: t.id,
           label: `${t.name} (${t.languageCode})`,
         }))}
-        nothingFoundMessage="No other approved templates"
+        nothingFoundMessage="No other approved templates match"
       />
       {!ab.templateBId && (
         <Group gap={6} wrap="nowrap" c="dimmed">
