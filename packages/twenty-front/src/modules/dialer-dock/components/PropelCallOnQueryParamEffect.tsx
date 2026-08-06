@@ -1,7 +1,8 @@
+import { useReadableObjectMetadataItems } from '@/object-metadata/hooks/useReadableObjectMetadataItems';
 import { useFindOneRecord } from '@/object-record/hooks/useFindOneRecord';
 import { useSnackBar } from '@/ui/feedback/snack-bar-manager/hooks/useSnackBar';
 import { startPropelCall } from '@/dialer-dock/utils/startPropelCall';
-import { useEffect, useRef } from 'react';
+import { type MutableRefObject, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { CoreObjectNameSingular } from 'twenty-shared/types';
 
@@ -40,29 +41,61 @@ const fullName = (name: PersonRecord['name']): string | undefined => {
   return joined === '' ? undefined : joined;
 };
 
+// Mounted globally in AppRouterProviders, so it renders on the signed-out routes
+// too — and there the metadata store is EMPTY by design (MinimalMetadataGater
+// excludes SignInUp/Invite/ResetPassword/Verify from its loader). `useFindOneRecord`
+// resolves object metadata BEFORE it honours `skip`, so calling it here
+// unconditionally threw "Object metadata item \"person\" cannot be found in an
+// array of 0 elements" on the sign-in page and the error boundary turned that into
+// a full-app error page — locking out anyone arriving without a session (new
+// joiner, new device, cleared browser, private window). Signed-in users never saw
+// it, because by then metadata has loaded.
+//
+// So the metadata-reading half only mounts once a call is actually requested AND
+// the Person object is readable. Same guard the Quick Note launcher uses for Note.
 export const PropelCallOnQueryParamEffect = () => {
   const location = useLocation();
-  const navigate = useNavigate();
-  const { enqueueErrorSnackBar } = useSnackBar();
 
   const isCallRequested =
     new URLSearchParams(location.search).get('call') === '1';
   const personId = PERSON_PATH.exec(location.pathname)?.[1] ?? '';
-  const shouldDial = isCallRequested && personId !== '';
 
-  // The record arrives asynchronously, so this effect necessarily runs more than
-  // once per request. Dial AT MOST once per contact — a repeat here is a second
-  // real phone call to a real client.
+  const { readableObjectMetadataItems } = useReadableObjectMetadataItems();
+  const isPersonObjectReady = readableObjectMetadataItems.some(
+    (item) => item.nameSingular === CoreObjectNameSingular.Person,
+  );
+
+  // The record arrives asynchronously, so the inner effect necessarily runs more
+  // than once per request. Dial AT MOST once per contact — a repeat here is a
+  // second real phone call to a real client. The ref lives OUT here so that
+  // guarantee survives the inner component unmounting once the flag is dropped.
   const dialedFor = useRef<string | null>(null);
+
+  if (!isCallRequested || personId === '' || !isPersonObjectReady) {
+    return null;
+  }
+
+  return <PropelCallEffect personId={personId} dialedFor={dialedFor} />;
+};
+
+const PropelCallEffect = ({
+  personId,
+  dialedFor,
+}: {
+  personId: string;
+  dialedFor: MutableRefObject<string | null>;
+}) => {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { enqueueErrorSnackBar } = useSnackBar();
 
   const { record, loading } = useFindOneRecord<PersonRecord>({
     objectNameSingular: CoreObjectNameSingular.Person,
     objectRecordId: personId,
-    skip: !shouldDial,
   });
 
   useEffect(() => {
-    if (!shouldDial || loading || dialedFor.current === personId) {
+    if (loading || dialedFor.current === personId) {
       return;
     }
 
@@ -100,10 +133,10 @@ export const PropelCallOnQueryParamEffect = () => {
           : `Could not call ${number} — the number needs to be in international format, like +971 50 123 4567.`,
     });
   }, [
-    shouldDial,
     loading,
     record,
     personId,
+    dialedFor,
     location.pathname,
     navigate,
     enqueueErrorSnackBar,
