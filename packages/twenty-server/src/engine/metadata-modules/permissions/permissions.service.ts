@@ -24,10 +24,13 @@ import {
 import { type UserWorkspacePermissions } from 'src/engine/metadata-modules/permissions/types/user-workspace-permissions';
 import { RoleEntity } from 'src/engine/metadata-modules/role/role.entity';
 import { UserRoleService } from 'src/engine/metadata-modules/user-role/user-role.service';
+import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { type RolePermissionConfig } from 'src/engine/twenty-orm/types/role-permission-config';
+import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 import { InjectWorkspaceScopedRepository } from 'src/engine/twenty-orm/workspace-scoped-repository/inject-workspace-scoped-repository.decorator';
 import { WorkspaceScopedRepository } from 'src/engine/twenty-orm/workspace-scoped-repository/workspace-scoped-repository';
 import { WorkspaceCacheService } from 'src/engine/workspace-cache/services/workspace-cache.service';
+import { type WorkspaceMemberWorkspaceEntity } from 'src/modules/workspace-member/standard-objects/workspace-member.workspace-entity';
 
 @Injectable()
 export class PermissionsService {
@@ -39,6 +42,7 @@ export class PermissionsService {
     private readonly roleRepository: WorkspaceScopedRepository<RoleEntity>,
     @InjectRepository(ApplicationEntity)
     private readonly applicationRepository: Repository<ApplicationEntity>,
+    private readonly globalWorkspaceOrmManager: GlobalWorkspaceOrmManager,
   ) {}
 
   private isToolPermission(feature: string) {
@@ -94,10 +98,118 @@ export class PermissionsService {
 
     const objectsPermissions = rolesPermissions[roleOfUserWorkspace.id] ?? {};
 
+    const propelEffectiveFlags = await this.computePropelEffectiveFlags({
+      roleOfUserWorkspace,
+      userWorkspaceId,
+      workspaceId,
+    });
+
     return {
       permissionFlags,
       objectsPermissions,
+      propelEffectiveFlags,
     };
+  }
+
+  // Propel hero-gating (additive, never throws). The effective app-flag set is
+  //   (role app-flag keys ∪ member.additionalFlags) \ member.excludedFlags
+  // where "app-flag keys" are the role's permission-flag keys that are NOT part
+  // of Twenty's core PermissionFlagType enum (i.e. the PROPEL_* keys). The core
+  // enum flags stay entirely on the existing `permissionFlags` path.
+  //
+  // FAIL-SAFE: any error here resolves to [] (heroes hidden) — this runs inside
+  // the currentUser query, so an exception would break the whole app.
+  private async computePropelEffectiveFlags({
+    roleOfUserWorkspace,
+    userWorkspaceId,
+    workspaceId,
+  }: {
+    roleOfUserWorkspace: RoleEntity;
+    userWorkspaceId: string;
+    workspaceId: string;
+  }): Promise<string[]> {
+    try {
+      const coreKeys = new Set<string>(Object.values(PermissionFlagType));
+
+      const roleAppFlags = (roleOfUserWorkspace.rolePermissionFlags ?? [])
+        .map((rolePermissionFlag) => rolePermissionFlag.permissionFlag?.key)
+        .filter(
+          (key): key is string => isDefined(key) && !coreKeys.has(key),
+        );
+
+      const { additionalFlags, excludedFlags } =
+        await this.getPropelMemberFlagOverrides({
+          userWorkspaceId,
+          workspaceId,
+        });
+
+      const effective = new Set<string>(roleAppFlags);
+
+      for (const flag of additionalFlags) {
+        effective.add(flag);
+      }
+      for (const flag of excludedFlags) {
+        // exclude wins on conflict — matches the front hook + design doc.
+        effective.delete(flag);
+      }
+
+      return [...effective];
+    } catch {
+      return [];
+    }
+  }
+
+  // Reads the per-agent MULTI_SELECT overrides (additionalFlags / excludedFlags)
+  // from the workspace's workspaceMember standard object, matched by
+  // userWorkspaceId. These columns only exist when the propel app is installed;
+  // if it isn't (or the query fails for any reason) we return empty arrays. The
+  // caller wraps this in try/catch too — this is defense-in-depth.
+  private async getPropelMemberFlagOverrides({
+    userWorkspaceId,
+    workspaceId,
+  }: {
+    userWorkspaceId: string;
+    workspaceId: string;
+  }): Promise<{ additionalFlags: string[]; excludedFlags: string[] }> {
+    try {
+      const authContext = buildSystemAuthContext(workspaceId);
+
+      const member = await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+        async () => {
+          const workspaceMemberRepository =
+            await this.globalWorkspaceOrmManager.getRepository<WorkspaceMemberWorkspaceEntity>(
+              workspaceId,
+              'workspaceMember',
+              { shouldBypassPermissionChecks: true },
+            );
+
+          return workspaceMemberRepository.findOne({
+            where: {
+              // `userWorkspaceId` is a propel-added relation column on
+              // workspaceMember; not present on the base entity type, hence the
+              // loose cast.
+              userWorkspaceId,
+            } as Record<string, unknown>,
+          });
+        },
+        authContext,
+      );
+
+      const memberRecord = member as
+        | {
+            additionalFlags?: string[] | null;
+            excludedFlags?: string[] | null;
+          }
+        | null
+        | undefined;
+
+      return {
+        additionalFlags: memberRecord?.additionalFlags ?? [],
+        excludedFlags: memberRecord?.excludedFlags ?? [],
+      };
+    } catch {
+      return { additionalFlags: [], excludedFlags: [] };
+    }
   }
 
   public getDefaultUserWorkspacePermissions = () =>
@@ -130,6 +242,7 @@ export class PermissionsService {
         [PermissionFlagType.MARKETPLACE_APPS]: false,
       },
       objectsPermissions: {},
+      propelEffectiveFlags: [],
     }) as const satisfies UserWorkspacePermissions;
 
   public async userHasWorkspaceSettingPermission({

@@ -4,7 +4,9 @@ import { type UserWorkspace } from '~/generated-metadata/graphql';
 
 export type CurrentUserWorkspace = Pick<
   UserWorkspace,
-  'permissionFlags' | 'twoFactorAuthenticationMethodSummary'
+  | 'permissionFlags'
+  | 'propelEffectiveFlags'
+  | 'twoFactorAuthenticationMethodSummary'
 > & {
   objectsPermissions: Array<ObjectPermissions & { objectMetadataId: string }>;
 };

@@ -95,6 +95,13 @@ export class UserWorkspaceEntity extends WorkspaceRelatedEntity {
   @Field(() => [PermissionFlagType], { nullable: true })
   permissionFlags?: PermissionFlagType[];
 
+  // Propel hero-gating: server-computed EFFECTIVE app-flag set for this member,
+  // = (role app-flag keys ∪ workspaceMember.additionalFlags) \ excludedFlags.
+  // A plain [String] (NOT the PermissionFlagType enum) on purpose — PROPEL_*
+  // keys are not in the core enum and would fail enum serialization there.
+  @Field(() => [String], { nullable: true })
+  propelEffectiveFlags?: string[];
+
   @Field(() => [ObjectPermissionDTO], { nullable: true })
   objectPermissions?: ObjectPermissionDTO[];
 
