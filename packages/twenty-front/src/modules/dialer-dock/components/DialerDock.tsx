@@ -406,6 +406,79 @@ export const DialerDock = () => {
       iframeRef.current?.contentWindow?.postMessage(message, dockOrigin);
     };
 
+    // Credential fetch with self-healing retry (2026-08-21). The previous
+    // one-shot fetch left the dialer PERMANENTLY offline whenever (a) the auth
+    // store had not hydrated yet at mount — the fetch never fired and never
+    // re-checked — or (b) the single attempt failed for any reason, because
+    // the catch swallowed it. Field symptom: every agent reporting "dialer
+    // offline" with zero REGISTER attempts reaching the PBX. Rules now:
+    // keep retrying (3s → 30s backoff) until the line is issued, warn to the
+    // console on each miss so the failure is diagnosable, and let the
+    // iframe's readiness handshake kick a fresh attempt too.
+    let credentialRetryTimer: ReturnType<typeof setTimeout> | null = null;
+    let credentialFetchInFlight = false;
+    let credentialAttempt = 0;
+    let disposed = false;
+
+    const scheduleCredentialRetry = () => {
+      if (disposed || credentialRetryTimer !== null) {
+        return;
+      }
+      const delayMs = Math.min(3000 * 2 ** Math.min(credentialAttempt, 4), 30000);
+      credentialRetryTimer = setTimeout(() => {
+        credentialRetryTimer = null;
+        fetchCredential();
+      }, delayMs);
+    };
+
+    const fetchCredential = () => {
+      if (disposed || credentialFetchInFlight || credentialRef.current !== null) {
+        return;
+      }
+      // Auth may still be bootstrapping when the dock mounts — poll until the
+      // token exists rather than skipping forever. Identity is still derived
+      // server-side from the token; the dock never sends one.
+      if (!getTokenPair()?.accessOrWorkspaceAgnosticToken?.token) {
+        credentialAttempt += 1;
+        scheduleCredentialRetry();
+        return;
+      }
+      credentialFetchInFlight = true;
+      void fetchWithRenewal(() =>
+        fetch(WEBPHONE_CONFIG_URL, {
+          headers: {
+            authorization: `Bearer ${getTokenPair()?.accessOrWorkspaceAgnosticToken?.token ?? ''}`,
+          },
+        }),
+      )
+        .then((res) => (res && res.ok ? res.json() : null))
+        .then((json) => {
+          credentialFetchInFlight = false;
+          if (json && typeof json === 'object' && !('error' in json)) {
+            credentialRef.current = json;
+            pushConfig();
+            return;
+          }
+          credentialAttempt += 1;
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[dialer-dock] webphone config unavailable (attempt ${credentialAttempt}) — retrying`,
+            json,
+          );
+          scheduleCredentialRetry();
+        })
+        .catch((error) => {
+          credentialFetchInFlight = false;
+          credentialAttempt += 1;
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[dialer-dock] webphone config fetch failed (attempt ${credentialAttempt}) — retrying`,
+            error,
+          );
+          scheduleCredentialRetry();
+        });
+    };
+
     const handleDialerRequest = (request: DialerIframeRequest) => {
       switch (request.type) {
         case 'propel:lookup': {
@@ -470,9 +543,12 @@ export const DialerDock = () => {
         event.source === iframeRef.current?.contentWindow
       ) {
         // Readiness handshake: push the line the moment the iframe's message
-        // listener is up (avoids racing its boot).
+        // listener is up (avoids racing its boot). If the line was never
+        // issued (earlier fetch failed), the handshake doubles as a natural
+        // retry trigger — fetchCredential no-ops once a credential is held.
         if ((event.data as { type?: unknown } | null)?.type === 'propel:ready') {
           pushConfig();
+          fetchCredential();
           return;
         }
         const request = parseDialerIframeRequest(event.data);
@@ -483,35 +559,17 @@ export const DialerDock = () => {
     };
     window.addEventListener('message', handleMessage);
 
-    // Fetch THIS agent's line. The route requires auth — send the CRM session's
-    // access token; identity is derived server-side from it (never sent by us).
-    // Renew-and-retry: on an expired token (401) this now attempts the same
-    // renewal the main app's Apollo client does and retries once, instead of
-    // leaving the dialer stuck "Connecting…" until a hard reload (founder-
-    // confirmed hardening, WhatsApp dock redesign 2026-07-12 — bundled here,
-    // same class of gap as the two bridge files).
-    if (getTokenPair()?.accessOrWorkspaceAgnosticToken?.token) {
-      void fetchWithRenewal(() =>
-        fetch(WEBPHONE_CONFIG_URL, {
-          headers: {
-            authorization: `Bearer ${getTokenPair()?.accessOrWorkspaceAgnosticToken?.token ?? ''}`,
-          },
-        }),
-      )
-        .then((res) => (res && res.ok ? res.json() : null))
-        .then((json) => {
-          if (json && typeof json === 'object' && !('error' in json)) {
-            credentialRef.current = json;
-            pushConfig();
-          }
-        })
-        .catch(() => {
-          // Leave the dialer in its "Connecting…" state; nothing to surface in
-          // the shell. A reload re-attempts the fetch.
-        });
-    }
+    // Fetch THIS agent's line (see fetchCredential above for the retry rules;
+    // renew-and-retry on expired tokens rides inside fetchWithRenewal).
+    fetchCredential();
 
-    return () => window.removeEventListener('message', handleMessage);
+    return () => {
+      disposed = true;
+      if (credentialRetryTimer !== null) {
+        clearTimeout(credentialRetryTimer);
+      }
+      window.removeEventListener('message', handleMessage);
+    };
   }, []);
 
   if (!DIALER_DOCK_URL) {
