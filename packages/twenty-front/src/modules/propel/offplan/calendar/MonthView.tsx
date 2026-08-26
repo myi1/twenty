@@ -17,6 +17,32 @@ import { dayKeyToLocalDate, dayLabel } from './calendarUtils';
 // then "+N" jumps to the agenda filtered to that day (no popup — the agenda IS
 // the detail view). Day-cell click prefills the add-event modal (managers).
 
+// RBC ships light-theme defaults (pale-yellow .rbc-today, light-grey off-range,
+// #ddd borders) that clash hard with the dark workspace — scoped overrides keyed
+// off the wrapper class so nothing leaks to other RBC instances. Plain <style>,
+// not Emotion parent-selectors (the runtime-hero gotcha).
+const DARK_GRID_CSS = `
+.propel-launch-cal .rbc-month-view, .propel-launch-cal .rbc-header,
+.propel-launch-cal .rbc-day-bg, .propel-launch-cal .rbc-month-row {
+  border-color: var(--mantine-color-default-border);
+}
+.propel-launch-cal .rbc-header {
+  padding: 6px 8px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--mantine-color-dimmed);
+}
+.propel-launch-cal .rbc-off-range-bg { background: rgba(127, 127, 127, 0.06); }
+.propel-launch-cal .rbc-off-range .rbc-button-link { color: var(--mantine-color-dimmed); opacity: 0.5; }
+.propel-launch-cal .rbc-today { background: rgba(216, 164, 88, 0.08); }
+.propel-launch-cal .rbc-now .rbc-button-link { color: var(--mantine-color-yellow-5); font-weight: 700; }
+.propel-launch-cal .rbc-date-cell { padding: 4px 6px; font-size: 11.5px; }
+.propel-launch-cal .rbc-show-more { color: var(--mantine-color-blue-4); background: transparent; }
+.propel-launch-cal .rbc-toolbar button {
+  color: var(--mantine-color-text); border-color: var(--mantine-color-default-border); background: transparent;
+}
+.propel-launch-cal .rbc-toolbar button:hover { background: var(--mantine-color-default-hover); }
+.propel-launch-cal .rbc-toolbar button.rbc-active { background: var(--mantine-color-default-hover); box-shadow: none; }
+`;
+
 const localizer = dateFnsLocalizer({
   format,
   parse,
@@ -81,7 +107,8 @@ export const MonthView = ({
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
   return (
-    <Box p="md" style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, flex: 1 }}>
+    <Box p="md" className="propel-launch-cal" style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, flex: 1 }}>
+      <style>{DARK_GRID_CSS}</style>
       {/* react-big-calendar needs a DEFINITE height — `height:'100%'` against a
           min-height-only parent computes to auto and the grid collapses to ~26px
           (staging QA catch). 560px scrolls inside the tab's ScrollArea. */}
