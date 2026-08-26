@@ -82,7 +82,10 @@ export const MonthView = ({
 
   return (
     <Box p="md" style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, flex: 1 }}>
-      <Box style={{ flex: 1, minHeight: 480 }}>
+      {/* react-big-calendar needs a DEFINITE height — `height:'100%'` against a
+          min-height-only parent computes to auto and the grid collapses to ~26px
+          (staging QA catch). 560px scrolls inside the tab's ScrollArea. */}
+      <Box style={{ height: 560, flexShrink: 0 }}>
         <Calendar<PlotEvent>
           localizer={localizer}
           events={events}
