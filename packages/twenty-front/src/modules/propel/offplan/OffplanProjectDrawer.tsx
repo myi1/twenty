@@ -51,6 +51,7 @@ export function OffplanProjectDrawer({
   const [units, setUnits] = useState<OffplanUnit[] | null>(null);
   const [area, setArea] = useState<any | null>(null);
   const [detail, setDetail] = useState<OffplanProjectDetail | null>(null);
+  const [detailFailed, setDetailFailed] = useState(false);
   const [anchorUnitId, setAnchorUnitId] = useState<number | undefined>(undefined);
   const [tab, setTab] = useState<string | null>(null);
   // Index into `galleryImages` of the render shown full-screen; null = closed.
@@ -58,12 +59,15 @@ export function OffplanProjectDrawer({
 
   useEffect(() => {
     let alive = true;
-    setDetail(null); setUnits(null); setArea(null); setAnchorUnitId(undefined); setTab(null); setLightboxIndex(null);
+    setDetail(null); setDetailFailed(false); setUnits(null); setArea(null); setAnchorUnitId(undefined); setTab(null); setLightboxIndex(null);
     (async () => {
       const u = await callPropelRoute<RouteEnvelope<OffplanSearchResult>>('/offplan/browse', { action: 'search', params: { projectExternalId: point.externalId, limit: 100 } });
       if (alive) { const list = u?.ok ? u.data?.units ?? [] : []; setUnits(list); setAnchorUnitId([...list].sort((a, b) => a.price - b.price)[0]?.externalId); }
       const d = await callPropelRoute<RouteEnvelope<{ project: OffplanProjectDetail }>>('/offplan/browse', { action: 'projectDetail', params: { projectExternalId: point.externalId } });
-      if (alive) setDetail(d?.ok ? (d.data as any)?.project ?? null : null);
+      if (alive) {
+        setDetail(d?.ok ? (d.data as any)?.project ?? null : null);
+        setDetailFailed(!d?.ok);
+      }
       if (point.districtName) {
         const a = await callPropelRoute<RouteEnvelope<any>>('/offplan/browse', { action: 'area', params: { area: point.districtName } });
         if (alive) setArea(a?.ok ? a.data : null);
@@ -129,7 +133,10 @@ export function OffplanProjectDrawer({
   // Hollow-drawer honesty (approved design): while the vendor detail sync is down,
   // a NEW launch opens with no payment plans / units / documents. Say so instead of
   // rendering empty sections — a calendar that opens hollow drawers burns trust.
-  const detailSettled = units !== null && detail !== null;
+  // detailFailed counts as settled (review fix): a brand-new launch where the
+  // service 404s the detail — the flagship hollow-drawer scenario — must show the
+  // notice, not silent empty sections.
+  const detailSettled = units !== null && (detail !== null || detailFailed);
   const dataPending = detailSettled && !hasUnits && !hasPayment && !hasDocuments;
 
   const estCommissionAed =

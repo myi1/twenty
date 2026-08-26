@@ -21,12 +21,6 @@ export const dayLabel = (key: string): string => {
   return `${d} ${MONTHS[(m ?? 1) - 1]}`;
 };
 
-export const dayLabelWithWeekday = (key: string): string => {
-  const date = dayKeyToLocalDate(key);
-  const wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()];
-  return `${wd} ${date.getDate()}`;
-};
-
 /** The Dubai day an instant falls on (mirrors the server rule for display only). */
 export const msDubaiDayKey = (ms: number): string => {
   const d = new Date(ms + DUBAI_OFFSET_MS);
@@ -39,13 +33,29 @@ export const eventDayKey = (e: CalendarEventItem, nowMs: number): string =>
 export const itemDayKey = (i: CalendarItem, nowMs: number): string =>
   i.kind === 'launch' ? i.dayKey : eventDayKey(i, nowMs);
 
-/** "ends in 2 days" / "5 days left" / "ends today" — accessible text, not color. */
+/** Whole Dubai DAYS between two instants' calendar days (0 = same day). */
+const dubaiDaysBetween = (fromMs: number, toMs: number): number =>
+  Math.round((Date.parse(`${msDubaiDayKey(toMs)}T00:00:00Z`) - Date.parse(`${msDubaiDayKey(fromMs)}T00:00:00Z`)) / DAY_MS);
+
+/** "closes today" / "closes tomorrow" / "5 days left" — a Dubai DAY-KEY difference,
+ *  never an ms ceil (review fix: stored end bounds sit at 23:59:59.999, so the ceil
+ *  said "closes tomorrow" on the deadline day itself — wrong on exactly the day
+ *  agents act). Accessible text, not color. */
 export const countdownLabel = (e: CalendarEventItem, nowMs: number): string => {
   const endMs = e.endsAtMs ?? e.startsAtMs;
-  const days = Math.max(0, Math.ceil((endMs - nowMs) / DAY_MS));
+  const days = Math.max(0, dubaiDaysBetween(nowMs, endMs));
   if (days === 0) return e.eventType === 'DEVELOPER_EVENT' ? 'ends today' : 'closes today';
   const noun = e.eventType === 'DEVELOPER_EVENT' ? 'ends' : 'closes';
   return days === 1 ? `${noun} tomorrow` : `${days} days left`;
+};
+
+/** Does an event's inclusive day span cover the given Dubai day? (Month "+N" day
+ *  filtering — a multi-day offer occupies every spanned cell, so the day view must
+ *  include it on any spanned day, not only its bucket key.) */
+export const eventSpansDay = (e: CalendarEventItem, dayKey: string): boolean => {
+  const startKey = msDubaiDayKey(e.startsAtMs);
+  const endKey = msDubaiDayKey(e.endsAtMs ?? e.startsAtMs);
+  return dayKey >= startKey && dayKey <= endKey;
 };
 
 export const eventTypeLabel: Record<MarketEventType, string> = {

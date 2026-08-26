@@ -38,9 +38,15 @@ export function useOffplanCalendar(enabled: boolean) {
       setNotEnabled(false);
       return;
     }
-    if (res?.code === 'UNKNOWN_ACTION' || res?.code === 'FEATURE_OFF') {
-      // The structured route-absent signal — server predates the calendar (deploy
-      // ordering) or the off-plan service is not wired on this environment.
+    if (
+      res?.code === 'UNKNOWN_ACTION' ||
+      res?.code === 'FEATURE_OFF' ||
+      /^unknown action/i.test(res?.error ?? '')
+    ) {
+      // Route-absent: the structured code from the NEW server, or the bare
+      // 'unknown action: calendar' string a server that PREDATES this deploy
+      // returns (review fix — the deploy-ordering window this state exists for
+      // is exactly the one where only the old string exists).
       setNotEnabled(true);
       return;
     }

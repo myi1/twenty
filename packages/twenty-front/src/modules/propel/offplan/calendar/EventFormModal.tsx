@@ -85,6 +85,16 @@ export const EventFormModal = ({
     setDevOptions([]);
   }, [opened, editing, prefillDay]);
 
+  // Debounce hygiene: a pending typeahead timer must not fire (fetch + setState)
+  // after the modal/tab unmounts.
+  useEffect(
+    () => () => {
+      if (devTimer.current) clearTimeout(devTimer.current);
+      devSeq.current += 1; // invalidate any in-flight search
+    },
+    [],
+  );
+
   const set = <K extends keyof EventFormValues>(k: K, v: EventFormValues[K]) =>
     setValues((prev) => ({ ...prev, [k]: v }));
 
@@ -101,7 +111,9 @@ export const EventFormModal = ({
       ).catch(() => null);
       if (mySeq !== devSeq.current) return;
       const list = (res?.ok ? res.data?.developers ?? [] : []).filter((d) => d?.name && d?.slug);
-      setDevOptions(list.slice(0, 12));
+      // De-dupe by display name (Autocomplete keys on the string; first slug wins).
+      const seen = new Set<string>();
+      setDevOptions(list.filter((d) => (seen.has(d.name) ? false : (seen.add(d.name), true))).slice(0, 12));
     }, 250);
   };
 
@@ -119,6 +131,9 @@ export const EventFormModal = ({
 
     setSaving(true);
     setSaveError(null);
+    // v1 limitation, documented: the form works in all-day dates. Editing a TIMED
+    // row (none can be created today — API/future ingestion only) coarsens it to
+    // all-day on save; the server's patch semantics otherwise preserve unsent fields.
     const input: Record<string, unknown> = {
       name: values.name.trim(),
       eventType: values.eventType,

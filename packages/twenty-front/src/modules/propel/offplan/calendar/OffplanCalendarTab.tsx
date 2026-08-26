@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Badge, Box, Button, Chip, Group, Modal, ScrollArea, SegmentedControl, Select,
   Skeleton, Stack, Text, Textarea,
@@ -9,7 +9,7 @@ import { AgendaView } from './AgendaView';
 import { MonthView } from './MonthView';
 import { EventFormModal } from './EventFormModal';
 import { useOffplanCalendar } from './useOffplanCalendar';
-import { dayLabel, itemDayKey, type TypeFilter } from './calendarUtils';
+import { dayLabel, eventSpansDay, itemDayKey, matchesTypeFilter, type TypeFilter } from './calendarUtils';
 import type { CalendarEventItem, CalendarItem, CalendarLaunchItem, MarketEventRecord } from './types';
 
 // The Calendar tab — Off-Plan Launch Calendar v1 (founder-approved design
@@ -41,8 +41,13 @@ export const OffplanCalendarTab = ({
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [copyState, setCopyState] = useState<CopyState>('idle');
   const [briefText, setBriefText] = useState<string | null>(null);
+  // Transient failure notice for copy/edit/delete actions — silent no-ops read as
+  // "the button is broken" (review fix).
+  const [actionNote, setActionNote] = useState<string | null>(null);
 
-  const nowMs = Date.now();
+  // Stable per payload — a per-render Date.now() made the sections memo dead weight.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => setNowMs(Date.now()), [cal.payload]);
   const payload = cal.payload;
   const canManage = payload?.canManage ?? false;
 
@@ -61,14 +66,16 @@ export const OffplanCalendarTab = ({
       { action: 'detail', id: e.id },
     ).catch(() => null);
     if (res?.ok && res.data?.event) setModal({ editing: res.data.event, prefillDay: null });
+    else setActionNote("Couldn't open that event for editing — try again");
   }, []);
 
   const confirmDelete = useCallback(async () => {
     if (!deleting) return;
     setDeleteBusy(true);
-    await callPropelRoute('/market-events', { action: 'delete', id: deleting.id }).catch(() => null);
+    const res = await callPropelRoute<{ ok?: boolean }>('/market-events', { action: 'delete', id: deleting.id }).catch(() => null);
     setDeleteBusy(false);
     setDeleting(null);
+    if (!res?.ok) setActionNote("Couldn't delete that event — try again");
     cal.retry();
   }, [deleting, cal]);
 
@@ -89,6 +96,7 @@ export const OffplanCalendarTab = ({
     const text = res?.ok ? res.data?.text ?? null : null;
     if (!text) {
       setCopyState('idle');
+      setActionNote(res?.ok ? 'Nothing in the brief window right now' : "Couldn't build the brief — try again");
       return;
     }
     try {
@@ -112,6 +120,7 @@ export const OffplanCalendarTab = ({
   const openRef = useCallback(
     (ref: string) => {
       if (!payload) return;
+      const plot = payload.sections.monthPlot.find((m) => m.ref === ref);
       if (ref.startsWith('p:')) {
         const id = Number(ref.slice(2));
         const all: CalendarItem[] = [
@@ -120,10 +129,22 @@ export const OffplanCalendarTab = ({
           ...payload.sections.later.items,
         ];
         const item = all.find((i) => i.kind === 'launch' && i.projectExternalId === id) as CalendarLaunchItem | undefined;
-        if (item) onOpenProject(item);
+        if (item) {
+          onOpenProject(item);
+        } else if (plot) {
+          // Bucket/plot boundary fallback — a plotted pill must never be a dead
+          // click; the drawer self-fetches everything beyond the snapshot.
+          onOpenProject({
+            kind: 'launch', projectExternalId: id, name: plot.label, developerName: null,
+            districtName: null, dayKey: plot.dayKey, provenance: 'ANNOUNCED', minPrice: null,
+            heroImageUrl: null, handoverYear: null, plottable: true,
+          });
+        }
         return;
       }
-      // e:<id> → jump to its agenda entry (inline expansion is the detail view).
+      // e:<id> → the agenda filtered to that event's day (inline expansion is the
+      // detail view; landing unfiltered could bury it in a collapsed section).
+      if (plot) setDayFilter(plot.dayKey);
       setView('agenda');
     },
     [payload, onOpenProject],
@@ -134,11 +155,13 @@ export const OffplanCalendarTab = ({
     if (!payload) return null;
     if (!dayFilter) return payload.sections;
     const s = payload.sections;
-    const only = (items: CalendarItem[]) => items.filter((i) => itemDayKey(i, nowMs) === dayFilter);
+    const onDay = (i: CalendarItem) =>
+      i.kind === 'launch' ? i.dayKey === dayFilter : eventSpansDay(i, dayFilter);
+    const only = (items: CalendarItem[]) => items.filter(onDay);
     return {
       ...s,
       justLaunched: s.justLaunched.filter((i) => i.dayKey === dayFilter),
-      closingSoon: s.closingSoon.filter((e) => itemDayKey(e, nowMs) === dayFilter),
+      closingSoon: s.closingSoon.filter((e) => eventSpansDay(e, dayFilter)),
       next7: only(s.next7),
       following14: only(s.following14),
       later: { count: only(s.later.items).length, items: only(s.later.items) },
@@ -146,14 +169,15 @@ export const OffplanCalendarTab = ({
     };
   }, [payload, dayFilter, nowMs]);
 
+  // Emptiness must apply the SAME filters the agenda applies (review fix: a type
+  // chip matching nothing previously left allEmpty false → a blank body with no
+  // clear-filters affordance).
   const allEmpty =
     sections !== null &&
-    sections.justLaunched.length === 0 &&
-    sections.closingSoon.length === 0 &&
-    sections.next7.length === 0 &&
-    sections.following14.length === 0 &&
-    sections.later.count === 0 &&
-    sections.tbcGroups.length === 0;
+    [...sections.justLaunched, ...sections.closingSoon, ...sections.next7, ...sections.following14, ...sections.later.items].filter(
+      (i) => matchesTypeFilter(i, typeFilter),
+    ).length === 0 &&
+    ((typeFilter.size > 0 && !typeFilter.has('LAUNCHES')) || sections.tbcGroups.length === 0);
 
   // ── page-level states ─────────────────────────────────────────────────────
   if (cal.notEnabled) {
@@ -264,7 +288,12 @@ export const OffplanCalendarTab = ({
       )}
       {payload.truncated && (
         <Alert color="yellow" radius={0} py={8}>
-          Showing the first {view === 'agenda' ? 'batch of' : ''} launches only — narrow the window to see everything.
+          Showing the first batch of launches only — narrow the window to see everything.
+        </Alert>
+      )}
+      {actionNote && (
+        <Alert color="yellow" radius={0} py={8} withCloseButton onClose={() => setActionNote(null)}>
+          {actionNote}
         </Alert>
       )}
       {dayFilter && (

@@ -81,9 +81,18 @@ export const OffplanStudioPage = ({
     return set;
   }, [sl.ids, b.byId]);
 
+  // EVERY browse-side open goes through this wrapper (review fix: the calendar
+  // snapshot drawer state competed with b.selectedId — opening project B from the
+  // developer drawer or the map while a calendar drawer was set kept showing A).
+  const openProject = (id: number) => {
+    setCalendarDrawer(null);
+    b.openProject(id);
+  };
+
   const openFromCalendar = (item: CalendarLaunchItem) => {
     // Prefer the real map point when the catalog has it (and is loaded); fall back
     // to a snapshot built from the launch row — the drawer fills the rest itself.
+    b.setSelectedId(null);
     const mapPoint = b.byId.get(item.projectExternalId);
     setCalendarDrawer(
       mapPoint ?? {
@@ -137,12 +146,12 @@ export const OffplanStudioPage = ({
                         selectedId={b.selectedId} hoveredId={b.hoveredId} viewedIds={b.viewedIds}
                         favoritedIds={sl.favoritedIds} favoritedDistrictIds={favoritedDistrictIds}
                         onViewportChange={(bounds, zoom) => { b.setBounds(bounds); b.setZoom(zoom); }}
-                        onPinClick={b.openProject} onPinHover={b.setHoveredId} />
+                        onPinClick={openProject} onPinHover={b.setHoveredId} />
                       <OffplanShortlistTray count={sl.count} onBuild={() => sl.ids.length > 0 && setWizard({ ids: sl.ids })} />
                     </Box>
                     <Box style={{ width: '40%', minWidth: 0, borderLeft: '1px solid var(--mantine-color-default-border)' }}>
                       <OffplanCardRail visible={b.visible} total={b.points.length}
-                        hoveredId={b.hoveredId} onHover={b.setHoveredId} onOpen={b.openProject}
+                        hoveredId={b.hoveredId} onHover={b.setHoveredId} onOpen={openProject}
                         onShortlist={sl.toggle} onPitch={(id) => setWizard({ ids: [id] })}
                         onOpenDeveloper={setSelectedDeveloperSlug} />
                     </Box>
@@ -168,7 +177,7 @@ export const OffplanStudioPage = ({
           <OffplanDeveloperDrawer
             slug={selectedDeveloperSlug}
             onClose={() => setSelectedDeveloperSlug(null)}
-            onOpenProject={(id) => { setSelectedDeveloperSlug(null); b.openProject(id); }}
+            onOpenProject={(id) => { setSelectedDeveloperSlug(null); openProject(id); }}
             onShowOnMap={(slug) => {
               setTab('browse');
               b.setFilters((f) => ({ ...f, developerSlugs: [slug] }));
