@@ -12,12 +12,16 @@ const MAP_PAGE_SIZE = 120;
 
 // Loads the full active off-plan point set in bounded pages (see MAP_PAGE_SIZE).
 // Exposes points, an id→point index, and district clusters.
-export function useOffplanMapData() {
+// `enabled` (Launch Calendar refactor): the Studio's Calendar tab must NOT trigger
+// the full catalog pull — the load starts the first time the Browse tab is active
+// and then sticks (a deep link straight to the calendar costs zero map calls).
+export function useOffplanMapData(enabled = true) {
   const [points, setPoints] = useState<OffplanMapPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!enabled) return;
     let alive = true;
     (async () => {
       const all: OffplanMapPoint[] = [];
@@ -48,7 +52,7 @@ export function useOffplanMapData() {
       setLoading(false);
     })();
     return () => { alive = false; };
-  }, []);
+  }, [enabled]);
 
   const byId = useMemo(() => new Map(points.map((p) => [p.externalId, p])), [points]);
   const clusters: OffplanDistrictCluster[] = useMemo(() => groupPointsByDistrict(points), [points]);

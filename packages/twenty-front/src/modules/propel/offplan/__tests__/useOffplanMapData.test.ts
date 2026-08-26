@@ -41,3 +41,17 @@ test('sets error when the route returns null (feature off / auth)', async () => 
   expect(result.current.error).toBeTruthy();
   expect(result.current.points).toHaveLength(0);
 });
+
+// Launch Calendar refactor: the calendar tab must not trigger the catalog pull.
+test('enabled=false fetches nothing; flipping to true starts the load', async () => {
+  mockCall.mockResolvedValue({ ok: true, data: { points: [point], total: 1, hasMore: false } } as never);
+  const { result, rerender } = renderHook(({ enabled }) => useOffplanMapData(enabled), {
+    initialProps: { enabled: false },
+  });
+  await new Promise((r) => setTimeout(r, 20));
+  expect(mockCall).not.toHaveBeenCalled();
+  expect(result.current.loading).toBe(true); // browse not started yet
+  rerender({ enabled: true });
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  expect(result.current.points).toHaveLength(1);
+});

@@ -19,7 +19,7 @@ import { OffplanHeroImage } from './OffplanHeroImage';
 import { OffplanGalleryLightbox } from './OffplanGalleryLightbox';
 import { isoToQuarterLabel } from './handover';
 import type {
-  OffplanMapPoint,
+  OffplanDrawerPoint,
   OffplanProjectDetail,
   OffplanSearchResult,
   OffplanUnit,
@@ -38,7 +38,10 @@ type TabKey = 'overview' | 'payment' | 'area' | 'units' | 'documents' | 'ameniti
 export function OffplanProjectDrawer({
   point, shortlisted, onClose, onShortlist, onPitch, onOpenDeveloper,
 }: {
-  point: OffplanMapPoint;
+  // A snapshot is enough to open — the drawer self-fetches detail by externalId.
+  // (Launch Calendar refactor: new launches are often absent from the map feed, so
+  // requiring a full OffplanMapPoint made exactly the newest projects unopenable.)
+  point: OffplanDrawerPoint;
   shortlisted: boolean;
   onClose: () => void;
   onShortlist: (id: number) => void;
@@ -61,8 +64,10 @@ export function OffplanProjectDrawer({
       if (alive) { const list = u?.ok ? u.data?.units ?? [] : []; setUnits(list); setAnchorUnitId([...list].sort((a, b) => a.price - b.price)[0]?.externalId); }
       const d = await callPropelRoute<RouteEnvelope<{ project: OffplanProjectDetail }>>('/offplan/browse', { action: 'projectDetail', params: { projectExternalId: point.externalId } });
       if (alive) setDetail(d?.ok ? (d.data as any)?.project ?? null : null);
-      const a = await callPropelRoute<RouteEnvelope<any>>('/offplan/browse', { action: 'area', params: { area: point.districtName } });
-      if (alive) setArea(a?.ok ? a.data : null);
+      if (point.districtName) {
+        const a = await callPropelRoute<RouteEnvelope<any>>('/offplan/browse', { action: 'area', params: { area: point.districtName } });
+        if (alive) setArea(a?.ok ? a.data : null);
+      }
     })();
     return () => { alive = false; };
   }, [point.externalId, point.districtName]);
@@ -120,6 +125,12 @@ export function OffplanProjectDrawer({
     : [];
   const description = detail?.description ?? detail?.developer?.description ?? null;
   const hasOverview = !!detail && (!!description || overviewFacts.length > 0);
+
+  // Hollow-drawer honesty (approved design): while the vendor detail sync is down,
+  // a NEW launch opens with no payment plans / units / documents. Say so instead of
+  // rendering empty sections — a calendar that opens hollow drawers burns trust.
+  const detailSettled = units !== null && detail !== null;
+  const dataPending = detailSettled && !hasUnits && !hasPayment && !hasDocuments;
 
   const estCommissionAed =
     detail?.commissionMinPct != null && fromPrice != null
@@ -199,6 +210,13 @@ export function OffplanProjectDrawer({
             )}
           </Group>
 
+          {dataPending && (
+            <Text size="sm" c="dimmed" mt={6}>
+              Full details pending next data sync — payment plans, units and brochures
+              arrive as our data provider confirms this launch.
+            </Text>
+          )}
+
           {/* ── Brass-ruled labeled key-facts strip ─────────────── */}
           <Group
             gap={0}
@@ -215,7 +233,7 @@ export function OffplanProjectDrawer({
                 )}
               </Fact>
             )}
-            <Fact k="District"><Text fw={600} size="sm" lineClamp={1}>{point.districtName}</Text></Fact>
+            <Fact k="District"><Text fw={600} size="sm" lineClamp={1}>{point.districtName ?? '—'}</Text></Fact>
             {handoverLabel && <Fact k="Handover"><Text fw={600} size="sm">{handoverLabel}</Text></Fact>}
             {hasUnits && <Fact k="Availability"><Text fw={600} size="sm">{sortedUnits.length} units</Text></Fact>}
             {downPct != null && (
@@ -290,7 +308,7 @@ export function OffplanProjectDrawer({
 
             {hasArea && (
               <Tabs.Panel value="area" pt="md">
-                <Text size="xs" c="dimmed" mb="xs">{point.districtName} · off-plan market</Text>
+                <Text size="xs" c="dimmed" mb="xs">{point.districtName ?? 'Area'} · off-plan market</Text>
                 <Box style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                   {y != null && <Stat k="Gross yield" v={`${y.toFixed(1)}%`} accent />}
                   {areaRent != null && <Stat k="Avg rent" v={aed(areaRent) ?? '—'} />}

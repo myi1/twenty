@@ -12,11 +12,12 @@ const AREA_PAGE_SIZE = 60;
 // Loads the district shading polygons (geniemap-coloured Dubai communities) in
 // bounded pages. Best-effort: shading is decorative, so any failure resolves to
 // an empty set — the map still renders pins, never blocks or errors the browse.
-export function useOffplanMapAreas() {
+export function useOffplanMapAreas(enabled = true) {
   const [areas, setAreas] = useState<OffplanMapArea[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!enabled) return;
     let alive = true;
     (async () => {
       const all: OffplanMapArea[] = [];
@@ -40,7 +41,7 @@ export function useOffplanMapAreas() {
       setLoading(false);
     })();
     return () => { alive = false; };
-  }, []);
+  }, [enabled]);
 
   return { areas, loading };
 }

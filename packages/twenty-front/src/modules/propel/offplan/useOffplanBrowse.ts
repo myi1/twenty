@@ -7,10 +7,10 @@ import type { OffplanBrowseFilters, MapBounds, OffplanSearchResult, RouteEnvelop
 
 const EMPTY_FILTERS: OffplanBrowseFilters = { q: '', districtIds: [], developerSlugs: [], newLaunchOnly: false, stockedOnly: false };
 
-export function useOffplanBrowse() {
-  const { points, byId, loading, error } = useOffplanMapData();
+export function useOffplanBrowse(enabled = true) {
+  const { points, byId, loading, error } = useOffplanMapData(enabled);
   // Decorative district shading — loads independently; never blocks the browse.
-  const { areas } = useOffplanMapAreas();
+  const { areas } = useOffplanMapAreas(enabled);
   const [filters, setFilters] = useState<OffplanBrowseFilters>(EMPTY_FILTERS);
   const [bounds, setBounds] = useState<MapBounds | null>(null);
   const [zoom, setZoom] = useState(9);

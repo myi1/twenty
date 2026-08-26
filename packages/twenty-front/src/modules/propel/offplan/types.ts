@@ -57,6 +57,23 @@ export type OffplanMapPoint = {
 // hasMore drive the hero's page loop (the CRM proxy's IPC response channel drops
 // payloads > ~64KB, so the ~550KB set is pulled in bounded pages). nextOffset/
 // hasMore are optional so the unpaged whole-set response still type-checks.
+// The minimal shape the project drawer needs to OPEN. OffplanMapPoint satisfies it
+// (map/browse flow); the Launch Calendar builds a SNAPSHOT from a launch row — new
+// launches are often absent from the map feed (coordinate-less projects are dropped
+// there), so the drawer must never require a map point. It self-fetches detail by
+// externalId and fills whatever the snapshot lacks.
+export type OffplanDrawerPoint = {
+  externalId: number;
+  name: string;
+  districtName: string | null;
+  priceFromAed: number | null;
+  isLaunch: boolean;
+  handover: string | null;
+  developerName: string | null;
+  developerSlug: string | null;
+  heroImageUrl?: string | null;
+};
+
 export type OffplanMapPointsResult = {
   points: OffplanMapPoint[];
   total: number;
