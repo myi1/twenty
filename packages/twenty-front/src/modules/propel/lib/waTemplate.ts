@@ -211,6 +211,136 @@ export interface WaTemplateCreateInput {
   buttons?: WaButtonInput[];
 }
 
+// ── Mandatory opt-out on MARKETING templates ───────────────────────────────────
+// PORT of propel-crm-integration:src/shared/wa-opt-out.ts + the ensureOptOut half
+// of wa-template-create.ts. KEEP IN SYNC — the create route re-runs the same rule
+// server-side, so a divergence here shows the operator one footer and submits
+// another.
+//
+// Why it exists: on 2026-08-28 a 1,485-recipient marketing send drew a Meta spam
+// notice and pushed the sending number to quality_rating RED. Recipients who
+// wanted out had no exit, so they used "Report spam" / "Block" — and Meta gives
+// us NO signal for either, so those people stay in our lists and get messaged
+// again. A second strike is what actually disables a number.
+//
+// The suppression itself already works: a STOP reply (or a tap on an opt-out
+// button) is classified UNSUBSCRIBED by the WA adapter, written as
+// whatsappOptOut on the Person by the webhook route, and excluded from every
+// future audience by the segment resolver. Templates just never said so.
+
+// The BUTTON is the default affordance (Yahya's call, 2026-08-28): one tap beats
+// typing a word, so more of the people who want out use the exit we control
+// rather than "Report spam". Meta's own canonical marketing-template example
+// ships this exact shape (a quick_reply "Unsubscribe" listed after any
+// url/phone_number buttons), and static quick-reply buttons need no send-time
+// parameters, so the body-only send path carries them unchanged.
+export const WA_OPT_OUT_BUTTON_EN = 'Stop promotions';
+export const WA_OPT_OUT_BUTTON_AR = 'إيقاف الرسائل';
+
+// The FOOTER line is the fallback, used when all 10 button slots are taken.
+// Free-text opt-out is EXACT-MATCH ONLY at runtime — a typed reply is a hot lead
+// by default ("stop by tomorrow" must never suppress a buyer) — so the line asks
+// for the BARE word, which is what the runtime honours.
+export const WA_OPT_OUT_FOOTER_EN = 'Reply STOP to unsubscribe';
+export const WA_OPT_OUT_FOOTER_AR = 'أرسل "إيقاف" لإلغاء الاشتراك';
+
+// A BUTTON tap is unambiguous, so its label is matched permissively at runtime —
+// "Stop promotions" would never match the anchored free-text rule. `cancel` is
+// deliberately absent: a "Cancel" button usually means cancel-the-booking.
+const STOP_BUTTON_WORDS = /(stop|unsubscribe|opt\s*out|إلغاء|ايقاف|إيقاف|توقف)/i;
+
+export const isOptOutButtonLabel = (label: string): boolean =>
+  STOP_BUTTON_WORDS.test(label ?? '');
+
+// Author-time cue: bare "stop" needs an instruction verb beside it, because
+// marketing copy says "STOP paying rent" — without that guard the mandate would
+// pass on a template offering no exit at all.
+const OPT_OUT_CUE = new RegExp(
+  [
+    '\\bunsubscribe\\b',
+    '\\bopt[\\s-]?out\\b',
+    '\\b(?:reply|send|text|type|message)\\b[^\\n]{0,24}?\\bstop\\b',
+    '(?:أرسل|ارسل|اكتب|رد|للإلغاء|للالغاء|لإلغاء)[\\s\\S]{0,24}?(?:إيقاف|ايقاف|إلغاء|الغاء|توقف|stop)',
+    'إلغاء الاشتراك',
+  ].join('|'),
+  'i',
+);
+
+export const hasOptOutCue = (text: string): boolean => OPT_OUT_CUE.test(text ?? '');
+
+const isArabicLocale = (language: string): boolean =>
+  /^ar(_|$)/i.test((language ?? '').trim());
+
+// ur/hi/fa fall back to the English line on purpose: Latin "STOP" is typeable on
+// every keyboard and IS in the honoured set; there are no ur/hi/fa stop words yet.
+export const optOutFooterFor = (language: string): string =>
+  isArabicLocale(language) ? WA_OPT_OUT_FOOTER_AR : WA_OPT_OUT_FOOTER_EN;
+
+export const optOutButtonFor = (language: string): string =>
+  isArabicLocale(language) ? WA_OPT_OUT_BUTTON_AR : WA_OPT_OUT_BUTTON_EN;
+
+/** Does this template already offer an exit — footer, body copy, or a
+ * quick-reply button the runtime will actually honour? */
+export const hasOptOutAffordance = (input: WaTemplateCreateInput): boolean =>
+  hasOptOutCue(input.footer ?? '') ||
+  hasOptOutCue(input.bodyText ?? '') ||
+  (input.buttons ?? []).some(
+    (b) => b.type === 'QUICK_REPLY' && isOptOutButtonLabel(b.text ?? ''),
+  );
+
+export type OptOutAddition = 'FOOTER' | 'FOOTER_APPENDED' | 'BUTTON' | null;
+
+/**
+ * Normalize a create-input so a MARKETING template carries an opt-out, adding
+ * the standard one when the author didn't. Cascade: already-compliant → a free
+ * button slot gets a quick-reply opt-out BUTTON (the default, appended last) →
+ * all 10 slots used, so the footer gets the line (set, or appended if it fits) →
+ * nowhere to put it (validateCreateInput then blocks). UTILITY / AUTHENTICATION
+ * are left alone: they are transactional, Meta does not require an opt-out, and
+ * inviting a STOP there would suppress messages people actually want.
+ */
+export const ensureOptOut = (
+  input: WaTemplateCreateInput,
+): { input: WaTemplateCreateInput; added: OptOutAddition } => {
+  if (input.category !== 'MARKETING') return { input, added: null };
+  if (hasOptOutAffordance(input)) return { input, added: null };
+
+  const buttons = input.buttons ?? [];
+  if (buttons.length < WA_BUTTONS_MAX) {
+    return {
+      input: {
+        ...input,
+        buttons: [
+          ...buttons,
+          { type: 'QUICK_REPLY', text: optOutButtonFor(input.language ?? '') },
+        ],
+      },
+      added: 'BUTTON',
+    };
+  }
+
+  const line = optOutFooterFor(input.language ?? '');
+  const footer = (input.footer ?? '').trim();
+  if (!footer) return { input: { ...input, footer: line }, added: 'FOOTER' };
+
+  const combined = `${footer} · ${line}`;
+  if (combined.length <= WA_FOOTER_MAX)
+    return { input: { ...input, footer: combined }, added: 'FOOTER_APPENDED' };
+
+  return { input, added: null };
+};
+
+/** Plain-language note about what was added on the operator's behalf. */
+export const optOutAdditionNote = (added: OptOutAddition): string | null => {
+  if (added === 'BUTTON')
+    return 'An opt-out button was added — every marketing message must offer a way out.';
+  if (added === 'FOOTER')
+    return 'All 10 button slots were used, so an opt-out line was added to the footer instead — every marketing message must offer a way out.';
+  if (added === 'FOOTER_APPENDED')
+    return 'All 10 button slots were used, so an opt-out line was added to the end of your footer instead — every marketing message must offer a way out.';
+  return null;
+};
+
 // ── Meta caps (Templates > Components; WhatsApp Cloud API docs) ─────────────────
 export const WA_NAME_RE = /^[a-z0-9_]+$/;
 export const WA_TEMPLATE_NAME_MAX = 512;
@@ -451,6 +581,16 @@ export const validateCreateInput = (input: WaTemplateCreateInput): string[] => {
   if (problems.length === 0 && hasUnsupportedComponents(assembleComponents(input))) {
     problems.push(
       'This template uses a component the WhatsApp campaign sender can’t fill yet — a media or variable header, or a dynamic-link button. Use a static text header and static buttons, with variables only in the body.',
+    );
+  }
+
+  // Mandatory exit on MARKETING. Callers run ensureOptOut BEFORE this, which adds
+  // the standard footer (or button) automatically — so reaching here means there
+  // was nowhere to put one: a full 60-character footer AND all 10 button slots
+  // used. Same rule, same wording, as the server-side create route.
+  if (input.category === 'MARKETING' && !hasOptOutAffordance(input)) {
+    problems.push(
+      'A marketing template must tell people how to stop receiving messages. Add an opt-out button, or “Reply STOP to unsubscribe” to the footer — all 10 button slots are used and the footer is full, so free one of them up first.',
     );
   }
 

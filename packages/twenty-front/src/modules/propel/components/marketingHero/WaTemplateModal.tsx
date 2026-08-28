@@ -34,7 +34,9 @@ import {
   bodyParamCount,
   bodyPlaceholdersValid,
   DRAIN_POPULATED_FIELDS,
+  ensureOptOut,
   hasNonNumericPlaceholder,
+  optOutAdditionNote,
   previewTemplateBody,
   renderParams,
   validateCreateInput,
@@ -43,7 +45,6 @@ import {
   type WaHeaderInput,
   type WaMergeField,
   type WaMergeValues,
-  type WaTemplateCreateInput,
 } from '@/propel/lib/waTemplate';
 import { type WaTemplateOption } from '@/propel/types/marketingHome';
 
@@ -547,20 +548,6 @@ export const WaTemplateModal = ({
     return null;
   }, [headerFormat, headerText, headerExample]);
 
-  // Buttons rendered in the bubble (labels only — links/numbers aren't shown on a
-  // received message). Blank-label buttons still render so the layout is live.
-  const previewButtons = useMemo<PreviewButton[]>(
-    () =>
-      buttons.map((b) =>
-        b.type === 'URL'
-          ? { type: 'URL', label: b.text }
-          : b.type === 'PHONE_NUMBER'
-            ? { type: 'PHONE_NUMBER', label: b.text }
-            : { type: 'QUICK_REPLY', label: b.text },
-      ),
-    [buttons],
-  );
-
   // Editing a reviewed template: any Meta-reviewed field changing invalidates the
   // prior verdict, so a reviewed status must drop to DRAFT.
   const reviewedDirty =
@@ -589,7 +576,10 @@ export const WaTemplateModal = ({
   );
 
   // Assemble the typed create-input from editor state (mirrors the route's parse).
-  const createInput = useMemo<WaTemplateCreateInput>(() => {
+  // The input as it will ACTUALLY be submitted. ensureOptOut runs here, not just
+  // server-side, so the preview, the validation and the submit all describe the
+  // same message — the operator never sees one footer and sends another.
+  const { input: createInput, added: optOutAdded } = useMemo(() => {
     const header: WaHeaderInput | undefined =
       headerFormat === 'TEXT' && headerText.trim()
         ? {
@@ -617,7 +607,11 @@ export const WaTemplateModal = ({
           ? { type: 'PHONE_NUMBER', text: b.text, phoneNumber: b.phoneNumber }
           : { type: 'QUICK_REPLY', text: b.text },
     );
-    return {
+    // MARKETING templates MUST offer a way out; ensureOptOut adds the standard
+    // line when the author didn't. See lib/waTemplate.ts for why (2026-08-28:
+    // Meta spam notice, sending number to RED, because recipients who wanted out
+    // could only reach for "Report spam").
+    return ensureOptOut({
       name: name.trim(),
       language: SUBMIT_LOCALE[languageCode],
       category,
@@ -627,7 +621,7 @@ export const WaTemplateModal = ({
       header,
       footer: footer.trim() || undefined,
       buttons: btns,
-    };
+    });
   }, [
     name,
     languageCode,
@@ -642,6 +636,24 @@ export const WaTemplateModal = ({
     footer,
     buttons,
   ]);
+
+  // Buttons rendered in the bubble (labels only — links/numbers aren't shown on a
+  // received message). Blank-label buttons still render so the layout is live.
+  // Sourced from createInput, NOT the raw `buttons` state, so an auto-added
+  // opt-out button appears in the preview exactly as the recipient will see it.
+  const previewButtons = useMemo<PreviewButton[]>(
+    () =>
+      (createInput.buttons ?? []).map((b) =>
+        b.type === 'URL'
+          ? { type: 'URL', label: b.text }
+          : b.type === 'PHONE_NUMBER'
+            ? { type: 'PHONE_NUMBER', label: b.text }
+            : { type: 'QUICK_REPLY', label: b.text },
+      ),
+    [createInput.buttons],
+  );
+
+  const optOutNote = optOutAdditionNote(optOutAdded);
 
   // Client-mirrored Meta validation — the Submit button gates on the same checks
   // the route runs server-side, so a submit the route would reject can't fire.
@@ -942,7 +954,7 @@ export const WaTemplateModal = ({
           <WaBubblePreview
             header={previewHeader}
             body={previewBody}
-            footer={footer}
+            footer={createInput.footer ?? ''}
             buttons={previewButtons}
             rtl={rtl}
           />
@@ -1039,15 +1051,23 @@ export const WaTemplateModal = ({
           description="Up to 60 characters; no variables."
           value={footer}
           onChange={(e) => setFooter(e.currentTarget.value)}
-          placeholder="Use the buttons below to opt out"
+          placeholder="RE/MAX Hub Dubai"
           maxLength={60}
         />
 
-        {/* Optional BUTTONS — quick reply / URL / call */}
+        {/* BUTTONS — carries the mandatory opt-out on marketing templates */}
         <Box>
           <Text size="sm" fw={600} mb={6}>
             Buttons (optional)
           </Text>
+          {optOutNote !== null ? (
+            <Text size="xs" c="dimmed" mb={10}>
+              {optOutNote} Anyone who taps it (or replies STOP) is removed from
+              every future campaign automatically. That exit is what stops people
+              reporting us as spam instead — which is what puts the number at
+              risk of being shut off. You can reword it, but not remove it.
+            </Text>
+          ) : null}
           {buttons.length > 0 ? (
             <Stack gap={10} mb={10}>
               {buttons.map((b, i) => (
