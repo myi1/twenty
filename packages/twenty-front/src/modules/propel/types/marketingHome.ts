@@ -259,6 +259,13 @@ export interface WaTemplateOption {
   approved: boolean;
   metaTemplateId: string;
   rejectionReason: string;
+  /** Meta's OWN post-send quality verdict (GREEN/YELLOW/RED, or UNKNOWN until
+   * Meta has enough send volume) — the counterpart to the ADVISORY grade the
+   * editor predicts before submit. OPTIONAL because the field is new: until the
+   * app:install that adds whatsappTemplate.metaQualityScore reaches an
+   * environment, /marketing/hub does not return it and the editor honestly says
+   * "Meta has not rated this template yet". */
+  metaQualityScore?: string;
 }
 
 export interface EmailTemplateOption {

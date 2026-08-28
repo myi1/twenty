@@ -47,6 +47,7 @@ import {
   type WaMergeValues,
 } from '@/propel/lib/waTemplate';
 import { type WaTemplateOption } from '@/propel/types/marketingHome';
+import { WaTemplateQualityPanel } from './WaTemplateQualityPanel';
 
 // Mantine modal rebuild of the legacy WhatsApp TemplateEditorSheet
 // (marketing-cloud-tpleditors.tsx), brought to FULL parity. WhatsApp templates are
@@ -1168,6 +1169,17 @@ export const WaTemplateModal = ({
             Up to 10 buttons; at most 2 URL and 1 call button.
           </Text>
         </Box>
+
+        {/* Spam-risk grade — ADVISORY, sits directly above the hard blockers so
+            the author reads "will this get us reported?" and "will Meta accept
+            it?" as one thought. It scores `createInput`, which is already
+            ensureOptOut-normalized, so the grade describes the message that will
+            actually be sent rather than the raw draft. It NEVER gates Submit —
+            only submitProblems below does that. */}
+        <WaTemplateQualityPanel
+          input={createInput}
+          metaQualityScore={initial?.metaQualityScore}
+        />
 
         {/* Submit state / problems */}
         {submitted ? (
