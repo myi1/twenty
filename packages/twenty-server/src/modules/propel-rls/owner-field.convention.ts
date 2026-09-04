@@ -42,6 +42,14 @@ export const PROPEL_OWNER_FIELD: Readonly<Record<string, string>> = Object.freez
     portalSync: 'ownerId',
     trakheesiPermit: 'ownerId',
 
+    // Call activity log — propel custom object, `owner` relation → ownerId.
+    // Was OMITTED here, so agents saw EVERY agent's/manager's call log (bug
+    // F-04, confirmed on prod 2026-09-04: agent read all 134 call records via
+    // both findMany and findOne). Owner is populated by the voice-service
+    // call-logger; a NULL owner scopes to no agent (manager-only), which is
+    // the safe fail-state until backfill.
+    call: 'ownerId',
+
     // Standard objects — propel-app field
     person: 'assignedAgentId',
 
