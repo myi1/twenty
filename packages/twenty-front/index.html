@@ -49,10 +49,12 @@
       content="Propel — the RE/MAX Hub CRM for real estate teams"
     />
     <meta name="twitter:title" content="Propel" />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Hanken+Grotesk:wght@300;400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap"
-    />
+    <!-- Self-hosted fonts (was fonts.googleapis.com). External font CDNs are
+         blocked by privacy/ad blockers and some networks; when Hanken Grotesk
+         failed to load the UI fell back to a system font whose metrics don't
+         fit the dense layout, clipping text everywhere (Aliza QA, 2026-09-05).
+         Serving from our own origin removes that dependency for every user. -->
+    <link rel="stylesheet" href="/fonts/fonts.css" />
 
     <title>Propel</title>
     <!-- BEGIN: Twenty Config -->

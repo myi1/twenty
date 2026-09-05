@@ -27,8 +27,9 @@ import type { CSSProperties, ReactNode } from 'react';
 import { DUR, EASE, MOTION_VARS, propelPressable } from './motion';
 
 // ── Fonts (DESIGN.md §2.2) — Fraunces · Hanken Grotesk · IBM Plex Mono ───────
-export const PULSE_FONT_IMPORT_URL =
-  'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Hanken+Grotesk:wght@300;400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap';
+// Self-hosted (was fonts.googleapis.com) — see index.html: external font CDNs
+// get blocked and the fallback clips the layout. Served from our own origin.
+export const PULSE_FONT_IMPORT_URL = '/fonts/fonts.css';
 
 /** Display / headlines — serif, the "money moments" only. Never below 15px. */
 export const FONT_DISPLAY = "'Fraunces', Georgia, 'Times New Roman', serif";
