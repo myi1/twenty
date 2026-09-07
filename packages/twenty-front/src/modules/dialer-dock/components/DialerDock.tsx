@@ -53,6 +53,17 @@ const DIALER_DOCK_POSITION_STORAGE_KEY = 'propel-dialer-dock-position';
 // fallback.
 const DEFAULT_DOCK_POSITION = { right: 14, bottom: 72 };
 const DOCK_EDGE_MARGIN_PX = 8;
+// The launcher (44px) and the panel's margin-bottom (8px) sit BELOW the panel inside the
+// same bottom-anchored flex column, so they push the panel's top — and its header, which
+// carries the close button — further up the screen. The panel's height cap must subtract
+// them or the header lands above the viewport. Getting this wrong by exactly these 52px
+// is what left an agent unable to close the dialer on 2026-09-08 even after the svh fix:
+// the first fix capped the panel alone and forgot the stack underneath it.
+const DOCK_LAUNCHER_PX = 44;
+const DOCK_PANEL_GAP_PX = 8;
+const DOCK_TOP_BREATHING_PX = 24;
+const DOCK_STACK_BELOW_PANEL_PX =
+  DOCK_LAUNCHER_PX + DOCK_PANEL_GAP_PX + DOCK_TOP_BREATHING_PX;
 const DOCK_DRAG_THRESHOLD_PX = 4;
 
 type DockPosition = { right: number; bottom: number };
@@ -621,7 +632,7 @@ export const DialerDock = () => {
           // been dragged high — the iframe (flex: 1) absorbs the shrink. The cap itself
           // lives in the stylesheet so it can use svh; only the offset comes from here.
           {
-            ['--propel-dock-max-h-offset' as string]: `${position.bottom + 24}px`,
+            ['--propel-dock-max-h-offset' as string]: `${position.bottom + DOCK_STACK_BELOW_PANEL_PX}px`,
           } as CSSProperties
         }
       >
