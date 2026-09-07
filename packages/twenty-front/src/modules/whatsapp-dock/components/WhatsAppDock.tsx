@@ -1,10 +1,12 @@
 import styled from '@emotion/styled';
 import {
   useCallback,
+  useEffect,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
   type PointerEventHandler,
+  type CSSProperties,
 } from 'react';
 import { IconBrandWhatsapp, IconPlus } from 'twenty-ui/display';
 
@@ -36,6 +38,16 @@ const WA_DOCK_POSITION_STORAGE_KEY = 'propel-wa-dock-position';
 // docks stack rather than overlap. Draggable; this is only the fallback.
 const DEFAULT_DOCK_POSITION = { right: 14, bottom: 130 };
 const DOCK_EDGE_MARGIN_PX = 8;
+// The launcher (44px) and the panel's margin-bottom (8px) sit BELOW the panel in the same
+// bottom-anchored flex column, so they push the panel's top — and the header carrying its
+// close button — further up the screen. The height cap must subtract them or the header
+// lands above the viewport, unreachable. See DialerDock: this exact miss locked an agent
+// out of the CRM on his phone on 2026-09-08.
+const DOCK_LAUNCHER_PX = 44;
+const DOCK_PANEL_GAP_PX = 8;
+const DOCK_TOP_BREATHING_PX = 24;
+const DOCK_STACK_BELOW_PANEL_PX =
+  DOCK_LAUNCHER_PX + DOCK_PANEL_GAP_PX + DOCK_TOP_BREATHING_PX;
 const DOCK_DRAG_THRESHOLD_PX = 4;
 // Match the dialer's stacking band: above SidePanel (21), below the modal
 // backdrop (39). One under the dialer so an open dialer panel wins overlap.
@@ -92,6 +104,14 @@ const StyledPanel = styled.div<{ isExpanded: boolean }>`
     opacity 140ms ease;
   visibility: ${({ isExpanded }) => (isExpanded ? 'visible' : 'hidden')};
   width: ${({ isExpanded }) => (isExpanded ? '340px' : '0')};
+  max-height: calc(100vh - var(--propel-wa-dock-max-h-offset, 24px));
+  max-width: calc(100vw - 16px);
+
+  /* 100vh is the LARGE viewport and on mobile EXCLUDES the collapsible address bar, so
+     sizing against it lets the panel outgrow the screen. 100svh is what actually fits. */
+  @supports (height: 100svh) {
+    max-height: calc(100svh - var(--propel-wa-dock-max-h-offset, 24px));
+  }
 `;
 
 const StyledPanelHeader = styled.div`
@@ -196,6 +216,7 @@ const StyledLauncher = styled.button`
 `;
 
 type WhatsAppDockLauncherProps = {
+  isExpanded?: boolean;
   onClick: () => void;
   onPointerDown?: PointerEventHandler<HTMLButtonElement>;
   onPointerMove?: PointerEventHandler<HTMLButtonElement>;
@@ -204,6 +225,7 @@ type WhatsAppDockLauncherProps = {
 };
 
 export const WhatsAppDockLauncher = ({
+  isExpanded = false,
   onClick,
   onPointerDown,
   onPointerMove,
@@ -211,8 +233,8 @@ export const WhatsAppDockLauncher = ({
   onPointerCancel,
 }: WhatsAppDockLauncherProps) => (
   <StyledLauncher
-    aria-label="Open WhatsApp"
-    title="Open WhatsApp"
+    aria-label={isExpanded ? 'Close WhatsApp' : 'Open WhatsApp'}
+    title={isExpanded ? 'Close WhatsApp' : 'Open WhatsApp'}
     type="button"
     onClick={onClick}
     onPointerDown={onPointerDown}
@@ -246,6 +268,21 @@ export const WhatsAppDock = () => {
     moved: boolean;
   } | null>(null);
   const suppressClickRef = useRef(false);
+
+  // Escape closes the panel — the keyboard twin of the launcher, and the conventional way
+  // out of an overlay. Bound only while expanded so it never swallows Escape elsewhere.
+  useEffect(() => {
+    if (!isExpanded) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsExpanded(false);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [isExpanded]);
 
   const toggleExpanded = () => {
     setIsExpanded((previous) => {
@@ -359,7 +396,9 @@ export const WhatsAppDock = () => {
         isExpanded={isExpanded}
         style={
           isExpanded
-            ? { maxHeight: `calc(100vh - ${position.bottom + 24}px)` }
+            ? ({
+                ['--propel-wa-dock-max-h-offset' as string]: `${position.bottom + DOCK_STACK_BELOW_PANEL_PX}px`,
+              } as CSSProperties)
             : undefined
         }
       >
@@ -405,8 +444,12 @@ export const WhatsAppDock = () => {
         )}
       </StyledPanel>
 
-      {!isExpanded && (
+      {/* The launcher stays mounted while the panel is OPEN: the header's collapse button
+          sits at the TOP of a bottom-anchored panel and is the first thing to leave the
+          screen. One close control is a single point of failure — see DialerDock. */}
+      {(
         <WhatsAppDockLauncher
+          isExpanded={isExpanded}
           onPointerDown={handleDragPointerDown}
           onPointerMove={handleDragPointerMove}
           onPointerUp={handleDragPointerEnd}
