@@ -3,6 +3,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type PointerEventHandler,
 } from 'react';
@@ -109,6 +110,14 @@ const StyledDockContainer = styled.div`
   z-index: ${DIALER_DOCK_Z_INDEX};
 `;
 
+// Height is capped against the viewport by --propel-dock-max-h-offset (set inline from
+// the drag position). Two max-height declarations on purpose: 100vh is the LARGE
+// viewport and on mobile deliberately EXCLUDES the collapsible address bar, so sizing
+// against it lets the panel grow taller than the screen and pushes its header — which
+// holds the only close button — up under the browser chrome, unreachable. 100svh is
+// the SMALL viewport (address bar showing), which is what actually fits. Browsers that
+// do not know svh keep the vh line; the rest take the second. Reported 2026-09-08 by an
+// agent locked out of the CRM on his phone with a live lead open.
 const StyledPanel = styled.div<{ isExpanded: boolean }>`
   background: ${dockColor.bgPrimary};
   border: 1px solid ${dockColor.borderMedium};
@@ -118,9 +127,15 @@ const StyledPanel = styled.div<{ isExpanded: boolean }>`
   flex-direction: column;
   height: ${({ isExpanded }) => (isExpanded ? '560px' : '0')};
   margin-bottom: ${({ isExpanded }) => (isExpanded ? '8px' : '0')};
+  max-height: calc(100vh - var(--propel-dock-max-h-offset, 24px));
+  max-width: calc(100vw - 16px);
   overflow: hidden;
   visibility: ${({ isExpanded }) => (isExpanded ? 'visible' : 'hidden')};
   width: ${({ isExpanded }) => (isExpanded ? '360px' : '0')};
+
+  @supports (height: 100svh) {
+    max-height: calc(100svh - var(--propel-dock-max-h-offset, 24px));
+  }
 `;
 
 // The header doubles as the drag handle while the panel is expanded.
@@ -193,6 +208,7 @@ const StyledLauncher = styled.button`
 `;
 
 type DialerDockLauncherProps = {
+  isExpanded?: boolean;
   onClick: () => void;
   onPointerDown?: PointerEventHandler<HTMLButtonElement>;
   onPointerMove?: PointerEventHandler<HTMLButtonElement>;
@@ -201,6 +217,7 @@ type DialerDockLauncherProps = {
 };
 
 export const DialerDockLauncher = ({
+  isExpanded = false,
   onClick,
   onPointerDown,
   onPointerMove,
@@ -208,8 +225,8 @@ export const DialerDockLauncher = ({
   onPointerCancel,
 }: DialerDockLauncherProps) => (
   <StyledLauncher
-    aria-label="Expand dialer"
-    title="Open dialer"
+    aria-label={isExpanded ? 'Collapse dialer' : 'Expand dialer'}
+    title={isExpanded ? 'Close dialer' : 'Open dialer'}
     type="button"
     onClick={onClick}
     onPointerDown={onPointerDown}
@@ -307,6 +324,22 @@ export const DialerDock = () => {
     moved: boolean;
   } | null>(null);
   const suppressClickRef = useRef(false);
+
+  // Escape closes the panel — the keyboard equivalent of the launcher, and the
+  // conventional way out of any overlay. Only bound while expanded so it never
+  // swallows Escape from the rest of the CRM.
+  useEffect(() => {
+    if (!isExpanded) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsExpanded(false);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [isExpanded]);
 
   const toggleExpanded = () => {
     setIsExpanded((previousIsExpanded) => {
@@ -584,11 +617,12 @@ export const DialerDock = () => {
       <StyledPanel
         isExpanded={isExpanded}
         style={
-          // Never let the panel poke past the top of the viewport when the dock
-          // has been dragged high — the iframe (flex: 1) absorbs the shrink.
-          isExpanded
-            ? { maxHeight: `calc(100vh - ${position.bottom + 24}px)` }
-            : undefined
+          // Never let the panel poke past the top of the viewport when the dock has
+          // been dragged high — the iframe (flex: 1) absorbs the shrink. The cap itself
+          // lives in the stylesheet so it can use svh; only the offset comes from here.
+          {
+            ['--propel-dock-max-h-offset' as string]: `${position.bottom + 24}px`,
+          } as CSSProperties
         }
       >
         <StyledPanelHeader {...dragHandleProps}>
@@ -609,21 +643,28 @@ export const DialerDock = () => {
           onLoad={() => pushConfigRef.current()}
         />
       </StyledPanel>
-      {!isExpanded && (
-        <DialerDockLauncher
-          onPointerDown={handleDragPointerDown}
-          onPointerMove={handleDragPointerMove}
-          onPointerUp={handleDragPointerEnd}
-          onPointerCancel={handleDragPointerEnd}
-          onClick={() => {
-            if (suppressClickRef.current) {
-              suppressClickRef.current = false;
-              return;
-            }
-            toggleExpanded();
-          }}
-        />
-      )}
+      {/*
+        The launcher stays mounted while the panel is OPEN, as a second way out.
+        The panel's header holds the only other close button, and the header sits at
+        the TOP of a bottom-anchored panel — the first thing to leave the screen if the
+        panel is ever taller than the viewport. The launcher is anchored to the bottom,
+        so it is reachable whenever the dock is. One control was a single point of
+        failure: on 2026-09-08 it left an agent unable to close the dialer at all.
+      */}
+      <DialerDockLauncher
+        isExpanded={isExpanded}
+        onPointerDown={handleDragPointerDown}
+        onPointerMove={handleDragPointerMove}
+        onPointerUp={handleDragPointerEnd}
+        onPointerCancel={handleDragPointerEnd}
+        onClick={() => {
+          if (suppressClickRef.current) {
+            suppressClickRef.current = false;
+            return;
+          }
+          toggleExpanded();
+        }}
+      />
     </StyledDockContainer>
   );
 };
