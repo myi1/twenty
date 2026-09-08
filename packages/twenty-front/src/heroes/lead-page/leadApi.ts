@@ -39,13 +39,52 @@ export const setContactField = (host: PropelHeroHost, personId: string, field: '
   host.callPropelRoute<R<{}>>(ROUTE, { action: 'setContactField', personId, field, value });
 
 // Existing routes the page reuses (all server-gated already).
+//
+// The gate a stage move can be refused for. `label` is the human sentence, `fix`
+// says what closes it; a taskId lets a caller jump straight to the blocking task.
+// Mirrors DeskGate in my-desk/types.ts (my-desk-route.ts's moveStage answers both
+// heroes the same way), trimmed to the fields this page actually reads.
+export type StageGate = {
+  type: 'field' | 'document' | 'activity' | 'approval';
+  severity?: 'block' | 'warn';
+  label: string;
+  fix: string;
+  taskId?: string | null;
+  inputKind?: 'boolean' | 'date' | 'number';
+  setField?: string;
+  setTo?: 'true' | null;
+};
+// my-desk-route.ts's moveStage action, read verbatim from my-desk-route.ts:1035-1120.
+// A refusal never carries a top-level `reason`: on GATE_BLOCKED the human sentence
+// lives in `gate.label` (with `gate.fix` alongside it), and every other refusal is
+// just `{ ok: false, error }` with no `gate` at all. Do not add a `reason` field
+// back here without re-reading that route: it does not exist on the wire.
+export type MoveStageResult =
+  | { ok: true; previousStage: string; noteId: string | null; touchedAt: string | null; sideEffects: string[]; warnings?: StageGate[]; auditWarning?: true }
+  | { ok: false; error: string; gate?: StageGate };
 // My Desk's stage move enforces the stage gates and creates the stage task.
 export const moveStage = (host: PropelHeroHost, deskLane: string, recordId: string, toStage: string) =>
-  host.callPropelRoute<{ ok: boolean; error?: string; reason?: string; previousStage?: string }>('/my-desk', { action: 'moveStage', laneObject: deskLane, recordId, toStage });
+  host.callPropelRoute<MoveStageResult>('/my-desk', { action: 'moveStage', laneObject: deskLane, recordId, toStage });
+// GATE_BLOCKED is the one refusal worth explaining in detail: it is the everyday
+// stage-gate refusal (a stage task not yet done, RCBI compliance not cleared, a
+// missing precondition), and gate.label/gate.fix are the plain-language reason
+// and remedy the route already computed. Never show `error` itself: it is a code
+// (GATE_BLOCKED, INVALID_INPUT, WRITE_FAILED, ...), not a sentence.
+export const moveStageErrorText = (r: MoveStageResult | null): string => {
+  if (r && !r.ok && r.error === 'GATE_BLOCKED' && r.gate) return `${r.gate.label} ${r.gate.fix}`.trim();
+  return 'The stage did not move. Try again.';
+};
 export const createDeal = (host: PropelHeroHost, laneKey: 'offplan' | 'secondary' | 'sell' | 'rcbi' | 'institutional', contactId: string, name: string) =>
   host.callPropelRoute<{ ok?: boolean; opportunityId?: string; error?: string }>('/lead/create-opportunity', { lane: laneKey, contactId, name });
+// move-opportunity-route.ts:56-63: a move that touched nothing still answers
+// `ok: true`. Malformed input (bad lane, no records) is the only case with a
+// top-level `error` and no `ok` at all; a per-record failure lands in `failed`
+// instead, alongside whichever ids in `moved` DID go through.
+export type MovePipelineResult =
+  | { ok: true; moved: string[]; failed: Array<{ id: string; reason: string }>; movedCount: number; requested: number; capped?: number; skipped?: number }
+  | { error: string };
 export const movePipeline = (host: PropelHeroHost, sourceLane: string, destinationLane: string, dealId: string) =>
-  host.callPropelRoute<{ error?: string; moved?: number }>('/opportunities/move', { sourceLane, destinationLane, sourceIds: [dealId] });
+  host.callPropelRoute<MovePipelineResult>('/opportunities/move', { sourceLane, destinationLane, sourceIds: [dealId] });
 export const draftCallNote = (host: PropelHeroHost, personId: string) =>
   host.callPropelRoute<{ ok: true; draft: string; why: string } | { ok: false; code?: string; error?: string }>('/my-desk/assist', { action: 'callNote', laneObject: 'lead', recordId: personId });
 export const sendFirstWhatsApp = (host: PropelHeroHost, waPhoneNumber: string, personId: string, body: string) =>

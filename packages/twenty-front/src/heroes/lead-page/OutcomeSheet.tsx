@@ -6,10 +6,13 @@
 // A few contracts worth stating plainly, since they are easy to get wrong:
 //   - The route only ever SUGGESTS a stage. It never writes one. Applying the
 //     suggestion goes through moveStage, My Desk's gated action, which can
-//     legitimately refuse. On a refusal we show its own `reason`/`error`
-//     text verbatim, never invented wording. ANY non-success (a refusal, a
-//     null transport failure, a bare `{ok:false}` with nothing else) always
-//     tells the agent something, never silence.
+//     legitimately refuse. moveStage never sends a top-level `reason`; on a
+//     GATE_BLOCKED refusal the human sentence lives in `gate.label` (with the
+//     remedy in `gate.fix`), which leadApi.ts's moveStageErrorText renders
+//     instead of the raw code. ANY non-success (a gate refusal, a null
+//     transport failure, a bare `{ok:false}` with nothing else) always tells
+//     the agent something, never silence, and never the bare GATE_BLOCKED
+//     string.
 //   - A stage suggestion is never acted on for a terminal outcome (Not
 //     interested / Wrong number / Converted), even if one arrives. The route's
 //     nextStageOnOutcome is the PRIMARY guard for this; the check below is the
@@ -31,7 +34,7 @@ import styled from '@emotion/styled';
 import { Drawer, Radio, SegmentedControl, Textarea } from '@mantine/core';
 import type { PropelHeroHost } from '@/propel/runtime/heroHost';
 import { Btn, FONT_UI, NOCTURNE_LIGHT_VARS, PulseScope } from '../_pulse/pulse';
-import { draftCallNote, errorText, moveStage, saveOutcome } from './leadApi';
+import { draftCallNote, errorText, moveStage, moveStageErrorText, saveOutcome } from './leadApi';
 import { OUTCOME_WORDS, dueWords, minutesWords, relativeWords, stageWords, zoneFor, zoneWords } from './words';
 import type { LeadDeal, LeadLoad, SaveOutcomeInput } from './types';
 
@@ -81,7 +84,7 @@ const partialWords = (codes: string[]): string =>
 // too), just run in the other direction: that one starts from `now` and wants
 // the zone's wall clock; this one starts from a typed wall clock and wants it
 // treated as the zone's.
-const customTimeInZone = (localDateTime: string, zone: string): string => {
+export const customTimeInZone = (localDateTime: string, zone: string): string => {
   const asBrowserLocal = new Date(localDateTime);
   const inZone = new Date(asBrowserLocal.toLocaleString('en-US', { timeZone: zone }));
   const offsetMs = asBrowserLocal.getTime() - inZone.getTime();
@@ -275,10 +278,15 @@ export const OutcomeSheet = ({
 
         if (r.suggestedStage && selectedDeal && !TERMINAL_OUTCOMES.has(outcome)) {
           const mv = await moveStage(host, selectedDeal.deskLane, selectedDeal.id, r.suggestedStage);
-          // Any non-success (a refusal with a reason, one with neither, or no
-          // response at all) always tells the agent something true.
+          // Any non-success (a gate refusal, one with neither, or no response at
+          // all) always tells the agent something true, and a gate refusal names
+          // its own reason (gate.label) and remedy (gate.fix) instead of the raw
+          // GATE_BLOCKED code. This is the flagship path: an off-plan opportunity
+          // enters NEW with an auto-created stage task, so the very next call
+          // (NEW -> CONTACTED) is gated on it, and this refusal fires on it
+          // routinely, not as an edge case.
           if (mv?.ok) host.notify(`Moved to ${stageWords(r.suggestedStage)}.`, 'info');
-          else host.notify(mv?.reason ?? mv?.error ?? 'The stage did not move.', 'info');
+          else host.notify(moveStageErrorText(mv), 'info');
         }
       }
     } catch {

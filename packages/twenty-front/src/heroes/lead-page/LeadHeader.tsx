@@ -310,8 +310,17 @@ export const LeadHeader = ({
     setMoveBusy(true);
     const r = await movePipeline(host, selectedDeal.laneKey, moveDest, selectedDeal.id);
     setMoveBusy(false);
-    if (!r || r.error) {
-      host.notify(r?.error ?? 'Could not move this pipeline. Try again.', 'warning');
+    if (!r || 'error' in r) {
+      host.notify((r && 'error' in r ? r.error : null) ?? 'Could not move this pipeline. Try again.', 'warning');
+      return;
+    }
+    // move-opportunity-route.ts:56-63 answers `ok: true` even when nothing
+    // actually moved: a per-record failure lands in `failed`, not in a
+    // top-level `error`. Closing the modal on that would tell the agent the
+    // move worked when it did not, so a zero-moved or a non-empty `failed` is
+    // treated as a failure and its own reason is surfaced, not silence.
+    if (r.moved.length === 0 || r.failed.length > 0) {
+      host.notify(r.failed[0]?.reason ?? 'Could not move this pipeline. Try again.', 'warning');
       return;
     }
     setMoveOpen(false);

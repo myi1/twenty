@@ -68,7 +68,12 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
   // the old one. activeDealId is reset alongside it for the same reason: an old
   // lead's deal id happening to still look "valid" (it never will, ids are
   // globally unique, but nothing should rely on that) has no business
-  // surviving a navigation to a different lead.
+  // surviving a navigation to a different lead. `sheet` is the fifth path of
+  // the same class: navigating away with the outcome drawer open left it open,
+  // so it reopened on the new lead still carrying the PREVIOUS lead's call
+  // duration into the subtitle. Nothing was written wrong (the drawer itself
+  // reloads `data` fresh), but it is the same "the old record survives a
+  // navigation" bug the other four resets exist to close, so it closes here too.
   useEffect(() => {
     setData(null);
     setError(null);
@@ -76,6 +81,7 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
     requestSeq.current += 1;
     callStartedAt.current = null;
     setActiveDealId(null);
+    setSheet({ open: false, callSeconds: null });
   }, [personId]);
 
   // A first load with no data yet on screen shows the error block: there is
@@ -170,7 +176,24 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
                 </Columns>
                 {phone && (
                   <PhoneBar>
-                    <Btn variant="secondary" onClick={() => document.getElementById('lead-page-call')?.click()}>Call</Btn>
+                    <Btn
+                      variant="secondary"
+                      onClick={() => {
+                        // The proxy button this reaches for is `disabled` when
+                        // the lead has no number, and .click() on a disabled
+                        // button is a silent no-op. The desktop Call button
+                        // already explains itself (LeadHeader.tsx's handleCall);
+                        // this path needs the same explanation, in the same
+                        // words, rather than looking live and doing nothing.
+                        if (!data.person.phoneE164) {
+                          host.notify('There is no phone number on this lead.', 'warning');
+                          return;
+                        }
+                        document.getElementById('lead-page-call')?.click();
+                      }}
+                    >
+                      Call
+                    </Btn>
                     <Btn variant="secondary" onClick={focusComposer}>WhatsApp</Btn>
                     <Btn variant="primary" onClick={openSheet}>Log outcome</Btn>
                   </PhoneBar>

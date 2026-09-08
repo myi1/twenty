@@ -25,7 +25,7 @@ import { MessageBubble, type PendingRow } from '@/propel/components/marketingHer
 import { Btn } from '../_pulse/pulse';
 import { BurstRow, CallCard, DaySep, Pill, QuietRow, StoryList } from './styles';
 import { loadLead } from './leadApi';
-import { minutesWords } from './words';
+import { minutesWords, OUTCOME_WORDS } from './words';
 import type { LeadLoad, LeadTimelineEvent } from './types';
 import { StoryComposer } from './StoryComposer';
 
@@ -33,6 +33,27 @@ import { StoryComposer } from './StoryComposer';
 const NO_MEDIA = 'NONE' as InboxMediaKind;
 // Consecutive WhatsApp messages under this gap fold into one burst.
 const BURST_GAP_MS = 30 * 60_000;
+
+// A CALL event's title is built in lead-timeline.ts (a shared module this
+// branch moved verbatim and must not re-edit here): the call direction, the
+// word "call", then a separator and the lowercased disposition code, so an
+// underscored enum like NOT_INTERESTED can land on screen unhumanised. This
+// humanises that trailing part at render time instead: OUTCOME_WORDS gives
+// the exact words an agent already sees in the outcome sheet for the six
+// call outcomes, and anything not in that list (a call-disposition code this
+// page doesn't know about yet) still degrades to a spaced, capitalised
+// phrase rather than the raw code.
+const humaniseCallTitle = (title: string): string => {
+  const sep = title.lastIndexOf(' — '); // lead-timeline.ts's own separator
+  if (sep === -1) return title;
+  const base = title.slice(0, sep);
+  const raw = title.slice(sep + 3);
+  if (!raw) return base;
+  const known = OUTCOME_WORDS[raw.toUpperCase()]?.label;
+  if (known) return `${base} — ${known}`;
+  const spaced = raw.replace(/_/g, ' ').toLowerCase();
+  return `${base} — ${spaced.charAt(0).toUpperCase()}${spaced.slice(1)}`;
+};
 
 type StoryItem =
   | { at: number; kind: 'event'; e: LeadTimelineEvent }
@@ -276,7 +297,7 @@ export const Story = ({
         rows.push(
           <CallCard key={`event-${e.id}`}>
             <div style={{ fontWeight: 600 }}>{`Call · ${minutesWords(e.durationSeconds)}`}</div>
-            <div style={{ color: 'var(--p-ink-2)', marginTop: 2 }}>{e.title}</div>
+            <div style={{ color: 'var(--p-ink-2)', marginTop: 2 }}>{humaniseCallTitle(e.title)}</div>
           </CallCard>,
         );
       } else {

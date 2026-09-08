@@ -1,8 +1,13 @@
 // FactsRail.tsx: the left rail: the deal (stage + off-plan picks), the ad-form
 // answers, the five-question lead picture, open follow-ups, and contact details.
-// Every write follows the same shape: call the route, toast errorText(...) through
-// host.notify(..., 'warning') on failure (leaving the agent's input untouched so
-// they can retry without retyping), call onChanged() on success.
+// Every write follows the same shape: call the route, toast a plain-words helper
+// through host.notify(..., 'warning') on failure (leaving the agent's input
+// untouched so they can retry without retyping), call onChanged() on success.
+// Most writes are person-scoped and use leadApi.ts's errorText; the three that
+// are not use their own helper instead, because errorText's wording would be
+// wrong for them: moveStage (moveStageErrorText, a stage-gate refusal), the two
+// setDealField calls (dealFieldErrorText, a deal-ownership refusal), and
+// createDeal (createDealErrorText, an envelope that can carry a raw message).
 
 import { useState } from 'react';
 import { Checkbox, Collapse, NumberInput, Popover, SegmentedControl, Select, Textarea, TextInput } from '@mantine/core';
@@ -16,11 +21,13 @@ import {
   createFollowUp,
   errorText,
   moveStage,
+  moveStageErrorText,
   savePicture,
   setContactField,
   setDealField,
   setLeadPick,
 } from './leadApi';
+import { customTimeInZone } from './OutcomeSheet';
 import {
   BUY_TIMELINE_WORDS,
   MONEY_COMFORT_WORDS,
@@ -31,8 +38,9 @@ import {
   stageWords,
   timeThere,
   zoneFor,
+  zoneWords,
 } from './words';
-import type { LeadDeal, LeadLoad } from './types';
+import type { LeadDeal, LeadErr, LeadLoad } from './types';
 
 const UNIT_TYPE_OPTIONS = Object.entries(UNIT_TYPE_WORDS).map(([value, label]) => ({ value, label }));
 const PURPOSE_OPTIONS = Object.entries(PURPOSE_WORDS).map(([value, label]) => ({ value, label }));
@@ -124,7 +132,10 @@ const StageStepper = ({ host, deal, onChanged }: { host: PropelHeroHost; deal: L
     const r = await moveStage(host, deal.deskLane, deal.id, stage);
     setMoveBusy(false);
     if (!r || r.ok === false) {
-      host.notify(r?.reason ?? r?.error ?? 'That stage is not open yet.', 'warning');
+      // A refusal here is routinely GATE_BLOCKED (a stage task not yet done, an
+      // RCBI compliance check not cleared): moveStageErrorText names the reason
+      // (gate.label) and the remedy (gate.fix) instead of the raw code.
+      host.notify(moveStageErrorText(r), 'warning');
       return;
     }
     onChanged();
@@ -186,16 +197,36 @@ const StageStepper = ({ host, deal, onChanged }: { host: PropelHeroHost; deal: L
 // Rendered keyed by deal.id from the parent so switching the active deal (via the
 // chip row) remounts these uncontrolled fields fresh; otherwise a stale buffered
 // value from the PREVIOUS deal would stay on screen after switching.
+// purchasePrice is a CURRENCY field: the route answers it as
+// `{ amountMicros, currencyCode }`, never a bare number. This reads the AED
+// amount back out of that shape (currencyCode is always AED here, see
+// validateDealFieldValue in lead-page-core.ts); the write side already sends a
+// plain AED number, which that same validator turns into micros server-side, so
+// only the read direction needed fixing.
+const purchasePriceAed = (deal: LeadDeal): number | null => {
+  const money = deal.fields.purchasePrice as { amountMicros?: unknown } | null | undefined;
+  return money && typeof money.amountMicros === 'number' ? money.amountMicros / 1_000_000 : null;
+};
+
+// setDealField refuses FORBIDDEN when the DEAL (not the lead) belongs to another
+// agent: an off-plan opportunity can be reassigned independently of the person
+// it is linked to. errorText's "This lead is not assigned to you." is correct
+// for the person-scoped actions elsewhere on this page but would tell the agent
+// something untrue here, so this call site gets its own accurate sentence
+// instead of changing errorText.
+const dealFieldErrorText = (r: LeadErr | null): string =>
+  r && r.error === 'FORBIDDEN' ? 'This deal is not assigned to you.' : errorText(r);
+
 const DealMoreFields = ({ host, deal, onChanged }: { host: PropelHeroHost; deal: LeadDeal; onChanged: () => void }) => {
   const [open, setOpen] = useState(false);
-  const priceDefault = typeof deal.fields.purchasePrice === 'number' ? deal.fields.purchasePrice : undefined;
+  const priceDefault = purchasePriceAed(deal) ?? undefined;
   const paymentPlanDefault = typeof deal.fields.paymentPlan === 'string' ? deal.fields.paymentPlan : '';
   const handoverDefault = typeof deal.fields.handoverDate === 'string' ? deal.fields.handoverDate.slice(0, 10) : '';
 
   const save = async (field: string, value: unknown) => {
     const r = await setDealField(host, deal.id, deal.lane, field, value);
     if (!r || r.ok === false) {
-      host.notify(errorText(r), 'warning');
+      host.notify(dealFieldErrorText(r), 'warning');
       return;
     }
     onChanged();
@@ -217,7 +248,7 @@ const DealMoreFields = ({ host, deal, onChanged }: { host: PropelHeroHost; deal:
             onBlur={(e) => {
               const raw = e.currentTarget.value.replace(/[^0-9.-]/g, '');
               const next = raw === '' ? null : Number(raw);
-              const current = typeof deal.fields.purchasePrice === 'number' ? deal.fields.purchasePrice : null;
+              const current = purchasePriceAed(deal);
               if (next !== current) void save('purchasePrice', next);
             }}
           />
@@ -272,7 +303,9 @@ const OffplanPicks = ({
   const saveUnitType = async (value: string | null) => {
     const r = await setDealField(host, deal.id, deal.lane, 'unitType', value);
     if (!r || r.ok === false) {
-      host.notify(errorText(r), 'warning');
+      // setDealField is deal-scoped: a FORBIDDEN here is about who owns the
+      // DEAL, not the lead, so it needs dealFieldErrorText, not errorText.
+      host.notify(dealFieldErrorText(r), 'warning');
       return;
     }
     onChanged();
@@ -375,7 +408,12 @@ const AddFollowUp = ({
     else if (when === 'TOMORROW_10') dueIso = tomorrowTenAmIn(zoneFor(country));
     else {
       if (!customWhen) return;
-      dueIso = new Date(customWhen).toISOString();
+      // customTimeInZone (OutcomeSheet.tsx) reads the typed digits as wall-clock
+      // time in the LEAD's zone, not the agent's own browser zone. A bare
+      // `new Date(customWhen).toISOString()` here (the previous bug) meant this
+      // control and the outcome sheet's own "Pick a time" disagreed by up to
+      // four hours for a Dubai-based agent booking a UK lead.
+      dueIso = customTimeInZone(customWhen, zoneFor(country));
     }
     setBusy(true);
     const r = await createFollowUp(host, personId, kind, title.trim(), dueIso, zoneFor(country));
@@ -408,19 +446,25 @@ const AddFollowUp = ({
             <SegmentedControl fullWidth data={KIND_OPTIONS} value={kind} onChange={(v) => setKind(v as typeof kind)} />
             <SegmentedControl fullWidth data={WHEN_OPTIONS} value={when} onChange={(v) => setWhen(v as typeof when)} />
             {when === 'CUSTOM' && (
-              <input
-                type="datetime-local"
-                value={customWhen}
-                onChange={(e) => setCustomWhen(e.currentTarget.value)}
-                style={{
-                  minHeight: 44,
-                  borderRadius: 8,
-                  border: '1px solid var(--p-line)',
-                  background: 'var(--p-surface)',
-                  color: 'var(--p-ink)',
-                  padding: '0 10px',
-                }}
-              />
+              <>
+                <input
+                  type="datetime-local"
+                  value={customWhen}
+                  onChange={(e) => setCustomWhen(e.currentTarget.value)}
+                  style={{
+                    minHeight: 44,
+                    borderRadius: 8,
+                    border: '1px solid var(--p-line)',
+                    background: 'var(--p-surface)',
+                    color: 'var(--p-ink)',
+                    padding: '0 10px',
+                  }}
+                />
+                {/* Names the zone the typed digits are read in, same caption as
+                    the outcome sheet's own "Pick a time": this page must never
+                    let the two controls disagree silently. */}
+                <span style={{ fontSize: 12, color: 'var(--p-ink-2)' }}>{zoneWords(country)}</span>
+              </>
             )}
             <Btn
               variant="primary"
@@ -436,6 +480,18 @@ const AddFollowUp = ({
     </Popover>
   );
 };
+
+// Plain words for a failed deal creation. lead-create-opportunity-route.ts fails
+// through an envelope (marketing-io.ts's `envelope`) whose `error` can carry a
+// raw GraphQL message appended verbatim ("Couldn't create the opportunity:
+// <whatever the mutation threw>"), which does not belong in front of an agent.
+// Distinguishes a null transport failure (leadApi.ts's own wording for that
+// case) from a real server-side refusal; never repeats `r.error` itself. In the
+// spirit of errorText in leadApi.ts and StoryComposer.tsx's sendFailureText.
+const createDealErrorText = (r: { error?: string } | null): string =>
+  r
+    ? 'Could not start that pipeline. Try again, and tell a manager if it keeps happening.'
+    : 'The CRM did not answer. Check your connection and try again.';
 
 export const FactsRail = ({
   host,
@@ -469,7 +525,7 @@ export const FactsRail = ({
     const r = await createDeal(host, laneKey, person.id, person.displayName);
     setCreatingDeal(false);
     if (!r || r.error) {
-      host.notify(r?.error ?? 'Could not start that pipeline. Try again.', 'warning');
+      host.notify(createDealErrorText(r), 'warning');
       return;
     }
     onChanged();
