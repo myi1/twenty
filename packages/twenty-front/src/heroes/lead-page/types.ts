@@ -81,6 +81,26 @@ export type LeadErr = {
   error: 'NOT_FOUND' | 'NOT_VISIBLE' | 'FORBIDDEN' | 'NOT_AUTHENTICATED' | 'INVALID_INPUT' | 'UPSTREAM_FAILED' | 'DUPLICATE_REQUEST';
 };
 
+// The nine "SLA breach — lead not answered in time. Chase / reassign." rows and the
+// four "Call newly-assigned lead — first response" rows no longer reach the timeline
+// (the app repo's src/shared/lead-timeline.ts drops them). The fact they were carrying
+// comes back here as DATA instead, once — the hero owns the sentence.
+// Mirrored from RotationSummary in the CRM repo's src/shared/lead-page-core.ts.
+export type LeadRotation = {
+  // Times this lead has been handed to an agent. 1 = assigned once, never passed on —
+  // so "Rotated 1 times" is both wrong English and the wrong claim. It counts windows
+  // of the response clock, NOT distinct owners: a manager reassigning an already-
+  // assigned lead by hand does not move it, and the same agent can appear twice.
+  rotations: number;
+  // ISO instant of the FIRST of those assignments. The route deliberately does not
+  // pre-compute a span, so any "how long" the hero says is derived here.
+  since: string;
+  // Has anyone ever actually worked it: a logged call, a human-sent WhatsApp, or a
+  // first-response task marked done. Deliberately generous — an automated send never
+  // counts, and an internal note is not reaching the lead.
+  answered: boolean;
+};
+
 export type LeadLoad = {
   person: {
     id: string;
@@ -145,6 +165,12 @@ export type LeadLoad = {
     durationSeconds: number | null;
     disposition: string | null;
   } | null;
+  // `null` means there is nothing worth saying, and the hero must then render NOTHING
+  // — no empty container, no reserved space. The route only sends a value when the
+  // lead has been handed round more than once, or has been assigned once and never
+  // answered; a lead assigned once and worked promptly returns null, because a line
+  // every lead carries is just the noise this change removed one layer up.
+  rotation: LeadRotation | null;
   replySignal: { repliedAt: string | null; minutes: number | null };
   viewer: { workspaceMemberId: string; role: 'ADMIN' | 'MANAGER' | 'AGENT' };
 };

@@ -20,7 +20,7 @@ import type { InboxAgentOption } from '@/propel/types/inbox';
 import { Btn, FONT_DISPLAY, FONT_MONO, NOCTURNE_LIGHT_VARS, PulseScope } from '../_pulse/pulse';
 import { Pill } from './styles';
 import { errorText, markLost, movePipeline, setName } from './leadApi';
-import { LOST_REASONS, dueWords, relativeWords, stageWords, timeThere, zoneWords } from './words';
+import { LOST_REASONS, dueWords, relativeWords, rotationWords, stageWords, timeThere, zoneWords } from './words';
 import type { LeadDeal, LeadLoad } from './types';
 
 // The five lane keys createDeal / movePipeline speak, with the plain-language
@@ -421,6 +421,12 @@ export const LeadHeader = ({
   // Never render lastTouch.by: it is a workspace member ID, not a name.
   const lastTouchRel = relativeWords(person.lastTouch.at);
 
+  // ── rotation ─────────────────────────────────────────────────────────────
+  // Replaces the nine identical breach rows and four first-response rows that used to
+  // fill the timeline (see rotationWords). `null` renders NOTHING — not an empty
+  // container, not reserved space — which is the common, healthy case.
+  const rotation = rotationWords(data.rotation);
+
   const canAssign = data.viewer.role !== 'AGENT';
 
   return (
@@ -536,6 +542,19 @@ export const LeadHeader = ({
           )}
         </Banner>
       )}
+
+      {/*
+        One line, and it picks its stack by severity rather than shouting in both cases.
+        A lead nobody has answered is a state that blocks work, so it joins the banners
+        directly above it — Lost, Snoozed, Unassigned — which is where the eye already
+        goes for lead state, and it is the whole reason this line exists. A lead that
+        bounced but HAS been worked is only context, so it joins the quiet lines below
+        it beside "Next" and "Last touch". Both are components this header already
+        owns; the severity is carried by which company the line keeps, not by a new
+        style. It never repeats and never scrolls, which is the entire point.
+      */}
+      {rotation &&
+        (rotation.urgent ? <Banner $tone="warn">{rotation.text}</Banner> : <NextLine>{rotation.text}</NextLine>)}
 
       <NextLine style={nextDue?.overdue ? { color: 'var(--p-warn)' } : undefined}>{nextLineText}</NextLine>
       {lastTouchRel && <NextLine>{`Last touch: ${lastTouchRel}`}</NextLine>}

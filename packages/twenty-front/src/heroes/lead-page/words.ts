@@ -5,6 +5,8 @@
 //   OFFPLAN_UNIT_TYPES), src/shared/identifiers.ts (BUYING_TIMELINE_OPTIONS — the
 //   buying-timeline labels and values) and the off-plan opportunity stage SELECT.
 
+import type { LeadRotation } from './types';
+
 // EVERY lane's stages, not just off-plan. A first draft covered off-plan only, so a
 // Seller lead showed the pill LISTING_SIGNED and an institutional lead showed a raw
 // code every single time. Jargon is expanded on purpose: an agent should not have to
@@ -124,4 +126,72 @@ export const relativeWords = (iso: string | null | undefined, now = Date.now()):
   const h = Math.floor(diff / 3_600_000);
   if (h < 48) return `${h} h ago`;
   return `${Math.floor(h / 24)} days ago`;
+};
+
+// ONE LINE INSTEAD OF THIRTEEN ROWS.
+//
+// Yahya opened a lead and got 13 timeline rows, nine of them the identical "SLA breach
+// — lead not answered in time. Chase / reassign.". Nothing was broken: a lead nobody
+// answers rotates to the next agent, and each turn writes two automatic rows. The
+// timeline was rendering a LOOP as individual events. Those rows are gone from the feed
+// and the route now hands us the fact as data. This is the sentence that replaces them.
+// His goal, in his words: "at a glance any person should be able to quickly understand
+// the progress of a lead."
+//
+// THREE SENTENCES, NOT ONE TEMPLATE. The data allows three shapes and they mean
+// genuinely different things, so each gets wording that is true of it:
+//
+//   rotations 1, not answered  "Nobody has answered this lead yet — assigned 21 h ago."
+//        There is no rotation to report. "Rotated 1 times" would be wrong English AND
+//        the wrong claim: nothing has been handed on. The route still sends this case
+//        on purpose — rotation can be BLOCKED (nobody on duty, a browser-intent lead)
+//        while the breach rows pile up and get dropped, and saying nothing here would
+//        delete the last visible sign that somebody is sitting on an untouched lead.
+//
+//   rotations 2+, not answered "Rotated 4 times, first assigned 21 h ago — nobody has
+//        answered it yet." The case this whole change exists for.
+//
+//   rotations 2+, answered     "Rotated 4 times, first assigned 9 days ago — it has
+//        been worked." NOT a neglect warning. A lead can bounce a lot and still have
+//        been rung four times by someone who never got through; that agent must not be
+//        accused. `answered` carries no timestamp, so this deliberately does not claim
+//        the work came AFTER the last hand-off — only that it happened.
+//
+// TWO, NOT "2 TIMES". English says twice; three and up take the numeral, which keeps
+// Yahya's own phrase ("Rotated 4 times") intact for the counts he was looking at.
+//
+// THE SPAN COMES FROM relativeWords, the helper right above — not a second one. That
+// means the line anchors on a moment ("first assigned 21 h ago") rather than naming a
+// duration ("in 21h"), because that is what this page's vocabulary produces. Note its
+// ceiling: it counts in days forever and never reaches weeks or months, so a lead
+// abandoned since spring reads "first assigned 63 days ago". Long, but true — and it is
+// one vocabulary for the whole page, which is worth more than a shorter word here.
+//
+// `urgent` is severity, not volume: it says which of the header's two existing stacks
+// the line joins (see LeadHeader.tsx). It splits on `answered` alone, matching the reply
+// pill beside it, which already turns amber the moment a lead is assigned and unanswered
+// without waiting out any clock. No response-clock or SLA language appears in any
+// variant: every one of them states a fact, none of them passes judgement.
+//
+// Returns null for a null rotation so the caller renders NOTHING — no empty container.
+export const rotationWords = (
+  rotation: LeadRotation | null | undefined,
+  now = Date.now(),
+): { text: string; urgent: boolean } | null => {
+  if (!rotation) return null;
+  const ago = relativeWords(rotation.since, now);
+  // Defensive only: `since` is built by the route with .toISOString() off a parsed
+  // instant, so this cannot currently be null. Drop the clause rather than print
+  // "assigned null ago" if that ever stops being true.
+  const firstAssigned = ago ? `, first assigned ${ago}` : '';
+  if (rotation.rotations <= 1) {
+    return {
+      text: ago ? `Nobody has answered this lead yet — assigned ${ago}.` : 'Nobody has answered this lead yet.',
+      urgent: true,
+    };
+  }
+  const rotated = `Rotated ${rotation.rotations === 2 ? 'twice' : `${rotation.rotations} times`}`;
+  return rotation.answered
+    ? { text: `${rotated}${firstAssigned} — it has been worked.`, urgent: false }
+    : { text: `${rotated}${firstAssigned} — nobody has answered it yet.`, urgent: true };
 };
