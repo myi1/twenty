@@ -3,7 +3,7 @@ inputs:
   node-version:
     required: false
     default: '24'
-  skip-disk-clean:
+  skip_disk_clean:
     description: 'PROBE ONLY — skip the SDK cleanup before install.'
     required: false
     default: 'false'
@@ -12,7 +12,7 @@ runs:
   using: 'composite'
   steps:
     - name: Free disk space for install
-      if: runner.os == 'Linux' && inputs.skip-disk-clean != 'true'
+      if: runner.os == 'Linux' && inputs.skip_disk_clean != 'true'
       shell: bash
       run: |
         # Default GitHub images ship large SDKs this repo does not use; removing

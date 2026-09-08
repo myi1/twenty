@@ -84,7 +84,7 @@ jobs:
       - name: Install dependencies
         uses: ./.github/actions/yarn-install
         with:
-          skip-disk-clean: ${{ github.event.inputs.skip_disk_clean }}
+          skip_disk_clean: ${{ github.event.inputs.skip_disk_clean }}
 
       # twenty-front's types resolve into twenty-shared/twenty-ui .d.ts files.
       # `npm run build` in those packages is ONLY `vite build` and emits NO
