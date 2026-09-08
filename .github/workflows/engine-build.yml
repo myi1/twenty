@@ -102,11 +102,14 @@ jobs:
             nxcache-${{ runner.os }}-${{ hashFiles('yarn.lock') }}-
             nxcache-${{ runner.os }}-
 
+      # PROBE: ONE nx invocation instead of three. Run B showed that with a warm
+      # nx cache every task reported [local cache] and the step STILL cost 1m26s
+      # — 20s of npx/graph startup, then 28s and 30s for two more invocations
+      # that rebuilt nothing. The cost is the invocation, not the work. Same
+      # shape as the Dockerfile fix.
       - name: Build the packages twenty-front's types resolve into
         run: |
-          npx nx build twenty-shared
-          npx nx build twenty-ui
-          npx nx build twenty-front-component-renderer
+          npx nx run-many -t build -p twenty-shared twenty-ui twenty-front-component-renderer
 
       # A broken node_modules makes `npx tsc` exit 0 with NO output, which reads
       # as a clean pass and is the most dangerous failure this gate can have —
