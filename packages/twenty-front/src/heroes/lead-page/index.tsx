@@ -20,6 +20,7 @@ import { FactsRail } from './FactsRail';
 import { Story } from './Story';
 import { OutcomeSheet } from './OutcomeSheet';
 import { usePhoneLayout } from './usePhoneLayout';
+import { useHostBottomInset } from './useHostBottomInset';
 import { Columns, LeadNocturne, PhoneBar, PhoneTab, PhoneTabs, Skeleton } from './styles';
 
 // ── The load-failure block's ONE button ──────────────────────────────────────
@@ -77,6 +78,12 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
   const [tab, setTab] = useState<'facts' | 'story'>('story');
   const [storyReload, setStoryReload] = useState(0);
   const phone = usePhoneLayout();
+  // The hero's own frame, and how far its bottom edge sits above the viewport's.
+  // PhoneBar is `position: fixed`, so without this it would be pinned to the
+  // VIEWPORT bottom — the strip Twenty's mobile navigation bar already occupies.
+  // See useHostBottomInset.ts.
+  const frameRef = useRef<HTMLDivElement>(null);
+  const hostBottomInset = useHostBottomInset(frameRef, phone);
   const callStartedAt = useRef<number | null>(null);
 
   // The ONE deal id the whole page agrees on: which chip FactsRail shows as
@@ -217,7 +224,7 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
             an Emotion class wrapping it would be a coin-toss on stylesheet
             order, where an inline style simply wins. */}
         <PageContainer style={{ flex: 1, minHeight: 0 }}>
-          <LeadNocturne $phone={phone}>
+          <LeadNocturne ref={frameRef} $phone={phone}>
             {error && !data && (
               <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 480 }}>
                 <div style={{ fontSize: 15 }}>{error.text}</div>
@@ -241,7 +248,7 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
                   {(!phone || tab === 'story') && <Story host={host} data={data} reloadToken={storyReload} onChanged={reload} phone={phone} />}
                 </Columns>
                 {phone && (
-                  <PhoneBar>
+                  <PhoneBar $inset={hostBottomInset}>
                     <Btn
                       variant="secondary"
                       onClick={() => {

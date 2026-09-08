@@ -74,6 +74,16 @@ export const LeadNocturne = styled(PulseNocturne)<{ $phone: boolean }>`
 // the horizontal gutter of this very rule, so the frame is evenly inset and no
 // new number enters the page. The phone branch below is untouched: there the
 // page still scrolls as one and the 96px still clears the bar.
+//
+// The 96px is now doing MORE work than it was, and still enough of it. While
+// PhoneBar sat at `bottom: 0` it hung mostly outside this scroller — down over
+// Twenty's own nav bar — and covered only the last ~4px of it, so almost all of
+// the 96px was slack. Lifting the bar to the bottom of the hero's box (see
+// PhoneBar below) puts its full 68px inside the scroller, and 96 - 68 leaves
+// 28px of real clearance between the last line of content and the bar. Measured
+// in a harness of the live DOM chain at 375x812: last content ends at y=651,
+// the bar starts at y=679. So it stays 96 — a smaller number would be the one
+// that needed arguing for.
 export const Columns = styled.div<{ $phone: boolean }>`
   display: grid;
   gap: 20px;
@@ -188,15 +198,36 @@ export const PhoneTab = styled.button<{ $active: boolean }>`
   cursor: pointer;
 `;
 
-export const PhoneBar = styled.div`
+// The three actions, pinned. `position: fixed` and not `sticky`: fixed keeps the
+// bar in place on a lead SHORT enough not to scroll, where a sticky last child
+// would simply sit wherever the content happened to end, halfway up the screen.
+//
+// `bottom` is NOT 0. It used to be, and that put this bar in the same strip as
+// Twenty's own mobile navigation bar, whose z-index (1001) beat this one's —
+// its icons sat on the WhatsApp button. $inset is how far the bottom of the
+// hero's box is above the viewport's, measured at runtime by
+// useHostBottomInset.ts (read that file for why it measures the hole rather
+// than the bar). On phone with Twenty's bar present that is 65px; with no host
+// furniture it is ~0 and this is exactly the old `bottom: 0`.
+//
+// The safe-area padding is REDUCED BY THE SAME NUMBER, and this is the reason:
+// env(safe-area-inset-bottom) is the home indicator's strip at the bottom of the
+// VIEWPORT, so once the bar is sitting $inset px up, only the part of that strip
+// still under the bar needs clearing — none of it, once $inset exceeds the
+// indicator. Keeping the full value would pad ~34px of dead space onto a bar
+// that is nowhere near the indicator; dropping it outright would un-clear the
+// bar in the case where $inset really is 0. max(0px, …) is both at once.
+export const PhoneBar = styled.div<{ $inset: number }>`
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: ${(p) => p.$inset}px;
   display: grid;
   grid-template-columns: 1fr 1fr 1.4fr;
   gap: 8px;
-  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  padding: 10px 12px
+    ${(p) =>
+      `calc(10px + max(0px, env(safe-area-inset-bottom) - ${p.$inset}px))`};
   background: var(--p-surface);
   box-shadow: var(--p-shadow-pop);
   z-index: 20;
