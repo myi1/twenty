@@ -256,7 +256,15 @@ export const deskRecordPath = (row: DeskRow) => `/object/${OBJECT_SINGULAR[row.l
 // Attribution, precisely: Yahya CHOSE this on 2026-09-08 from three options put to him
 // — "any row with a person", "lead rows only", and "add a second action rather than
 // replace". The CHOICE is his; the WORDING of the options, and of this comment, is
-// mine. He did not phrase it this way and should not be quoted as having done so.
+// mine.
+//
+// Then the deployment desk went and asked him directly — "the code now says you
+// decided that ANY My Desk row with a person opens the new lead page (not just lead
+// rows). Did you say that?" — and he answered "Yes, that's what I said". So he owns
+// the sentence as well as the choice. Both halves are recorded because they are
+// different facts: he picked from options I authored, AND he confirmed it unprompted
+// when a second party checked. The options are kept above so a future reader can see
+// what was NOT chosen, which is what makes a decision legible later.
 //
 // The reason the option was framed this way: once converted leads stop showing a
 // separate `lead` row, a lead-only rule takes the doorway away from exactly the leads
