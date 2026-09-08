@@ -251,9 +251,16 @@ export const deskRecordPath = (row: DeskRow) => `/object/${OBJECT_SINGULAR[row.l
 // openFullRecord, StagePicker's onOpenRecord, and AskPipeline's answer references —
 // and retargeting a control that names its own destination would make it lie.
 //
-// ANY row with a person behind it opens the lead workspace (Yahya, 2026-09-08), not
-// lead rows only: once converted leads stop showing a separate `lead` row, the leads
-// an agent works hardest would lose the doorway again. Rows with no person (a listing)
+// ANY row with a person behind it opens the lead workspace, not lead rows only.
+//
+// Attribution, precisely: Yahya CHOSE this on 2026-09-08 from three options put to him
+// — "any row with a person", "lead rows only", and "add a second action rather than
+// replace". The CHOICE is his; the WORDING of the options, and of this comment, is
+// mine. He did not phrase it this way and should not be quoted as having done so.
+//
+// The reason the option was framed this way: once converted leads stop showing a
+// separate `lead` row, a lead-only rule takes the doorway away from exactly the leads
+// an agent works hardest. Rows with no person (a listing)
 // keep the record page. The workspace already handles deals — chips, stage stepper —
 // so a deal row landing there is not a compromise.
 //
