@@ -118,6 +118,21 @@ export const errorText = (r: LeadErr | null | { ok: false; error?: string }): st
   if (!r) return 'The CRM did not answer. Check your connection and try again.';
   if (code === 'FORBIDDEN') return 'This lead is not assigned to you.';
   if (code === 'NOT_FOUND') return 'This lead no longer exists.';
+  // NOT_VISIBLE is the row-level-security refusal, and it is exactly the two
+  // lines above it at once: the database will not say whether the lead is
+  // someone else's or simply gone, and saying either one alone would be a lie
+  // half the time — "not assigned to you" would confirm a record the agent is
+  // not allowed to know exists, "no longer exists" would be wrong about a live
+  // lead sitting on a colleague's desk. So it says both, in the shape this hero
+  // already uses for the same ambiguity on a pipeline move (LeadHeader.tsx:
+  // 'That pipeline is no longer there, or it is not assigned to you.').
+  //
+  // It must never fall through to 'That did not save. Try again.' below, which
+  // is what it did before this case existed: a refusal is not an outage, it will
+  // be refused identically every time, and inviting the retry sends the agent
+  // round a loop that cannot end. The remedy replaces the retry — My Desk is the
+  // list of leads that ARE theirs, and a manager is who can reassign one.
+  if (code === 'NOT_VISIBLE') return 'This lead is no longer there, or it is not assigned to you. Go back to My Desk, or ask a manager.';
   if (code === 'DUPLICATE_REQUEST') return 'Already saved.';
   return 'That did not save. Try again.';
 };

@@ -52,9 +52,24 @@ export type LeadTimelineEvent = {
 
 // ── /lead-page route contract ────────────────────────────────────────────────
 
+// NOT_VISIBLE is the DATABASE's refusal, not the route's. Every query the route
+// makes runs with the CALLER's own credentials, so Twenty's row-level security
+// refuses another agent's row before the route ever sees it, and a findOne for a
+// row you cannot see throws rather than returning null (lead-page-route.ts's
+// isRecordNotVisible). It means "not there FOR YOU", and covers BOTH "you do not
+// own it" AND "it does not exist": RLS refuses to say which, and neither may we,
+// or this route becomes a way to probe which record ids exist. Any wording for it
+// has to be true under both readings — see errorText in leadApi.ts.
+//
+// It is returned from gatePerson, i.e. from EVERY person-scoped action (load,
+// saveOutcome, setLeadPick, savePicture, addNote, createFollowUp, completeTask,
+// markLost, setName, setContactField), and from setDealField's deal read. In a
+// healthy workspace it is what an agent reaching someone else's record actually
+// gets: the route's own FORBIDDEN owner checks sit BEHIND the RLS refusal and are
+// unreachable while RLS works, so do not treat FORBIDDEN as the live case.
 export type LeadErr = {
   ok: false;
-  error: 'NOT_FOUND' | 'FORBIDDEN' | 'INVALID_INPUT' | 'UPSTREAM_FAILED' | 'DUPLICATE_REQUEST';
+  error: 'NOT_FOUND' | 'NOT_VISIBLE' | 'FORBIDDEN' | 'INVALID_INPUT' | 'UPSTREAM_FAILED' | 'DUPLICATE_REQUEST';
 };
 
 export type LeadLoad = {

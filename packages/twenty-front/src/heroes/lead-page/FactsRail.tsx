@@ -232,14 +232,28 @@ const purchasePriceAed = (deal: LeadDeal): number | null => {
   return Number.isFinite(n) ? n / 1_000_000 : null;
 };
 
-// setDealField refuses FORBIDDEN when the DEAL (not the lead) belongs to another
-// agent: an off-plan opportunity can be reassigned independently of the person
-// it is linked to. errorText's "This lead is not assigned to you." is correct
-// for the person-scoped actions elsewhere on this page but would tell the agent
-// something untrue here, so this call site gets its own accurate sentence
-// instead of changing errorText.
-const dealFieldErrorText = (r: LeadErr | null): string =>
-  r && r.error === 'FORBIDDEN' ? 'This deal is not assigned to you.' : errorText(r);
+// setDealField refuses when the DEAL (not the lead) belongs to another agent: an
+// off-plan opportunity can be reassigned independently of the person it is linked
+// to. errorText's lead-scoped sentences are correct for the person-scoped actions
+// elsewhere on this page but would tell the agent something untrue here, so this
+// call site gets its own accurate wording instead of changing errorText.
+//
+// Both refusal codes need covering, and NOT_VISIBLE is the one that actually
+// fires: the route reads the deal with the caller's own credentials, so row-level
+// security refuses it in the database and the route's FORBIDDEN owner check on
+// the next line never runs (see types.ts). NOT_VISIBLE cannot distinguish "not
+// yours" from "deleted", so it says both — and the remedy is deliberately NOT the
+// lead-scoped one. The page around this chip loaded fine, so the agent is not
+// stranded and has no reason to leave for My Desk; what they have is one stale or
+// foreign deal chip, and the commonest cause by far is a deal deleted or handed to
+// someone else while this page sat open. Refreshing redraws the chips from what
+// they can actually see. That is not the retry errorText's fallback invites: it
+// does not re-send the write that was refused.
+const dealFieldErrorText = (r: LeadErr | null): string => {
+  if (r?.error === 'FORBIDDEN') return 'This deal is not assigned to you.';
+  if (r?.error === 'NOT_VISIBLE') return 'This deal is no longer there, or it is not assigned to you. Refresh the page, or ask a manager.';
+  return errorText(r);
+};
 
 const DealMoreFields = ({ host, deal, onChanged }: { host: PropelHeroHost; deal: LeadDeal; onChanged: () => void }) => {
   const [open, setOpen] = useState(false);
@@ -329,8 +343,9 @@ const OffplanPicks = ({
   const saveUnitType = async (value: string | null) => {
     const r = await setDealField(host, deal.id, deal.lane, 'unitType', value);
     if (!r || r.ok === false) {
-      // setDealField is deal-scoped: a FORBIDDEN here is about who owns the
-      // DEAL, not the lead, so it needs dealFieldErrorText, not errorText.
+      // setDealField is deal-scoped: a refusal here (NOT_VISIBLE in practice,
+      // FORBIDDEN if RLS is ever off) is about who owns the DEAL, not the
+      // lead, so it needs dealFieldErrorText, not errorText.
       host.notify(dealFieldErrorText(r), 'warning');
       return;
     }
