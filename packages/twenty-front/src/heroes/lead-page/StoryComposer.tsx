@@ -157,7 +157,13 @@ export const StoryComposer = ({
   };
 
   return (
-    <div id="lead-page-composer" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    // flex: '0 0 auto' pins this to the bottom of the story column on desktop:
+    // StoryList above takes the leftover height and scrolls, this keeps its own.
+    // Without the 0 shrink factor the default `flex-shrink: 1` would let a long
+    // conversation squeeze the composer, and a squeezed textarea is exactly the
+    // control an agent reaches for most. A no-op on phone, where the column is
+    // content-sized and there is no leftover height to fight over.
+    <div id="lead-page-composer" style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: '0 0 auto' }}>
       <SegmentedControl
         fullWidth
         value={mode}

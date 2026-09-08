@@ -587,6 +587,7 @@ export const FactsRail = ({
   activeDealId,
   onActiveDealChange,
   onChanged,
+  phone,
 }: {
   host: PropelHeroHost;
   data: LeadLoad;
@@ -600,6 +601,11 @@ export const FactsRail = ({
   activeDealId: string | null;
   onActiveDealChange: (dealId: string) => void;
   onChanged: () => void;
+  // Layout only. On desktop the rail is its own scroller; on phone it is one
+  // tab of a page that scrolls as a whole, so it must not scroll internally.
+  // Comes from index.tsx's usePhoneLayout — the page's single breakpoint —
+  // rather than a second media query of the rail's own.
+  phone: boolean;
 }) => {
   const { person } = data;
   const [creatingDeal, setCreatingDeal] = useState(false);
@@ -669,7 +675,7 @@ export const FactsRail = ({
   };
 
   return (
-    <Rail>
+    <Rail $phone={phone}>
       <Group>
         <GroupTitle>THE DEAL</GroupTitle>
         {data.deals.length === 0 ? (

@@ -207,8 +207,17 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
     <PropelMantineProvider>
       <PulseFonts />
       <HeroTypingGuard>
-        <PageContainer>
-          <LeadNocturne>
+        {/* flex:1 + minHeight:0 is the link that stops this hero overflowing the
+            host's panel. PagePanel is `height:100%; overflow-y:hidden`, and
+            PageContainer — its only child — is a plain `flex: 0 1 auto` column,
+            so without this pair it sizes to its CONTENT and everything past the
+            panel's height is clipped with no way to scroll to it. Inline, not a
+            styled wrapper, for the same reason My Desk does it inline
+            (heroes/my-desk/index.tsx): PageContainer is a Linaria component and
+            an Emotion class wrapping it would be a coin-toss on stylesheet
+            order, where an inline style simply wins. */}
+        <PageContainer style={{ flex: 1, minHeight: 0 }}>
+          <LeadNocturne $phone={phone}>
             {error && !data && (
               <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 480 }}>
                 <div style={{ fontSize: 15 }}>{error.text}</div>
@@ -227,9 +236,9 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
                 )}
                 <Columns $phone={phone}>
                   {(!phone || tab === 'facts') && (
-                    <FactsRail host={host} data={data} activeDealId={activeDealId} onActiveDealChange={setActiveDealId} onChanged={reload} />
+                    <FactsRail host={host} data={data} activeDealId={activeDealId} onActiveDealChange={setActiveDealId} onChanged={reload} phone={phone} />
                   )}
-                  {(!phone || tab === 'story') && <Story host={host} data={data} reloadToken={storyReload} onChanged={reload} />}
+                  {(!phone || tab === 'story') && <Story host={host} data={data} reloadToken={storyReload} onChanged={reload} phone={phone} />}
                 </Columns>
                 {phone && (
                   <PhoneBar>

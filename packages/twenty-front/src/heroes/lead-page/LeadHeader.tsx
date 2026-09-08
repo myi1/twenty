@@ -84,9 +84,17 @@ const initials = (name: string, hasName: boolean): string => {
 
 // ── local styling (page-specific chrome, not shared primitives) ─────────────
 
+// `flex: 0 0 auto` is what "the header stays put" is made of. On desktop
+// LeadNocturne is a fixed frame and the columns below scroll inside it, so this
+// row must neither grow into the space they need nor shrink when a lead carries
+// banners and a short window leaves little: an agent who scrolls into the
+// conversation must still be able to press Call, and taking the action away
+// while they read is the opposite of what this page is for. It is deliberately
+// NOT `position: sticky` — see the note on LeadNocturne in styles.ts.
 const HeaderWrap = styled.div`
   display: flex;
   flex-direction: column;
+  flex: 0 0 auto;
   gap: 12px;
   padding: 20px 24px 16px;
   border-bottom: 1px solid var(--p-line);

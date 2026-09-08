@@ -77,11 +77,17 @@ export const Story = ({
   data,
   reloadToken,
   onChanged,
+  phone,
 }: {
   host: PropelHeroHost;
   data: LeadLoad;
   reloadToken: number;
   onChanged: () => void;
+  // Layout only, from index.tsx's usePhoneLayout (the page's single
+  // breakpoint). On desktop this column is a frame: StoryList scrolls and
+  // StoryComposer stays pinned under it. On phone the whole page scrolls as
+  // one, so neither happens here.
+  phone: boolean;
 }) => {
   const [thread, setThread] = useState<InboxThreadPayload | null>(null);
   // Has the thread fetch below settled at least once (resolved OR failed OR
@@ -256,10 +262,15 @@ export const Story = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [thread]);
 
-  // First load: show the latest activity, not the oldest. A sentinel + scrollIntoView
-  // (rather than driving scrollTop on a specific div) works regardless of which
-  // ancestor actually owns the scrollbar: this page has no fixed-height chat pane
-  // of its own; it flows inside the CRM shell's own scrollable region.
+  // First load: show the latest activity, not the oldest. A sentinel +
+  // scrollIntoView (rather than driving scrollTop on a specific div) works
+  // regardless of which ancestor actually owns the scrollbar — which is the
+  // only reason this survived the scroll fix unchanged. Its original premise
+  // was false: the CRM shell has no scrollable region to flow inside (PagePanel
+  // is `overflow-y: hidden`), so this call used to scroll the host's CLIPPED
+  // panel, pushing the header off the top with no way to bring it back. The
+  // scrollbar it finds now is StoryList's own on desktop, LeadNocturne's on
+  // phone, and neither strands anything.
   //
   // Gated on `threadSettled`, not just "is there anything to show yet": `older`
   // (the NOTE/TASK/CALL events) is seeded SYNCHRONOUSLY from data.timeline, so for
@@ -365,8 +376,12 @@ export const Story = ({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
-      <StoryList>
+    // minHeight: 0 lifts the content-based floor a grid item carries by default,
+    // so on desktop this column can be the height Columns gives it rather than
+    // the height of the whole conversation — which is what lets StoryList
+    // scroll inside it instead of pushing the composer past the frame.
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0, minHeight: 0 }}>
+      <StoryList $phone={phone}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
           <Pill>{`${data.wa.lineLabel} · ${data.wa.lineNumber}`}</Pill>
           <Btn variant="ghost" onClick={toggleShowAll} style={{ minHeight: 44 }}>
