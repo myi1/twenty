@@ -68,7 +68,8 @@ export interface ScorecardHeadline {
   };
   whatsapp24h: Ratio & {
     pending: number;
-    approx: boolean;
+    /** Outbound rows with no recorded sender — never counted as agent messages. */
+    unattributed: number;
     excludedAutomated: number;
   };
   missedClock: Ratio & {

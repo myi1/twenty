@@ -264,7 +264,7 @@ export const HeadlineTiles = ({
           </Value>
           <Foot>
             <Pill $tone="neutral">welcome message and campaigns excluded</Pill>
-            {h.whatsapp24h.approx ? <span>· some credited by thread</span> : null}
+            {h.whatsapp24h.unattributed > 0 ? <span>· {h.whatsapp24h.unattributed} with no sender recorded</span> : null}
           </Foot>
         </Tile>
 

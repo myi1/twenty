@@ -93,7 +93,10 @@ export const Definitions = ({ summary }: { summary: ScorecardSummaryPayload }) =
           <dt>First attempt, median</dt>
           <dd>Minutes from the lead landing with someone to the outcome being saved. Shown once five or more outcomes exist.</dd>
           <dt>WhatsApp from Propel</dt>
-          <dd>A message a person sent to the lead from Propel on the everyday Dubai or UK line within 24 hours, and that left the system. The automatic welcome and campaign blasts do not count.</dd>
+          <dd>
+            A message sent to the lead from Propel on the everyday Dubai or UK line within 24 hours, that left the system, and that carries the name of the person
+            who sent it. The automatic welcome, automatic follow-ups and campaign blasts carry no sender, so they never count as an agent’s message.
+          </dd>
           <dt>Missed the response clock</dt>
           <dd>
             The lead’s first-response limit{sla ? ` (${sla} minutes)` : ''} was missed at least once, whoever held it. The separate one-hour task deadline is not
