@@ -22,6 +22,7 @@ import {
   IconVideo,
 } from 'twenty-ui/display';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
+import { DOCK_COLUMN_RESERVED_PX } from '@/ui/layout/dock/constants/DockColumn';
 import { friendlyError } from '@/propel/lib/friendlyError';
 import {
   type InboxChannel,
@@ -853,7 +854,11 @@ export const InboxComposer = ({
             disabled={(!text.trim() && !hasMedia) || sending || uploading}
             loading={sending}
             onClick={() => void send()}
-            style={{ flex: 'none' }}
+            // Keep Send clear of the floating pill column. Ayoub screenshotted this button
+            // underneath the Quick Note pill mid-message. The reserve goes on the BUTTON
+            // rather than the container so the textarea keeps its width — padding the
+            // whole composer would narrow the writing area to fix the edge.
+            style={{ flex: 'none', marginRight: DOCK_COLUMN_RESERVED_PX }}
           >
             {uploading ? 'Uploading…' : 'Send'}
           </Button>
