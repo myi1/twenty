@@ -14,7 +14,7 @@ import { HeroTypingGuard } from '@/propel/runtime/HeroTypingGuard';
 import { type PropelHeroHost } from '@/propel/runtime/heroHost';
 import { Btn, PulseFonts } from '../_pulse/pulse';
 import { errorText, loadLead } from './leadApi';
-import type { LeadLoad } from './types';
+import type { LeadErr, LeadLoad } from './types';
 import { LeadHeader } from './LeadHeader';
 import { FactsRail } from './FactsRail';
 import { Story } from './Story';
@@ -22,10 +22,50 @@ import { OutcomeSheet } from './OutcomeSheet';
 import { usePhoneLayout } from './usePhoneLayout';
 import { Columns, LeadNocturne, PhoneBar, PhoneTab, PhoneTabs, Skeleton } from './styles';
 
+// ── The load-failure block's ONE button ──────────────────────────────────────
+// My Desk, the agent's own list of leads. Reached through the fork's /h/:bundle
+// catch-all (HeroRoute.tsx), the same mechanism this hero itself is reached by;
+// prod's mounted nav.config.json registers the bundle at exactly this route (see
+// the 2026-07-13/07-14 promotions in the CRM repo's docs/RELEASE-GOVERNANCE.md,
+// which record `/h/my-desk` answering 200 live).
+const MY_DESK_PATH = '/h/my-desk';
+
+// A load that failed: the words on screen, and where the one button under them
+// should go.
+type LoadFailure = { text: string; backTo: 'desk' | 'contact' };
+
+// The failures that mean the lead is not reachable BY THIS AGENT. NOT_VISIBLE is
+// the database declining the row — the lead is someone else's, or it is gone —
+// and NOT_FOUND is the row genuinely being gone. For both, the contact record is
+// the ONE destination guaranteed to refuse the agent a second time, so the
+// button must not offer it: it goes to My Desk, the list of leads that ARE
+// theirs, which is also exactly what the NOT_VISIBLE toast already tells them to
+// do ('Go back to My Desk, or ask a manager' — errorText in leadApi.ts).
+//
+// Every OTHER failure keeps the contact button exactly as it was, because for
+// those the record is reachable and opening it is a real next step:
+//   UPSTREAM_FAILED   the CRM broke; nothing is wrong with the record.
+//   INVALID_INPUT     a malformed request (an unparseable timeline cursor); ditto.
+//   FORBIDDEN         from `load` this is either no session at all, or RLS being
+//                     off AND the route's own owner check firing. In the second
+//                     case the record IS readable, so the contact page works; in
+//                     the first every destination alike bounces to sign-in, so
+//                     neither choice is better. Left on the contact button.
+//   DUPLICATE_REQUEST `saveOutcome` only — it cannot reach this block.
+//   null              a transport failure (callPropelRoute answers null): the
+//                     record is not known to be unreachable, and this is the one
+//                     case where trying again genuinely can succeed.
+const UNREACHABLE_CODES: ReadonlySet<LeadErr['error']> = new Set<LeadErr['error']>(['NOT_VISIBLE', 'NOT_FOUND']);
+
+const loadFailure = (r: LeadErr | null): LoadFailure => ({
+  text: errorText(r),
+  backTo: r !== null && UNREACHABLE_CODES.has(r.error) ? 'desk' : 'contact',
+});
+
 const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
   const personId = host.searchParams.get('id') ?? '';
   const [data, setData] = useState<LeadLoad | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<LoadFailure | null>(null);
   const [sheet, setSheet] = useState<{ open: boolean; callSeconds: number | null }>({ open: false, callSeconds: null });
   const [tab, setTab] = useState<'facts' | 'story'>('story');
   const [storyReload, setStoryReload] = useState(0);
@@ -93,13 +133,15 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
   // a load failure for a newly navigated-to lead is never mistaken for a
   // refresh of the lead that used to be on screen.
   const reload = useCallback(async () => {
-    if (!personId) { setError('No lead was given. Open this page from a lead.'); return; }
+    // No lead at all: there is no contact record to go back TO, so this one is
+    // always My Desk — which is also where the agent opens a lead page from.
+    if (!personId) { setError({ text: 'No lead was given. Open this page from a lead.', backTo: 'desk' }); return; }
     const seq = ++requestSeq.current;
     const r = await loadLead(host, personId);
     if (seq !== requestSeq.current) return; // a newer request has superseded this one
     if (!r || r.ok === false) {
       if (loadedFor.current === personId) { host.notify(errorText(r), 'warning'); return; }
-      setError(errorText(r));
+      setError(loadFailure(r));
       return;
     }
     loadedFor.current = r.person.id;
@@ -146,6 +188,14 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
     }, 50);
   };
 
+  // Label and destination are derived TOGETHER, from one expression, so the two
+  // can never disagree: a button that says 'Back to the contact' is by
+  // construction the button that goes to the contact.
+  const back =
+    error === null || error.backTo === 'desk' || !personId
+      ? { label: 'Back to My Desk', to: MY_DESK_PATH }
+      : { label: 'Back to the contact', to: `/object/person/${personId}` };
+
   return (
     <PropelMantineProvider>
       <PulseFonts />
@@ -154,8 +204,8 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
           <LeadNocturne>
             {error && !data && (
               <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 480 }}>
-                <div style={{ fontSize: 15 }}>{error}</div>
-                <Btn variant="secondary" style={{ minHeight: 44 }} onClick={() => host.navigate(personId ? `/object/person/${personId}` : '/')}>Back to the contact</Btn>
+                <div style={{ fontSize: 15 }}>{error.text}</div>
+                <Btn variant="secondary" style={{ minHeight: 44 }} onClick={() => host.navigate(back.to)}>{back.label}</Btn>
               </div>
             )}
             {!error && !data && <div style={{ padding: 24, display: 'grid', gap: 12 }}><Skeleton style={{ width: 240, height: 24 }} /><Skeleton style={{ width: 360 }} /><Skeleton style={{ width: 300 }} /></div>}
