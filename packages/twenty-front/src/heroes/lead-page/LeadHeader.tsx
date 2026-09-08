@@ -5,7 +5,7 @@
 //
 // Two rules this file must never break (from the task brief, not obvious from the
 // data shape alone):
-//   1. `lastTouch.by` is a workspace member ID, not a name — it is NEVER rendered.
+//   1. `lastTouch.by` is a workspace member ID, not a name: it is NEVER rendered.
 //      Only the relative time ("Last touch: 2 hours ago") is shown.
 //   2. No response-clock / SLA language anywhere. The reply pill states a fact
 //      ("Replied in 12 min" / "Not replied yet" / "Unknown"), never a judgement.
@@ -25,7 +25,7 @@ import type { LeadDeal, LeadLoad } from './types';
 
 // The five lane keys createDeal / movePipeline speak, with the plain-language
 // labels used everywhere else on this page (FactsRail's "start a deal" buttons
-// use the same four minus institutional — this page never originates one).
+// use the same four minus institutional, since this page never originates one).
 const LANE_KEYS = ['offplan', 'secondary', 'sell', 'rcbi', 'institutional'] as const;
 const LANE_LABELS: Record<string, string> = {
   offplan: 'Off-plan',
@@ -284,7 +284,7 @@ export const LeadHeader = ({
   // ── move to another pipeline ────────────────────────────────────────────
   // Deliberately a Modal (not a Select embedded straight in the Menu.Dropdown):
   // Mantine's Menu closes on any outside click, and a Select's own dropdown is
-  // portal-rendered — nesting it live inside a Menu risks the menu snapping shut
+  // portal-rendered, so nesting it live inside a Menu risks the menu snapping shut
   // before a destination can be picked. A Modal triggered by the Menu.Item sidesteps
   // that entirely and matches the "Mark lost" pattern right next to it.
   const [moveOpen, setMoveOpen] = useState(false);
@@ -357,7 +357,7 @@ export const LeadHeader = ({
   const soonest = data.openTasks[0];
   const nextDue = soonest ? dueWords(soonest.dueAt) : null;
   const nextLineText = soonest ? `Next: ${soonest.title} · ${nextDue!.text}` : 'Next: nothing planned';
-  // Never render lastTouch.by — it is a workspace member ID, not a name.
+  // Never render lastTouch.by: it is a workspace member ID, not a name.
   const lastTouchRel = formatRelative(person.lastTouch.at);
 
   const canAssign = data.viewer.role !== 'AGENT';

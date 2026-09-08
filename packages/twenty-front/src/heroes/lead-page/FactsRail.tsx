@@ -1,4 +1,4 @@
-// FactsRail.tsx: the left rail — the deal (stage + off-plan picks), the ad-form
+// FactsRail.tsx: the left rail: the deal (stage + off-plan picks), the ad-form
 // answers, the five-question lead picture, open follow-ups, and contact details.
 // Every write follows the same shape: call the route, toast errorText(...) through
 // host.notify(..., 'warning') on failure (leaving the agent's input untouched so
@@ -161,7 +161,7 @@ const StageStepper = ({ host, deal, onChanged }: { host: PropelHeroHost; deal: L
 
 // ── deal-scoped "more details" (price / payment plan / handover) ────────────
 // Rendered keyed by deal.id from the parent so switching the active deal (via the
-// chip row) remounts these uncontrolled fields fresh — otherwise a stale buffered
+// chip row) remounts these uncontrolled fields fresh; otherwise a stale buffered
 // value from the PREVIOUS deal would stay on screen after switching.
 const DealMoreFields = ({ host, deal, onChanged }: { host: PropelHeroHost; deal: LeadDeal; onChanged: () => void }) => {
   const [open, setOpen] = useState(false);
@@ -427,7 +427,7 @@ export const FactsRail = ({
   );
 
   // Only fires the "no deal selected yet, but one now exists" transition (e.g.
-  // just created via "Start one…") — does not fight a manual chip pick afterward.
+  // just created via "Start one…"), and does not fight a manual chip pick afterward.
   useEffect(() => {
     if (activeDealId === null && data.deals.length > 0) {
       setActiveDealId(data.selectedDealId ?? data.deals[0]!.id);
