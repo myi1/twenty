@@ -151,12 +151,6 @@ jobs:
             echo "typecheck gate passed for ${{ github.event.inputs.source_branch }}"
           fi
 
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
-          sudo apt-get clean || true
-          df -h /
-
       - name: Checkout source branch
         uses: actions/checkout@v4
         with:
