@@ -9,24 +9,32 @@ import { QUICK_NOTE_MODAL_ID } from '@/propel/quick-note/constants/QuickNoteModa
 import { styled } from '@linaria/react';
 import { t } from '@lingui/core/macro';
 import { IconNotes } from 'twenty-ui/display';
+import { useDraggableDock } from '@/ui/layout/dock/hooks/useDraggableDock';
 
 // Propel: global "Quick Note" floating launcher — lets anyone jot a note
 // against any contact/lead without first opening that record's own page.
 // Stacked directly above the WhatsApp dock (which sits above the Dialer
 // dock), same right-edge column, so all three floating launchers read as one
-// group in the bottom-right corner. Unlike the two docks, this one isn't
-// draggable/expandable — it only ever opens the centered Quick Note modal —
-// so a fixed default position (no drag-persisted offset) is enough.
+// group in the bottom-right corner.
+//
+// 2026-09-08 — IT IS NOW DRAGGABLE, like the other two. The previous comment here argued
+// that "a fixed default position is enough" because this launcher only opens a modal. That
+// reasoning held until the pill landed on top of the Inbox composer's Send button, and it
+// was the one pill an agent could not drag out of the way. Yahya: "the note button isnt
+// movable like the other 2 buttons are." Position persists per browser.
 //
 // Dialer default: right 14 / bottom 72. WhatsApp default: right 14 / bottom
 // 130 (+58 to clear the dialer's collapsed pill). This stacks one more pill
 // height above that: right 14 / bottom 188.
 const QUICK_NOTE_DOCK_Z_INDEX = 30;
 
+const QUICK_NOTE_DOCK_POSITION_STORAGE_KEY = 'propel-quick-note-dock-position';
+const DEFAULT_DOCK_POSITION = { right: 14, bottom: 188 };
+
+// right/bottom now come from the drag position as an inline style — the container keeps
+// only what does not change.
 const StyledLauncherContainer = styled.div`
-  bottom: 188px;
   position: fixed;
-  right: 14px;
   z-index: ${QUICK_NOTE_DOCK_Z_INDEX};
 `;
 
@@ -37,7 +45,11 @@ const StyledLauncher = styled.button`
   border-radius: 50%;
   box-shadow: ${dockColor.shadowStrong};
   color: ${dockColor.iconOnAccent};
-  cursor: pointer;
+  cursor: grab;
+
+  &:active {
+    cursor: grabbing;
+  }
   display: flex;
   height: 44px;
   justify-content: center;
@@ -56,6 +68,10 @@ const StyledLauncher = styled.button`
 
 export const QuickNoteButton = () => {
   const { openModal } = useModal();
+  const { position, dragHandleProps, shouldSuppressClick } = useDraggableDock(
+    QUICK_NOTE_DOCK_POSITION_STORAGE_KEY,
+    DEFAULT_DOCK_POSITION,
+  );
 
   // Mount the modal ONLY while it is open. Its body calls
   // useOpenCreateActivityDrawer(Note) and useQuickNoteSearchResults at render,
@@ -92,12 +108,20 @@ export const QuickNoteButton = () => {
 
   return (
     <>
-      <StyledLauncherContainer>
+      <StyledLauncherContainer
+        style={{ right: position.right, bottom: position.bottom }}
+      >
         <StyledLauncher
           type="button"
           title={t`Quick Note`}
           aria-label={t`Quick Note`}
-          onClick={() => openModal(QUICK_NOTE_MODAL_ID)}
+          {...dragHandleProps}
+          onClick={() => {
+            // A drag ends in a click. Swallow that one so moving the pill does not also
+            // open the modal.
+            if (shouldSuppressClick()) return;
+            openModal(QUICK_NOTE_MODAL_ID);
+          }}
         >
           <span aria-hidden="true">
             <IconNotes size={20} />
