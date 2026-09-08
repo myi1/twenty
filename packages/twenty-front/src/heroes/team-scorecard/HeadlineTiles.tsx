@@ -1,13 +1,17 @@
 /* eslint-disable @nx/enforce-module-boundaries */
-// HeadlineTiles — the one hero figure (outcome within 24h against its target) and
-// the six lead-care tiles. Each tile is a button: pressing it opens the "which leads"
-// drill for that number. Status tone (good / warn / bad) is judged against the
-// targets from Lead Routing settings; a number nobody can judge yet is neutral.
+// HeadlineTiles — the one hero figure (outcome logged within 24h, against its target)
+// and the six lead-care tiles. Each tile is a button: pressing it opens the "which
+// leads" drill for that number. Tone (good / warn / bad) is judged against the targets
+// from Lead Routing settings; a number nobody can judge yet stays neutral.
+//
+// Copy rule for this surface: a label, a number, and at most ONE qualifier. What a
+// number MEANS lives once, in the collapsed "How these numbers are counted" block —
+// never repeated on the face of the tile.
 
 import styled from '@emotion/styled';
 import type { ScorecardDrillMetric, ScorecardHeadline, ScorecardTargets } from '@/propel/types/teamScorecard';
 import { FONT_DISPLAY, FONT_MONO, FONT_UI } from '../_pulse/pulse';
-import { minutesLabel, ofLabel, pctLabel, plural, toneForAgents, toneForMinutes, toneHigherIsBetter, toneLowerIsBetter, type Tone } from './format';
+import { minutesLabel, pctLabel, plural, toneForAgents, toneForMinutes, toneHigherIsBetter, toneLowerIsBetter, type Tone } from './format';
 
 const TONE_COLOR: Record<Tone, string> = {
   good: 'var(--p-good)',
@@ -23,27 +27,22 @@ const Grid = styled.div<{ $stacked: boolean }>`
   margin-bottom: 14px;
 `;
 
-const Card = styled.div`
+const HeroFig = styled.div`
   background: var(--p-surface);
   border: 1px solid var(--p-line);
   border-radius: var(--p-radius);
-  padding: 16px 18px;
-`;
-
-const HeroFig = styled(Card)`
+  padding: 18px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  min-height: 176px;
+  gap: 20px;
+  min-height: 168px;
 `;
 
-const Eyebrow = styled.div`
-  font-family: ${FONT_MONO};
-  font-size: 10.5px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+const FigLabel = styled.div`
+  font-family: ${FONT_UI};
+  font-size: 13px;
   color: var(--p-ink-2);
-  font-weight: 500;
 `;
 
 const Big = styled.div`
@@ -53,15 +52,16 @@ const Big = styled.div`
   font-weight: 500;
   letter-spacing: -0.02em;
   color: var(--p-ink);
-  margin: 8px 0 4px;
   font-variant-numeric: tabular-nums;
-  small {
-    font-family: ${FONT_UI};
-    font-size: 15px;
-    font-weight: 400;
-    color: var(--p-ink-2);
-    margin-left: 8px;
-  }
+  margin-top: 6px;
+`;
+
+const FigSub = styled.div`
+  font-family: ${FONT_MONO};
+  font-size: 12px;
+  color: var(--p-ink-2);
+  font-variant-numeric: tabular-nums;
+  margin-top: 8px;
 `;
 
 const Meter = styled.div`
@@ -69,7 +69,7 @@ const Meter = styled.div`
   height: 6px;
   border-radius: 3px;
   background: color-mix(in srgb, var(--p-ink) 14%, transparent);
-  margin: 12px 0 22px;
+  margin-bottom: 20px;
 `;
 
 const Fill = styled.div<{ $tone: Tone }>`
@@ -117,12 +117,12 @@ const Tile = styled.button`
   border-radius: var(--p-radius);
   padding: 12px 14px;
   min-width: 0;
-  transition: border-color 120ms ease;
-  &:hover,
-  &:focus-visible {
+  transition: border-color 140ms ease;
+  &:hover {
     border-color: var(--p-accent);
   }
   &:focus-visible {
+    border-color: var(--p-accent);
     box-shadow: var(--p-focus-ring);
   }
 `;
@@ -150,9 +150,6 @@ const Value = styled.div`
 `;
 
 const Foot = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 6px;
   min-height: 18px;
   font-family: ${FONT_UI};
   font-size: 11.5px;
@@ -191,35 +188,26 @@ export const HeadlineTiles = ({
 }) => {
   const h = headline;
   const coverageTone = toneHigherIsBetter(h.outcome24h.pct, targets.coverage24hPct);
-  const missedTone = toneLowerIsBetter(h.missedClock.pct, targets.breachMaxPct);
-  const speedTone = toneForMinutes(h.firstAttempt.medianMinutes, targets.firstAttemptMinutes);
-  const agentsTone = toneForAgents(h.adoption.active, targets.activeAgentsMin);
   const fillPct = Math.max(0, Math.min(100, h.outcome24h.pct ?? 0));
 
   return (
     <Grid $stacked={stacked}>
       <HeroFig>
         <div>
-          <Eyebrow>Outcome logged within 24 hours</Eyebrow>
-          <Big>
-            {pctLabel(h.outcome24h.pct)}
-            <small>
-              {h.outcome24h.of === 0 ? (h.newLeads === 0 ? 'no new leads in this window' : 'nothing to judge yet') : `${ofLabel(h.outcome24h)} leads judged`}
-            </small>
-          </Big>
-          <Label style={{ fontSize: 13 }}>
-            A call outcome saved on the first-response task within a day of the lead landing with someone.
-            {h.outcome24h.pending > 0 ? ` ${plural(h.outcome24h.pending, 'lead is', 'leads are')} still inside the 24-hour window.` : ''}
-            {h.outcome24h.approx ? ' Some times are estimated.' : ''}
-          </Label>
+          <FigLabel>Outcome logged within 24 hours</FigLabel>
+          <Big>{pctLabel(h.outcome24h.pct)}</Big>
+          <FigSub>
+            {h.newLeads === 0
+              ? 'no new leads'
+              : h.outcome24h.of === 0
+                ? `${h.outcome24h.pending} still inside 24h`
+                : `${h.outcome24h.n} of ${h.outcome24h.of} judged${h.outcome24h.pending > 0 ? ` · ${h.outcome24h.pending} still inside 24h` : ''}`}
+          </FigSub>
         </div>
-        <div>
-          <Meter aria-hidden="true">
-            <Fill $tone={coverageTone} style={{ width: `${fillPct}%` }} />
-            <Target style={{ left: `${Math.min(98, targets.coverage24hPct)}%` }} data-label={`target ${targets.coverage24hPct}%`} />
-          </Meter>
-          <Foot>Targets live in Lead Routing settings.</Foot>
-        </div>
+        <Meter aria-label={`Target ${targets.coverage24hPct} percent`}>
+          <Fill $tone={coverageTone} style={{ width: `${fillPct}%` }} />
+          <Target style={{ left: `${Math.min(98, targets.coverage24hPct)}%` }} data-label={`target ${targets.coverage24hPct}%`} />
+        </Meter>
       </HeroFig>
 
       <Tiles $stacked={stacked}>
@@ -231,13 +219,12 @@ export const HeadlineTiles = ({
           </Value>
           <Foot>
             {h.handedToAgent.neverLeftDesk > 0 ? (
-              <Pill $tone={h.handedToAgent.neverLeftDesk > h.handedToAgent.n ? 'bad' : 'warn'}>{h.handedToAgent.neverLeftDesk} never left the desk</Pill>
-            ) : h.handedToAgent.unassigned > 0 ? (
-              <Pill $tone="warn">{h.handedToAgent.unassigned} unassigned</Pill>
-            ) : (
-              <Pill $tone="good">every lead reached an agent</Pill>
-            )}
-            {h.handedToAgent.backOnDesk > 0 ? <span>· {h.handedToAgent.backOnDesk} back on the desk</span> : null}
+              <Pill $tone={h.handedToAgent.neverLeftDesk > h.handedToAgent.n ? 'bad' : 'warn'}>{h.handedToAgent.neverLeftDesk} still on the desk</Pill>
+            ) : h.handedToAgent.backOnDesk > 0 ? (
+              <Pill $tone="warn">{h.handedToAgent.backOnDesk} bounced back</Pill>
+            ) : h.newLeads > 0 ? (
+              <Pill $tone="good">all of them</Pill>
+            ) : null}
           </Foot>
         </Tile>
 
@@ -246,52 +233,49 @@ export const HeadlineTiles = ({
           <Value>{minutesLabel(h.firstAttempt.medianMinutes)}</Value>
           <Foot>
             {h.firstAttempt.medianMinutes === null ? (
-              <span>
-                {plural(h.firstAttempt.outcomes, 'outcome logged', 'outcomes logged')} · needs 5 to show
-              </span>
+              `${plural(h.firstAttempt.outcomes, 'outcome', 'outcomes')} logged · needs 5`
             ) : (
-              <Pill $tone={speedTone}>target ≤ {targets.firstAttemptMinutes} min</Pill>
+              <Pill $tone={toneForMinutes(h.firstAttempt.medianMinutes, targets.firstAttemptMinutes)}>target ≤ {targets.firstAttemptMinutes} min</Pill>
             )}
-            {h.firstAttempt.bands.within15 > 0 ? <span>· {h.firstAttempt.bands.within15} within 15 min</span> : null}
           </Foot>
         </Tile>
 
         <Tile type="button" onClick={() => onDrill('whatsapp', 'WhatsApp from Propel')}>
-          <Label>WhatsApp from Propel within 24h</Label>
+          <Label>WhatsApp from Propel</Label>
           <Value>
             {h.whatsapp24h.n}
             <span>of {h.whatsapp24h.of}</span>
           </Value>
           <Foot>
-            <Pill $tone="neutral">welcome message and campaigns excluded</Pill>
-            {h.whatsapp24h.unattributed > 0 ? <span>· {h.whatsapp24h.unattributed} with no sender recorded</span> : null}
+            {h.whatsapp24h.unattributed > 0 ? `${h.whatsapp24h.unattributed} with no sender recorded` : <Pill $tone="neutral">automatic messages excluded</Pill>}
           </Foot>
         </Tile>
 
         <Tile type="button" onClick={() => onDrill('missed', 'Missed the response clock')}>
-          <Label>Missed the response clock{h.missedClock.slaMinutes ? ` (${h.missedClock.slaMinutes} min)` : ''}</Label>
+          <Label>Missed the response clock</Label>
           <Value>
             {h.missedClock.n}
             <span>of {h.missedClock.of}</span>
           </Value>
           <Foot>
-            <Pill $tone={missedTone}>
+            <Pill $tone={toneLowerIsBetter(h.missedClock.pct, targets.breachMaxPct)}>
               {pctLabel(h.missedClock.pct)} · target ≤ {targets.breachMaxPct}%
             </Pill>
-            {h.missedClock.handoffs > 0 ? <span>· {plural(h.missedClock.handoffs, 'hand-off', 'hand-offs')}</span> : null}
           </Foot>
         </Tile>
 
         <Tile type="button" onClick={() => onDrill('moved', 'Deals that moved')}>
-          <Label>Deal moved past “New” in 7 days</Label>
+          <Label>Deal moved past “New”</Label>
           <Value>
             {h.pipelineMotion.moved}
-            <span>of {h.pipelineMotion.judged} judged</span>
+            <span>of {h.pipelineMotion.judged}</span>
           </Value>
           <Foot>
-            {h.pipelineMotion.tooEarly > 0 ? <span>{h.pipelineMotion.tooEarly} too early to judge · </span> : null}
-            <span>{h.pipelineMotion.noDeal} with no deal yet</span>
-            {h.pipelineMotion.approx ? <span>· some estimated</span> : null}
+            {h.pipelineMotion.tooEarly > 0
+              ? `${h.pipelineMotion.tooEarly} too early to judge`
+              : h.pipelineMotion.noDeal > 0
+                ? `${h.pipelineMotion.noDeal} with no deal yet`
+                : null}
           </Foot>
         </Tile>
 
@@ -299,11 +283,10 @@ export const HeadlineTiles = ({
           <Label>Agents logging outcomes</Label>
           <Value>
             {h.adoption.active}
-            <span>of {h.adoption.received} who got leads</span>
+            <span>of {h.adoption.received}</span>
           </Value>
           <Foot>
-            <Pill $tone={agentsTone}>target {targets.activeAgentsMin} active</Pill>
-            {h.adoption.agentRoleCount !== null ? <span>· {h.adoption.agentRoleCount} on the Agent role</span> : null}
+            <Pill $tone={toneForAgents(h.adoption.active, targets.activeAgentsMin)}>target {targets.activeAgentsMin}</Pill>
           </Foot>
         </Tile>
       </Tiles>

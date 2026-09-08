@@ -28,7 +28,6 @@ import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { Btn, FONT_DISPLAY, FONT_MONO, FONT_UI, NOCTURNE_LIGHT_VARS, PulseFonts, PulseNocturne } from '~/heroes/_pulse/pulse';
 import { Definitions } from '~/heroes/team-scorecard/Definitions';
 import { DrillPanel } from '~/heroes/team-scorecard/DrillPanel';
-import { plural, targetLine } from '~/heroes/team-scorecard/format';
 import { HeadlineTiles } from '~/heroes/team-scorecard/HeadlineTiles';
 import { PeopleTable, SourceTable } from '~/heroes/team-scorecard/PeopleTable';
 import { fetchLeads, fetchSummary, type ScorecardLoad } from '~/heroes/team-scorecard/scorecardApi';
@@ -73,15 +72,6 @@ const Head = styled.div`
   justify-content: space-between;
   gap: 10px 24px;
   margin-bottom: 16px;
-`;
-
-const Eyebrow = styled.div`
-  font-family: ${FONT_MONO};
-  font-size: 10.5px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--p-ink-2);
-  font-weight: 500;
 `;
 
 const Sub = styled.div`
@@ -146,11 +136,6 @@ const Card = styled.section`
     font-size: 15px;
     font-weight: 600;
     color: var(--p-ink);
-  }
-  p.lede {
-    margin: 0 0 12px;
-    font-size: 13px;
-    color: var(--p-ink-2);
   }
 `;
 
@@ -291,12 +276,7 @@ export const TeamScorecardPage = ({ host }: { host: PropelHeroHost }) => {
         <Root data-testid="team-scorecard-root" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
           <Stage $stacked={stacked}>
             <Head>
-              <div style={{ minWidth: 0 }}>
-                <Eyebrow>{mine ? 'My scorecard · only your own leads' : summary ? 'Team · desk owners and agents' : 'Lead care'}</Eyebrow>
-                <Sub>
-                  {summary ? `${summary.window.label} · computed ${summary.computedLabel}` : 'Lead care, counted from what was logged in Propel.'}
-                </Sub>
-              </div>
+              <Sub>{summary ? summary.window.label : 'Lead care'}</Sub>
               <Chips role="group" aria-label="Time window">
                 {PRESETS.map((p) => (
                   <Chip key={p.key} type="button" $on={preset === p.key} aria-pressed={preset === p.key} onClick={() => setPreset(p.key)}>
@@ -312,17 +292,15 @@ export const TeamScorecardPage = ({ host }: { host: PropelHeroHost }) => {
             {load.kind === 'loading' ? (
               <Notice>
                 <h2>Computing…</h2>
-                <p>Reading leads, tasks, WhatsApp and deals for this window.</p>
               </Notice>
             ) : load.kind === 'not-deployed' ? (
               <Notice>
                 <h2>Not on this server yet</h2>
-                <p>The scorecard route has not been installed on this environment. The page will work once the matching release is live.</p>
+                <p>This release is not on this server yet.</p>
               </Notice>
             ) : load.kind === 'offline' ? (
               <Notice>
                 <h2>Can’t reach the server</h2>
-                <p>Check your connection and try again.</p>
                 <Btn type="button" variant="secondary" onClick={() => setReloadKey((k) => k + 1)}>
                   Try again
                 </Btn>
@@ -356,12 +334,10 @@ export const TeamScorecardPage = ({ host }: { host: PropelHeroHost }) => {
                 <Grid2 $stacked={stacked}>
                   <Card>
                     <h2>New leads by day, and how many got an outcome</h2>
-                    <p className="lede">{summary.trend.length < summary.window.days ? `The last ${summary.trend.length} days of the window.` : 'Every day of the window.'}</p>
                     <TrendColumns trend={summary.trend} />
                   </Card>
                   <Card>
                     <h2>Where the leads went</h2>
-                    <p className="lede">{summary.headline.newLeads === 0 ? 'No new leads in this window.' : 'Of the new leads in this window.'}</p>
                     <Flow>
                       <FlowRow label="Reached an agent" n={summary.headline.handedToAgent.n} of={summary.headline.newLeads} />
                       <FlowRow label="Never left the desk" n={summary.headline.handedToAgent.neverLeftDesk} of={summary.headline.newLeads} rest />
@@ -369,10 +345,6 @@ export const TeamScorecardPage = ({ host }: { host: PropelHeroHost }) => {
                       <FlowRow label="Bounced by the response clock" n={summary.headline.missedClock.handoffsSla} of={Math.max(summary.headline.newLeads, summary.headline.missedClock.handoffs)} rest />
                       <FlowRow label="Recycled to the pool after going idle" n={summary.headline.missedClock.handoffsIdle} of={Math.max(summary.headline.newLeads, summary.headline.missedClock.handoffs)} rest />
                     </Flow>
-                    <p className="lede" style={{ margin: '12px 0 0' }}>
-                      {plural(summary.headline.missedClock.handoffs, 'hand-off', 'hand-offs')} in this window
-                      {summary.headline.missedClock.taskOverdue > 0 ? ` · ${summary.headline.missedClock.taskOverdue} first-response ${summary.headline.missedClock.taskOverdue === 1 ? 'task' : 'tasks'} went past the 1-hour deadline` : ''}.
-                    </p>
                   </Card>
                 </Grid2>
 
@@ -380,7 +352,6 @@ export const TeamScorecardPage = ({ host }: { host: PropelHeroHost }) => {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
                     <div>
                       <h2>{mine ? 'You, against the targets' : groupBy === 'person' ? 'By person' : 'By source'}</h2>
-                      <p className="lede">{mine ? 'Other agents’ rows are not shown to agents.' : groupBy === 'person' ? 'Desk owners first, then agents, by leads held. Tap a name to see their leads.' : 'Where the leads came from.'}</p>
                     </div>
                     {!mine ? (
                       <Chips role="group" aria-label="Group by">
@@ -405,9 +376,6 @@ export const TeamScorecardPage = ({ host }: { host: PropelHeroHost }) => {
                   ) : (
                     <SourceTable rows={summary.bySource} targets={summary.targets} stacked={stacked} />
                   )}
-                  <p className="lede" style={{ margin: '12px 0 0' }}>
-                    {targetLine(summary.targets)}
-                  </p>
                 </Card>
 
                 <Definitions summary={summary} />
