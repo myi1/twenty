@@ -246,13 +246,38 @@ const OBJECT_SINGULAR: Record<DeskRow['laneObject'], string> = {
 
 export const deskRecordPath = (row: DeskRow) => `/object/${OBJECT_SINGULAR[row.laneObject]}/${row.recordId}`;
 
-// A row click and the row's "Open full record" overflow item both go to the RECORD PAGE
-// via deskRecordPath. deskRowOpenPath (which sent rows to /h/lead-page) was removed on
-// 2026-09-08: it only ever reached the overflow menu — the plain row click opened the
-// peek drawer and always had — so the lead workspace was never reachable from a row, and
-// the one place it did land was an item labelled "Open full record". Yahya chose the
-// record page once he saw it. The lead workspace is reached from the LEAD_ASSIGNED
-// WhatsApp link and the pinned "Open lead page" command-menu item on the contact.
+// Where a ROW CLICK goes. Deliberately NOT deskRecordPath.
+//
+// ANY row with a person behind it opens the LEAD WORKSPACE for that person —
+// including an opportunity row, which opens the workspace for the contact on that
+// deal rather than the deal's own record. Rows with no person (a listing) keep the
+// record page.
+//
+// Attribution, precisely — and none of the wording is Yahya's: he SELECTED this from
+// three options the desk wrote ("the lead workspace", "the contact record", "leave as
+// is"), after seeing the previous behaviour live and saying "you went the wrong way
+// with my desk -> lead workspace. clicking a row opens the opportunity record. not the
+// workspace!". The choice is his and binding; the sentences are the desk's.
+//
+// History, because this line has moved twice and the reasons matter:
+//   1. First attempt wired this helper into handleRowAction's 'open' branch — which is
+//      fed ONLY by the row's overflow menu. The row click called setDrawer and always
+//      had, so the workspace was never reachable, and the one place it landed was an
+//      item labelled "Open full record" that then did not open the record.
+//   2. Second attempt sent the row click to deskRecordPath. For an opportunity row that
+//      is the OPPORTUNITY record, which is what Yahya rejected above.
+//   3. This is the third: the row click goes to the workspace; the overflow item KEEPS
+//      deskRecordPath, so its label stays true and the underlying record stays reachable.
+//
+// KNOWN, measured on prod 2026-09-08: ~37% of open opportunities have a contact whose
+// owner is not the deal's owner, so the workspace will refuse them. 35 of those 37 are
+// contacts deliberately unassigned that day (the Meta BROWSER cohort); only 2 of 99 are
+// genuinely another agent's. The refusal is honest and the error screen offers My Desk,
+// but if those opportunities stay open on desks the bounce persists.
+export const deskRowOpenPath = (row: DeskRow) =>
+  row.personId
+    ? `/h/lead-page?id=${encodeURIComponent(row.personId)}`
+    : deskRecordPath(row);
 
 const eventLabel = (event: DeskTimelineEvent): string => ({
   NOTE: 'Note', TASK: 'Task', CALL: 'Call', WHATSAPP: 'WhatsApp',

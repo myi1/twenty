@@ -28,7 +28,7 @@ import { AskPipeline } from './AskPipeline';
 import { createBoardLoadCoordinator } from './boardLoad';
 import { BoardTable } from './BoardTable';
 import { BriefingCard } from './BriefingCard';
-import { deskRecordPath, PeekDrawer, type DrawerMode } from './PeekDrawer';
+import { deskRecordPath, deskRowOpenPath, PeekDrawer, type DrawerMode } from './PeekDrawer';
 import { KeyGlyph, ReidinDrawer } from './ReidinDrawer';
 import { railRowsFrom } from './railRows';
 import { RightRail } from './RightRail';
@@ -601,7 +601,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
               // he chose the record page. The peek drawer is still reachable from the
               // row's own action buttons (call / whatsapp / note / task / viewing /
               // snooze) and from the rail; it just no longer owns the plain click.
-              onRowClick={(row) => host.navigate(deskRecordPath(row))}
+              onRowClick={(row) => host.navigate(deskRowOpenPath(row))}
               onRowAction={handleRowAction}
               onStagePick={(row, anchor) => setStagePicker({ rowId: row.id, anchor })}
               onCardDrop={handleKanbanDrop}
