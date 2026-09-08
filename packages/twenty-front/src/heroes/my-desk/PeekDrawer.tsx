@@ -265,6 +265,12 @@ export const deskRecordPath = (row: DeskRow) => `/object/${OBJECT_SINGULAR[row.l
 // and he selected one labelled "Yes, that's what I said". An earlier version of this
 // comment quoted that label as his words. It is not his sentence either.
 //
+// What that DOES establish, and it is why this stands: the choice is confirmed
+// TWICE, by two parties who asked independently and arrived at the same answer. That
+// corroboration is real. It corroborates the CHOICE. It corroborates nothing whatever
+// about the wording, and it is not a second independent witness to a sentence — it is
+// one decision, asked twice, by two people using their own words both times.
+//
 // So: THE CHOICES ARE HIS AND BINDING. NONE OF THE WORDING IS HIS — not this
 // paragraph, not the option labels, not the confirmation. He must not be quoted as
 // having said any of it. A multiple-choice answer has no verbatim to quote, because
