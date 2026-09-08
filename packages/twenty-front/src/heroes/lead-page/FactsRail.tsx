@@ -28,7 +28,7 @@ import {
   setLeadPick,
 } from './leadApi';
 import {
-  BUY_TIMELINE_WORDS,
+  BUYING_TIMELINE_WORDS,
   MONEY_COMFORT_WORDS,
   OFFPLAN_STAGES,
   PURPOSE_WORDS,
@@ -44,7 +44,7 @@ import type { LeadDeal, LeadErr, LeadLoad } from './types';
 
 const UNIT_TYPE_OPTIONS = Object.entries(UNIT_TYPE_WORDS).map(([value, label]) => ({ value, label }));
 const PURPOSE_OPTIONS = Object.entries(PURPOSE_WORDS).map(([value, label]) => ({ value, label }));
-const BUY_TIMELINE_OPTIONS = Object.entries(BUY_TIMELINE_WORDS).map(([value, label]) => ({ value, label }));
+const BUYING_TIMELINE_OPTIONS = Object.entries(BUYING_TIMELINE_WORDS).map(([value, label]) => ({ value, label }));
 const MONEY_COMFORT_OPTIONS = Object.entries(MONEY_COMFORT_WORDS).map(([value, label]) => ({ value, label }));
 const LANGUAGE_OPTIONS = ['English', 'Arabic', 'Hindi', 'Urdu', 'Russian', 'French', 'Farsi', 'Other'];
 
@@ -205,7 +205,7 @@ const StageStepper = ({ host, deal, onChanged }: { host: PropelHeroHost; deal: L
 // amount back out of that shape (currencyCode is always AED here, see
 // validateDealFieldValue in lead-page-core.ts); the write side already sends a
 // plain AED number, which that same validator turns into micros server-side, so
-// only the read direction needed fixing.
+// only the read direction needed that unwrap.
 //
 // amountMicros is COERCED rather than type-checked. This is HARDENING, not a bug
 // fix: it reaches the client as a NUMBER, and the plain `typeof === 'number'`
@@ -335,7 +335,7 @@ const OffplanPicks = ({
     onChanged();
   };
 
-  const savePick = async (field: 'purpose' | 'buyTimeline' | 'moneyComfort', value: string | null) => {
+  const savePick = async (field: 'purpose' | 'buyingTimeline' | 'moneyComfort', value: string | null) => {
     const r = await setLeadPick(host, personId, field, value);
     if (!r || r.ok === false) {
       host.notify(errorText(r), 'warning');
@@ -370,12 +370,23 @@ const OffplanPicks = ({
           style={{ minWidth: 170 }}
         />
       </Row>
+      {/*
+        The lead's CURRENT buying timeline, and the only one the CRM acts on. It is
+        the same column the Meta lead form fills in, so this dropdown starts already
+        answered for a form lead — the agent's job here is to CORRECT it when the
+        call says something different, not to enter it from scratch. It shares its
+        label with the CRM field ("Buying timeline") on purpose; the raw form answer
+        in the FROM THE AD FORM group below carries "(from the form)" and stays as it
+        arrived, so the two rows read as answer-and-origin rather than as a
+        duplicate. Clearing it is how the agent says "they did not tell me": there is
+        no "Not captured" option, because that would be a second way to say nothing.
+      */}
       <Row>
-        <span>Looking to buy</span>
+        <span>Buying timeline</span>
         <Select
-          data={BUY_TIMELINE_OPTIONS}
-          value={picks.buyTimeline}
-          onChange={(v) => void savePick('buyTimeline', v)}
+          data={BUYING_TIMELINE_OPTIONS}
+          value={picks.buyingTimeline}
+          onChange={(v) => void savePick('buyingTimeline', v)}
           placeholder="Not set"
           clearable
           comboboxProps={{ zIndex: 5000 }}
@@ -662,12 +673,28 @@ export const FactsRail = ({
         {person.formAnswers.length === 0 ? (
           <MutedNote>No form answers were captured for this lead. Ask what made them look at Dubai.</MutedNote>
         ) : (
-          person.formAnswers.map((a, i) => (
-            <Row key={i}>
-              <span>{a.label}</span>
-              <span style={{ textAlign: 'right' }}>{a.value}</span>
-            </Row>
-          ))
+          <>
+            {/*
+              This group is the PROVENANCE, not a second copy of the deal fields
+              above. It is what the lead themselves put on the ad, kept exactly as it
+              arrived — including "Buying timeline (from the form)", which is the
+              same question as the editable Buying timeline above and is meant to
+              differ from it once an agent has corrected it on a call. Saying so in
+              one line is what stops the pair reading as a bug. The value is never
+              translated either: a bare `opt3` is Meta's option POSITION, not the
+              lead's words, so it is left looking exactly as unresolved as it is.
+            */}
+            <MutedNote>
+              Their own answers on the ad, kept as they arrived. Correcting something after a call never rewrites what
+              they first said here.
+            </MutedNote>
+            {person.formAnswers.map((a, i) => (
+              <Row key={i}>
+                <span>{a.label}</span>
+                <span style={{ textAlign: 'right' }}>{a.value}</span>
+              </Row>
+            ))}
+          </>
         )}
       </Group>
 

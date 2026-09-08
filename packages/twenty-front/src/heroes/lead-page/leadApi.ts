@@ -18,7 +18,7 @@ export const saveOutcome = (host: PropelHeroHost, input: SaveOutcomeInput) =>
   host.callPropelRoute<R<SaveOutcomeResult>>(ROUTE, { action: 'saveOutcome', ...input });
 export const setDealField = (host: PropelHeroHost, dealId: string, lane: string, field: string, value: unknown) =>
   host.callPropelRoute<R<{}>>(ROUTE, { action: 'setDealField', dealId, lane, field, value });
-export const setLeadPick = (host: PropelHeroHost, personId: string, field: 'purpose' | 'buyTimeline' | 'moneyComfort', value: string | null) =>
+export const setLeadPick = (host: PropelHeroHost, personId: string, field: 'purpose' | 'buyingTimeline' | 'moneyComfort', value: string | null) =>
   host.callPropelRoute<R<{}>>(ROUTE, { action: 'setLeadPick', personId, field, value });
 export const savePicture = (host: PropelHeroHost, personId: string, picture: Partial<Record<'situation' | 'motivation' | 'want' | 'decision' | 'concern', string>>) =>
   host.callPropelRoute<R<{}>>(ROUTE, { action: 'savePicture', personId, ...picture });
@@ -78,8 +78,15 @@ export const moveStage = (host: PropelHeroHost, deskLane: string, recordId: stri
 // punctuation of its own, so a gate whose author DID punctuate does not get a
 // doubled stop. gate.fix is always supplied at every GATE_BLOCKED site, but an
 // empty one would simply leave the reason standing on its own.
-const asSentence = (s: string): string => {
-  const t = s.trim();
+// The parameter is nullable on purpose. StageGate above is a hand-written mirror of
+// another route's type, and a mirror is only ever as true as the day it was written:
+// every gate site supplies `fix` today, but a route that one day answers without it
+// would land `undefined` here. `s.trim()` on that threw a TypeError inside an async
+// click handler — a rejected promise nobody awaits, so the agent got NO toast at all
+// and the stage silently did not move. Reading a missing half as an empty string
+// degrades to the remaining half instead (`filter(Boolean)` drops it).
+const asSentence = (s: string | null | undefined): string => {
+  const t = (s ?? '').trim();
   return !t || /[.!?…:]$/.test(t) ? t : `${t}.`;
 };
 export const moveStageErrorText = (r: MoveStageResult | null): string => {

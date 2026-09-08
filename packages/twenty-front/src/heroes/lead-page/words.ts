@@ -2,7 +2,8 @@
 // Labels are copied from the app's option arrays; the hero cannot import from the
 // app repo, so this is a hand-maintained mirror. Keep in sync with:
 //   /Users/yahyaismail/dev/_wt/lead-page/src/shared/lead-page-core.ts (LEAD_PICKS,
-//   OFFPLAN_UNIT_TYPES) and the off-plan opportunity stage SELECT.
+//   OFFPLAN_UNIT_TYPES), src/shared/identifiers.ts (BUYING_TIMELINE_OPTIONS — the
+//   buying-timeline labels and values) and the off-plan opportunity stage SELECT.
 
 // EVERY lane's stages, not just off-plan. A first draft covered off-plan only, so a
 // Seller lead showed the pill LISTING_SIGNED and an institutional lead showed a raw
@@ -40,9 +41,21 @@ export const UNIT_TYPE_WORDS: Record<string, string> = {
   PENTHOUSE: 'Penthouse',
 };
 export const PURPOSE_WORDS: Record<string, string> = { LET: 'To let out', LIVE: 'To live in', BOTH: 'A bit of both' };
-export const BUY_TIMELINE_WORDS: Record<string, string> = {
+// The ONE buying-timeline vocabulary. The Meta lead form fills this field in and the
+// agent may correct it on the call, so the hero must speak exactly the words the
+// column accepts: labels and values copied from BUYING_TIMELINE_OPTIONS in the app
+// repo's src/shared/identifiers.ts, which is also what the route validates against
+// (LEAD_PICKS.buyingTimeline in src/shared/lead-page-core.ts).
+//
+// UNKNOWN ("Not captured") is in that option list but is DELIBERATELY absent here.
+// It is the empty state, not an answer: the Select's own "Not set" placeholder and
+// its clear button already say "nothing recorded". Offering it as a fifth choice
+// would give the agent two ways to say nothing and destroy the difference between
+// "the lead never told us" and "the agent picked Not captured". The route rejects it
+// too (INVALID_INPUT), so adding it here would only produce a failing dropdown.
+export const BUYING_TIMELINE_WORDS: Record<string, string> = {
   READY_NOW: 'Ready to reserve now',
-  NEXT_3_MONTHS: 'In the next 3 months',
+  WITHIN_3_MONTHS: 'In the next 3 months',
   LATER_THIS_YEAR: 'Later this year',
   RESEARCHING: 'Just researching for now',
 };

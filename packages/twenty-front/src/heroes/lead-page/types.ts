@@ -83,9 +83,14 @@ export type LeadLoad = {
       decision: string | null;
       concern: string | null;
     };
+    // `buyingTimeline` is the ONE timing answer: the Meta lead form fills it in and
+    // the agent may correct it (route: picks.buyingTimeline). The old `buyTimeline`
+    // asked the same question and is gone. `formAnswers` below can still carry the
+    // lead's ORIGINAL form answer alongside it — that row is the provenance, not a
+    // second copy of this.
     picks: {
       purpose: string | null;
-      buyTimeline: string | null;
+      buyingTimeline: string | null;
       moneyComfort: string | null;
     };
     formAnswers: Array<{ label: string; value: string }>;
