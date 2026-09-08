@@ -4,16 +4,30 @@
 //   /Users/yahyaismail/dev/_wt/lead-page/src/shared/lead-page-core.ts (LEAD_PICKS,
 //   OFFPLAN_UNIT_TYPES) and the off-plan opportunity stage SELECT.
 
+// EVERY lane's stages, not just off-plan. A first draft covered off-plan only, so a
+// Seller lead showed the pill LISTING_SIGNED and an institutional lead showed a raw
+// code every single time. Jargon is expanded on purpose: an agent should not have to
+// know that IC means investment committee. stageWords humanises anything unlisted
+// rather than printing an enum, so a stage added later degrades to "Listing signed",
+// not LISTING_SIGNED. Values verified against the five opportunity objects, 2026-09-08.
 export const STAGE_WORDS: Record<string, string> = {
-  NEW: 'New',
-  CONTACTED: 'Contacted',
-  QUALIFIED: 'Qualified',
-  SHORTLISTED: 'Shortlisted',
-  RESERVED: 'Reserved',
-  SPA_SIGNED: 'SPA signed',
-  BOOKED: 'Booked',
-  ON_HOLD: 'On hold',
-  LOST: 'Lost',
+  NEW: 'New', CONTACTED: 'Contacted', QUALIFIED: 'Qualified', ON_HOLD: 'On hold', LOST: 'Lost',
+  SHORTLISTED: 'Shortlisted', RESERVED: 'Reserved', SPA_SIGNED: 'SPA signed', BOOKED: 'Booked',
+  VIEWING: 'Viewing', OFFER: 'Offer', NEGOTIATION: 'Negotiation', AGREED: 'Agreed',
+  VALUATION: 'Valuation', LISTING_SIGNED: 'Listing signed', LIVE: 'Live listing', SOLD: 'Sold',
+  COMPLIANCE_CHECK: 'Compliance check', CONSULTATION: 'Consultation', PARTNER_ENGAGED: 'Partner engaged',
+  APPLICATION: 'Application', CONVERTED: 'Converted',
+  QUALIFY_MANDATE: 'Qualify and mandate', THESIS_SOURCE: 'Thesis and source', LOI: 'Letter of intent',
+  DUE_DILIGENCE: 'Due diligence', IC_APPROVAL: 'Board approval', STRUCTURING_SPA: 'Structuring and SPA',
+  CLOSE_TRANSFER: 'Close and transfer', PASSED: 'Passed',
+};
+// Use this everywhere a stage reaches the screen. Never `STAGE_WORDS[s] ?? s`.
+export const stageWords = (stage: string | null | undefined): string => {
+  if (!stage) return '';
+  const known = STAGE_WORDS[stage];
+  if (known) return known;
+  const spaced = stage.replace(/_/g, ' ').toLowerCase();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 };
 export const OFFPLAN_STAGES = ['NEW', 'CONTACTED', 'QUALIFIED', 'SHORTLISTED', 'RESERVED', 'SPA_SIGNED', 'BOOKED'];
 export const UNIT_TYPE_WORDS: Record<string, string> = {
@@ -65,3 +79,19 @@ export const dueWords = (iso: string | null, now = Date.now()): { text: string; 
 };
 export const minutesWords = (seconds: number | null | undefined) =>
   seconds == null ? '' : seconds < 60 ? `${seconds} sec` : `${Math.round(seconds / 60)} min`;
+// Relative time, spaced ("2 h ago"), matching dueWords ("in 2 h") so the page never says
+// "in 2 h" beside "2h ago". My Desk's format.ts uses the terse style; this page owns its
+// own vocabulary and the two should be reconciled in one direction later.
+export const relativeWords = (iso: string | null | undefined, now = Date.now()): string | null => {
+  if (!iso) return null;
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return null;
+  const diff = now - ms;
+  if (diff < 0) return 'just now';
+  const m = Math.floor(diff / 60_000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  const h = Math.floor(diff / 3_600_000);
+  if (h < 48) return `${h} h ago`;
+  return `${Math.floor(h / 24)} days ago`;
+};

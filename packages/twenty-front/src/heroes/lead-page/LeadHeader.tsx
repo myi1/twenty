@@ -20,7 +20,7 @@ import type { InboxAgentOption } from '@/propel/types/inbox';
 import { Btn, FONT_DISPLAY, FONT_MONO } from '../_pulse/pulse';
 import { Pill } from './styles';
 import { errorText, markLost, movePipeline, setName } from './leadApi';
-import { LOST_REASONS, STAGE_WORDS, dueWords, timeThere, zoneWords } from './words';
+import { LOST_REASONS, dueWords, relativeWords, stageWords, timeThere, zoneWords } from './words';
 import type { LeadDeal, LeadLoad } from './types';
 
 // The five lane keys createDeal / movePipeline speak, with the plain-language
@@ -41,23 +41,6 @@ const initials = (name: string, hasName: boolean): string => {
   if (parts.length === 0) return '?';
   if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
   return (parts[0]![0] + parts[parts.length - 1]![0]).toUpperCase();
-};
-
-// words.ts has no relative-time helper (assignedAt / lastTouch.at are the only
-// callers), so it lives here rather than growing a shared file for one use.
-const formatRelative = (iso: string | null): string | null => {
-  if (!iso) return null;
-  const ms = Date.now() - Date.parse(iso);
-  if (!Number.isFinite(ms)) return null;
-  const abs = Math.abs(ms);
-  const MIN = 60_000;
-  const HOUR = 3_600_000;
-  const DAY = 86_400_000;
-  if (abs < MIN) return 'just now';
-  if (abs < HOUR) return `${Math.round(abs / MIN)} min ago`;
-  if (abs < DAY) return `${Math.round(abs / HOUR)} h ago`;
-  const days = Math.round(abs / DAY);
-  return days === 1 ? '1 day ago' : `${days} days ago`;
 };
 
 // ── local styling (page-specific chrome, not shared primitives) ─────────────
@@ -265,12 +248,17 @@ export const LeadHeader = ({
       host.notify(r?.operatorAction || r?.error || 'Could not assign this lead.', 'warning');
       return;
     }
+    const who = agents.find((a) => a.id === agentWorkspaceMemberId)?.name ?? 'the agent';
+    host.notify(`Assigned to ${who}.`, 'success');
     onChanged();
   };
 
   // ── call ────────────────────────────────────────────────────────────────
   const handleCall = () => {
-    if (!person.phoneE164) return;
+    if (!person.phoneE164) {
+      host.notify('There is no phone number on this lead.', 'warning');
+      return;
+    }
     const ok = startPropelCall({
       number: person.phoneE164,
       name: person.displayName,
@@ -346,7 +334,7 @@ export const LeadHeader = ({
   if (person.city) metaSegments.push(<span key="city">{person.city}</span>);
   if (person.country) metaSegments.push(<span key="country">{person.country}</span>);
   metaSegments.push(<span key="time">{`${timeThere(person.country)} ${zoneWords(person.country)}`}</span>);
-  const assignedRel = formatRelative(person.assignedAt);
+  const assignedRel = relativeWords(person.assignedAt);
   metaSegments.push(
     <span key="assigned">
       {`Assigned to ${person.assignedAgentName ?? 'nobody yet'}${assignedRel ? ` · ${assignedRel}` : ''}`}
@@ -358,7 +346,7 @@ export const LeadHeader = ({
   const nextDue = soonest ? dueWords(soonest.dueAt) : null;
   const nextLineText = soonest ? `Next: ${soonest.title} · ${nextDue!.text}` : 'Next: nothing planned';
   // Never render lastTouch.by: it is a workspace member ID, not a name.
-  const lastTouchRel = formatRelative(person.lastTouch.at);
+  const lastTouchRel = relativeWords(person.lastTouch.at);
 
   const canAssign = data.viewer.role !== 'AGENT';
 
@@ -372,7 +360,7 @@ export const LeadHeader = ({
             {!person.hasName && (
               <Popover opened={namePopoverOpen} onChange={setNamePopoverOpen} zIndex={5000} withinPortal position="bottom-start">
                 <Popover.Target>
-                  <Btn variant="ghost" onClick={() => setNamePopoverOpen((o) => !o)}>
+                  <Btn variant="ghost" onClick={() => setNamePopoverOpen((o) => !o)} style={{ minHeight: 44 }}>
                     Add name
                   </Btn>
                 </Popover.Target>
@@ -384,7 +372,7 @@ export const LeadHeader = ({
                       variant="primary"
                       disabled={savingName || (!firstName.trim() && !lastName.trim())}
                       onClick={() => void saveName()}
-                      style={{ justifyContent: 'center' }}
+                      style={{ justifyContent: 'center', minHeight: 44 }}
                     >
                       Save
                     </Btn>
@@ -395,7 +383,7 @@ export const LeadHeader = ({
           </IdentityRow>
 
           <PillsRow>
-            {selectedDeal?.stage && <Pill $tone="accent">{STAGE_WORDS[selectedDeal.stage] ?? selectedDeal.stage}</Pill>}
+            {selectedDeal?.stage && <Pill $tone="accent">{stageWords(selectedDeal.stage)}</Pill>}
             <Pill $tone="neutral">{data.wa.lineLabel}</Pill>
             {sourceChip && <Pill $tone="neutral">{sourceChip}</Pill>}
             <Pill $tone={replyTone}>{replyText}</Pill>
@@ -465,6 +453,7 @@ export const LeadHeader = ({
               disabled={assigningBusy}
               comboboxProps={{ zIndex: 5000 }}
               style={{ minWidth: 200 }}
+              nothingFoundMessage={agentsLoaded ? 'Could not load the agent list.' : null}
               searchable
             />
           )}
@@ -472,7 +461,7 @@ export const LeadHeader = ({
       )}
 
       <NextLine style={nextDue?.overdue ? { color: 'var(--p-warn)' } : undefined}>{nextLineText}</NextLine>
-      {person.lastTouch.at && <NextLine>{`Last touch: ${lastTouchRel}`}</NextLine>}
+      {lastTouchRel && <NextLine>{`Last touch: ${lastTouchRel}`}</NextLine>}
 
       <Modal opened={moveOpen} onClose={() => setMoveOpen(false)} title="Move to another pipeline" zIndex={5000} centered>
         <ModalFieldStack>

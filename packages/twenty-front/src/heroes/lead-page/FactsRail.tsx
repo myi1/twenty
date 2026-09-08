@@ -26,9 +26,9 @@ import {
   MONEY_COMFORT_WORDS,
   OFFPLAN_STAGES,
   PURPOSE_WORDS,
-  STAGE_WORDS,
   UNIT_TYPE_WORDS,
   dueWords,
+  stageWords,
   timeThere,
   zoneFor,
 } from './words';
@@ -98,12 +98,16 @@ const MutedNote = styled.div`
 // lanes: the current stage word only, per the brief) ─────────────────────────
 const StageStepper = ({ host, deal, onChanged }: { host: PropelHeroHost; deal: LeadDeal; onChanged: () => void }) => {
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const [moveBusy, setMoveBusy] = useState(false);
   const isOffplan = deal.lane === 'offPlanOpportunity';
   const idx = isOffplan && deal.stage ? OFFPLAN_STAGES.indexOf(deal.stage) : -1;
 
   const moveTo = async (stage: string) => {
+    if (moveBusy) return;
     setPopoverOpen(false);
+    setMoveBusy(true);
     const r = await moveStage(host, deal.deskLane, deal.id, stage);
+    setMoveBusy(false);
     if (!r || r.ok === false) {
       host.notify(r?.reason ?? r?.error ?? 'That stage is not open yet.', 'warning');
       return;
@@ -112,7 +116,7 @@ const StageStepper = ({ host, deal, onChanged }: { host: PropelHeroHost; deal: L
   };
 
   if (!isOffplan || idx === -1) {
-    return <Pill $tone="accent">{deal.stage ? (STAGE_WORDS[deal.stage] ?? deal.stage) : 'No stage set'}</Pill>;
+    return <Pill $tone="accent">{deal.stage ? stageWords(deal.stage) : 'No stage set'}</Pill>;
   }
 
   const prev = idx > 0 ? OFFPLAN_STAGES[idx - 1]! : null;
@@ -123,20 +127,22 @@ const StageStepper = ({ host, deal, onChanged }: { host: PropelHeroHost; deal: L
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
       {prev && (
-        <Btn variant="ghost" onClick={() => void moveTo(prev)}>
-          {STAGE_WORDS[prev] ?? prev}
+        <Btn variant="ghost" disabled={moveBusy} onClick={() => void moveTo(prev)} style={{ minHeight: 44 }}>
+          {stageWords(prev)}
         </Btn>
       )}
-      <Pill $tone="accent">{STAGE_WORDS[deal.stage!] ?? deal.stage}</Pill>
+      <Pill $tone="accent">{stageWords(deal.stage!)}</Pill>
       {next && (
-        <Btn variant="secondary" onClick={() => void moveTo(next)}>
-          {STAGE_WORDS[next] ?? next}
+        <Btn variant="secondary" disabled={moveBusy} onClick={() => void moveTo(next)} style={{ minHeight: 44 }}>
+          {stageWords(next)}
         </Btn>
       )}
       {moreCount > 0 && (
         <Popover zIndex={5000} withinPortal opened={popoverOpen} onChange={setPopoverOpen} position="bottom-start">
           <Popover.Target>
-            <Btn variant="ghost" onClick={() => setPopoverOpen((o) => !o)}>{`+${moreCount} more`}</Btn>
+            <Btn variant="ghost" onClick={() => setPopoverOpen((o) => !o)} style={{ minHeight: 44 }}>
+              All stages
+            </Btn>
           </Popover.Target>
           <Popover.Dropdown>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 170 }}>
@@ -144,11 +150,11 @@ const StageStepper = ({ host, deal, onChanged }: { host: PropelHeroHost; deal: L
                 <Btn
                   key={s}
                   variant={s === deal.stage ? 'primary' : 'ghost'}
-                  disabled={s === deal.stage}
+                  disabled={s === deal.stage || moveBusy}
                   onClick={() => void moveTo(s)}
-                  style={{ justifyContent: 'flex-start' }}
+                  style={{ justifyContent: 'flex-start', minHeight: 44 }}
                 >
-                  {STAGE_WORDS[s] ?? s}
+                  {stageWords(s)}
                 </Btn>
               ))}
             </div>
@@ -180,7 +186,7 @@ const DealMoreFields = ({ host, deal, onChanged }: { host: PropelHeroHost; deal:
 
   return (
     <div>
-      <Btn variant="ghost" onClick={() => setOpen((o) => !o)} style={{ alignSelf: 'flex-start' }}>
+      <Btn variant="ghost" onClick={() => setOpen((o) => !o)} style={{ alignSelf: 'flex-start', minHeight: 44 }}>
         {open ? 'Hide details' : 'More details'}
       </Btn>
       <Collapse in={open}>
@@ -369,7 +375,7 @@ const AddFollowUp = ({
   return (
     <Popover zIndex={5000} withinPortal opened={open} onChange={setOpen} position="bottom-start">
       <Popover.Target>
-        <Btn variant="ghost" onClick={() => setOpen((o) => !o)} style={{ alignSelf: 'flex-start' }}>
+        <Btn variant="ghost" onClick={() => setOpen((o) => !o)} style={{ alignSelf: 'flex-start', minHeight: 44 }}>
           Add a follow-up
         </Btn>
       </Popover.Target>
@@ -402,7 +408,7 @@ const AddFollowUp = ({
             variant="primary"
             disabled={busy || !title.trim() || (when === 'CUSTOM' && !customWhen)}
             onClick={() => void save()}
-            style={{ justifyContent: 'center' }}
+            style={{ justifyContent: 'center', minHeight: 44 }}
           >
             Save
           </Btn>
@@ -425,11 +431,20 @@ export const FactsRail = ({
   const [activeDealId, setActiveDealId] = useState<string | null>(
     () => data.selectedDealId ?? data.deals[0]?.id ?? null,
   );
+  const [creatingDeal, setCreatingDeal] = useState(false);
+  const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
 
-  // Only fires the "no deal selected yet, but one now exists" transition (e.g.
-  // just created via "Start one…"), and does not fight a manual chip pick afterward.
+  // Fires on the "no deal selected yet, but one now exists" transition (e.g. just
+  // created via "Start one…"), and also heals a stale activeDealId that no longer
+  // matches anything: /opportunities/move recreates the deal in the destination
+  // lane with a NEW id and soft-deletes the source, so after a move the id this
+  // rail is holding points at nothing. Either case falls back the same way, and a
+  // manual chip pick afterward is never fought because that pick IS a deal that
+  // still exists.
   useEffect(() => {
-    if (activeDealId === null && data.deals.length > 0) {
+    if (data.deals.length === 0) return;
+    const stillExists = activeDealId !== null && data.deals.some((d) => d.id === activeDealId);
+    if (activeDealId === null || !stillExists) {
       setActiveDealId(data.selectedDealId ?? data.deals[0]!.id);
     }
   }, [data.deals, data.selectedDealId, activeDealId]);
@@ -437,7 +452,10 @@ export const FactsRail = ({
   const deal = data.deals.find((d) => d.id === activeDealId) ?? null;
 
   const handleCreateDeal = async (laneKey: 'offplan' | 'secondary' | 'sell' | 'rcbi') => {
+    if (creatingDeal) return;
+    setCreatingDeal(true);
     const r = await createDeal(host, laneKey, person.id, person.displayName);
+    setCreatingDeal(false);
     if (!r || r.error) {
       host.notify(r?.error ?? 'Could not start that pipeline. Try again.', 'warning');
       return;
@@ -446,8 +464,15 @@ export const FactsRail = ({
   };
 
   const handleComplete = async (taskId: string) => {
+    if (completingIds.has(taskId)) return;
+    setCompletingIds((s) => new Set(s).add(taskId));
     const r = await completeTask(host, taskId);
     if (!r || r.ok === false) {
+      setCompletingIds((s) => {
+        const next = new Set(s);
+        next.delete(taskId);
+        return next;
+      });
       host.notify(errorText(r), 'warning');
       return;
     }
@@ -496,7 +521,13 @@ export const FactsRail = ({
             <MutedNote>Start one when you know what they want.</MutedNote>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {CREATE_LANES.map((l) => (
-                <Btn key={l.key} variant="secondary" onClick={() => void handleCreateDeal(l.key)}>
+                <Btn
+                  key={l.key}
+                  variant="secondary"
+                  disabled={creatingDeal}
+                  onClick={() => void handleCreateDeal(l.key)}
+                  style={{ minHeight: 44 }}
+                >
                   {l.label}
                 </Btn>
               ))}
@@ -599,7 +630,12 @@ export const FactsRail = ({
             return (
               <TaskRow key={t.id}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, flex: 1, cursor: 'pointer' }}>
-                  <Checkbox checked={false} onChange={() => void handleComplete(t.id)} aria-label={`Complete ${t.title}`} />
+                  <Checkbox
+                    checked={completingIds.has(t.id)}
+                    disabled={completingIds.has(t.id)}
+                    onChange={() => void handleComplete(t.id)}
+                    aria-label={`Complete ${t.title}`}
+                  />
                   <span style={{ flex: 1 }}>{t.title}</span>
                 </label>
                 <Pill $tone={due.overdue ? 'warn' : 'neutral'}>{due.text}</Pill>

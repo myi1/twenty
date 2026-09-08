@@ -40,7 +40,8 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
   // mistaken for a refresh of the old one and the old lead's page would stay
   // rendered under the new lead's URL.
   const loadedFor = useRef<string | null>(null);
-  useEffect(() => { setData(null); setError(null); loadedFor.current = null; }, [personId]);
+  const requestSeq = useRef(0);
+  useEffect(() => { setData(null); setError(null); loadedFor.current = null; requestSeq.current += 1; }, [personId]);
 
   // A first load with no data yet on screen shows the error block: there is
   // nothing else to show. A background refresh (the visibilitychange listener
@@ -52,7 +53,9 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
   // refresh of the lead that used to be on screen.
   const reload = useCallback(async () => {
     if (!personId) { setError('No lead was given. Open this page from a lead.'); return; }
+    const seq = ++requestSeq.current;
     const r = await loadLead(host, personId);
+    if (seq !== requestSeq.current) return; // a newer request has superseded this one
     if (!r || r.ok === false) {
       if (loadedFor.current === personId) { host.notify(errorText(r), 'warning'); return; }
       setError(errorText(r));
