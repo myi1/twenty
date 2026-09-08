@@ -12,6 +12,7 @@
 
 import { useState, type ReactNode } from 'react';
 import styled from '@emotion/styled';
+import { MOBILE_VIEWPORT } from 'twenty-ui/theme-constants';
 import { Menu, Modal, Popover, Select, TextInput } from '@mantine/core';
 import type { PropelHeroHost } from '@/propel/runtime/heroHost';
 import { startPropelCall } from '@/dialer-dock/utils/startPropelCall';
@@ -99,7 +100,10 @@ const HeaderWrap = styled.div`
   padding: 20px 24px 16px;
   border-bottom: 1px solid var(--p-line);
 
-  @media (max-width: 720px) {
+  /* Same breakpoint as usePhoneLayout — Twenty's MOBILE_VIEWPORT, not a number of
+     our own. Two breakpoints that disagree is how a header gets phone padding while
+     the layout is still two-column. */
+  @media (max-width: ${MOBILE_VIEWPORT}px) {
     padding: 14px 12px 12px;
   }
 `;
