@@ -31,22 +31,34 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
   const [storyReload, setStoryReload] = useState(0);
   const phone = usePhoneLayout();
   const callStartedAt = useRef<number | null>(null);
-  const dataRef = useRef<LeadLoad | null>(null);
-  dataRef.current = data;
+
+  // personId comes from host.searchParams, which is live: HeroRoute reads it
+  // with react-router's useSearchParams, so changing ?id= re-renders this
+  // hero with a new personId WITHOUT remounting it. Without this reset, the
+  // previous lead's data and ref would still be on screen and in memory when
+  // the new id's load kicks off, so a failed load for the new lead would be
+  // mistaken for a refresh of the old one and the old lead's page would stay
+  // rendered under the new lead's URL.
+  const loadedFor = useRef<string | null>(null);
+  useEffect(() => { setData(null); setError(null); loadedFor.current = null; }, [personId]);
 
   // A first load with no data yet on screen shows the error block: there is
   // nothing else to show. A background refresh (the visibilitychange listener
   // below fires one every time the agent switches back to this tab) must not
   // blank out a page that already loaded successfully; it surfaces the
-  // failure as a toast instead and leaves the page exactly as it was.
+  // failure as a toast instead and leaves the page exactly as it was. The
+  // guard compares loadedFor to the CURRENT personId, not just truthiness, so
+  // a load failure for a newly navigated-to lead is never mistaken for a
+  // refresh of the lead that used to be on screen.
   const reload = useCallback(async () => {
     if (!personId) { setError('No lead was given. Open this page from a lead.'); return; }
     const r = await loadLead(host, personId);
     if (!r || r.ok === false) {
-      if (dataRef.current) { host.notify(errorText(r), 'warning'); return; }
+      if (loadedFor.current === personId) { host.notify(errorText(r), 'warning'); return; }
       setError(errorText(r));
       return;
     }
+    loadedFor.current = r.person.id;
     setError(null); setData(r); setStoryReload((v) => v + 1);
   }, [host, personId]);
 
