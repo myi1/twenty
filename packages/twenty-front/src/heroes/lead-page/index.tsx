@@ -79,7 +79,9 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
     const started = callStartedAt.current;
     const t = window.setInterval(async () => {
       if (Date.now() - started > 30 * 60_000) { callStartedAt.current = null; window.clearInterval(t); return; }
+      const seq = ++requestSeq.current;
       const r = await loadLead(host, personId);
+      if (seq !== requestSeq.current) return; // a newer request has superseded this one
       if (!r || r.ok === false) return;
       setData(r);
       const c = r.latestCall;
@@ -90,7 +92,18 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
 
   const onCallStarted = () => { callStartedAt.current = Date.now(); setData((d) => (d ? { ...d } : d)); };
   const openSheet = () => { callStartedAt.current = null; setSheet({ open: true, callSeconds: null }); };
-  const focusComposer = () => { setTab('story'); window.setTimeout(() => document.getElementById('lead-page-composer')?.querySelector('textarea')?.focus(), 50); };
+  // Always lands the agent on the composer area, even for a lead with no
+  // textarea to focus (opted out of WhatsApp, or marked lost): scrolling the
+  // container into view is unconditional, so a blocked lead still sees the
+  // explanation of why they can't be messaged, rather than a dead tap.
+  const focusComposer = () => {
+    setTab('story');
+    window.setTimeout(() => {
+      const container = document.getElementById('lead-page-composer');
+      container?.scrollIntoView({ block: 'nearest' });
+      container?.querySelector('textarea')?.focus();
+    }, 50);
+  };
 
   return (
     <PropelMantineProvider>
