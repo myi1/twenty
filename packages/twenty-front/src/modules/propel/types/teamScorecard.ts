@@ -29,6 +29,8 @@ export interface ScorecardTargets {
   breachMaxPct: number;
   firstAttemptMinutes: number;
   activeAgentsMin: number;
+  /** Hours a lead may sit with a desk owner before it counts as waiting too long. */
+  deskWaitHours: number;
 }
 
 export interface Ratio {
@@ -95,6 +97,14 @@ export interface ScorecardHeadline {
     received: number;
     agentRoleCount: number | null;
   };
+  /** Waiting at the desk — its own figure, never folded into missedClock. Always carries its own denominator. */
+  deskWait: {
+    leads: number;
+    medianHours: number | null;
+    overTarget: number;
+  };
+  /** Contacts a human typed or imported. Their own line; excluded from every rate above. */
+  manuallyAdded: number;
 }
 
 export type ScorecardPersonGroup = 'DESK' | 'AGENT';
@@ -160,6 +170,8 @@ export interface ScorecardSummaryPayload {
 export type ScorecardDrillMetric =
   | 'all'
   | 'onDesk'
+  | 'deskWait'
+  | 'manual'
   | 'handed'
   | 'outcome'
   | 'noOutcome'

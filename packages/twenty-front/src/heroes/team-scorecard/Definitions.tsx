@@ -73,7 +73,7 @@ export const Definitions = ({ summary }: { summary: ScorecardSummaryPayload }) =
     <Box>
       <p>
         If it isn’t logged in Propel, it isn’t here: calls from a personal phone, WhatsApps from a personal number, and outcomes nobody saved.
-        Dubai time. Computed {summary.computedLabel}.
+        The response clock only starts when a lead reaches an agent, so time spent waiting at the desk is counted on its own line, not as a missed clock. Dubai time. Computed {summary.computedLabel}.
       </p>
       <details>
         <summary>How these numbers are counted</summary>
@@ -101,6 +101,13 @@ export const Definitions = ({ summary }: { summary: ScorecardSummaryPayload }) =
             A message sent from Propel on the everyday Dubai or UK line within 24 hours, that left the system and carries the name of the person who sent
             it. Automatic messages carry no sender, so they never count.
           </dd>
+          <dt>Waiting at the desk</dt>
+          <dd>
+            Leads from this window still held by a desk owner right now, and how long they have been there. Counted separately from the response clock,
+            which does not start until a lead reaches an agent.
+          </dd>
+          <dt>Added by hand</dt>
+          <dd>Contacts somebody typed or imported rather than ones Propel captured from a source. Counted in none of the figures above.</dd>
           <dt>Missed the response clock</dt>
           <dd>The lead’s first-response limit{sla ? ` of ${sla} minutes` : ''} passed at least once, whoever held it. The separate one-hour task deadline is counted apart.</dd>
           <dt>Deal moved past New</dt>

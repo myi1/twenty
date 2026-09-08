@@ -28,7 +28,7 @@ import { PageHeader } from '@/ui/layout/page/components/PageHeader';
 import { Btn, FONT_DISPLAY, FONT_MONO, FONT_UI, NOCTURNE_LIGHT_VARS, PulseFonts, PulseNocturne } from '~/heroes/_pulse/pulse';
 import { Definitions } from '~/heroes/team-scorecard/Definitions';
 import { DrillPanel } from '~/heroes/team-scorecard/DrillPanel';
-import { HeadlineTiles } from '~/heroes/team-scorecard/HeadlineTiles';
+import { DeskWaitBand, HeadlineTiles } from '~/heroes/team-scorecard/HeadlineTiles';
 import { PeopleTable, SourceTable } from '~/heroes/team-scorecard/PeopleTable';
 import { fetchLeads, fetchSummary, type ScorecardLoad } from '~/heroes/team-scorecard/scorecardApi';
 import { TrendColumns } from '~/heroes/team-scorecard/TrendColumns';
@@ -136,6 +136,27 @@ const Card = styled.section`
     font-size: 15px;
     font-weight: 600;
     color: var(--p-ink);
+  }
+`;
+
+// A quiet line, not a tile: hand-added contacts are context for the numbers above,
+// never a metric of their own. Clickable so "which ones?" is one tap away.
+const ManualNote = styled.button`
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: block;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--p-line);
+  font-size: 12.5px;
+  color: var(--p-ink-2);
+  &:hover {
+    color: var(--p-ink);
+  }
+  &:focus-visible {
+    box-shadow: var(--p-focus-ring);
+    border-radius: 4px;
   }
 `;
 
@@ -317,6 +338,12 @@ export const TeamScorecardPage = ({ host }: { host: PropelHeroHost }) => {
               <>
                 <HeadlineTiles headline={summary.headline} targets={summary.targets} stacked={stacked} onDrill={(m, t) => openDrill(m, t)} />
 
+                {/* Hidden for agents on purpose. Under MINE scope an agent cannot see
+                    desk-held leads at all, so this would render a confident 0 — and a 0
+                    meaning "you cannot see this" is indistinguishable from "nothing is
+                    stuck", which is the very failure the figure exists to correct. */}
+                {mine ? null : <DeskWaitBand headline={summary.headline} targets={summary.targets} onDrill={(m, ttl) => openDrill(m, ttl)} />}
+
                 {drill ? (
                   <DrillPanel
                     title={drill.title}
@@ -345,6 +372,14 @@ export const TeamScorecardPage = ({ host }: { host: PropelHeroHost }) => {
                       <FlowRow label="Bounced by the response clock" n={summary.headline.missedClock.handoffsSla} of={Math.max(summary.headline.newLeads, summary.headline.missedClock.handoffs)} rest />
                       <FlowRow label="Recycled to the pool after going idle" n={summary.headline.missedClock.handoffsIdle} of={Math.max(summary.headline.newLeads, summary.headline.missedClock.handoffs)} rest />
                     </Flow>
+                    {/* Contacts somebody typed or imported. Counted nowhere above — two
+                        bulk imports of 998 records turned every wide-window rate into a
+                        false pass — but shown, because hiding them is its own lie. */}
+                    {summary.headline.manuallyAdded > 0 ? (
+                      <ManualNote type="button" onClick={() => openDrill('manual', 'Added by hand')}>
+                        Plus {summary.headline.manuallyAdded} added by hand, counted in none of the figures above.
+                      </ManualNote>
+                    ) : null}
                   </Card>
                 </Grid2>
 

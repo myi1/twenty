@@ -11,7 +11,7 @@
 import styled from '@emotion/styled';
 import type { ScorecardDrillMetric, ScorecardHeadline, ScorecardTargets } from '@/propel/types/teamScorecard';
 import { FONT_DISPLAY, FONT_MONO, FONT_UI } from '../_pulse/pulse';
-import { minutesLabel, pctLabel, plural, toneForAgents, toneForMinutes, toneHigherIsBetter, toneLowerIsBetter, type Tone } from './format';
+import { hoursLabel, minutesLabel, pctLabel, plural, toneForAgents, toneForDeskWait, toneForMinutes, toneHigherIsBetter, toneLowerIsBetter, type Tone } from './format';
 
 const TONE_COLOR: Record<Tone, string> = {
   good: 'var(--p-good)',
@@ -174,6 +174,95 @@ const Pill = styled.span<{ $tone: Tone }>`
     background: currentColor;
   }
 `;
+
+
+// ── Waiting at the desk ─────────────────────────────────────────────────────────
+// Its own band rather than a seventh tile, for two reasons. It carries TWO numbers
+// that must be read together — how many are sitting there, and how long — and a tile
+// big enough for one number invites it to be read as a rate, which is the exact
+// mistake this figure exists to correct. The response clock cannot see desk-held
+// leads at all (it starts when a selling agent receives one), so without this the
+// page reports a pass while leads age for days.
+const Band = styled.button<{ $tone: Tone }>`
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  width: 100%;
+  background: var(--p-surface);
+  border: 1px solid var(--p-line);
+  border-radius: var(--p-radius);
+  padding: 14px 18px;
+  margin-bottom: 14px;
+  transition: border-color 140ms ease;
+  &:hover {
+    border-color: var(--p-accent);
+  }
+  &:focus-visible {
+    border-color: var(--p-accent);
+    box-shadow: var(--p-focus-ring);
+  }
+`;
+
+const BandLabel = styled.span`
+  font-family: ${FONT_UI};
+  font-size: 13px;
+  color: var(--p-ink-2);
+`;
+
+const BandFig = styled.span`
+  font-family: ${FONT_MONO};
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--p-ink);
+  font-variant-numeric: tabular-nums;
+  b {
+    font-weight: 500;
+  }
+  span {
+    font-family: ${FONT_UI};
+    font-size: 12.5px;
+    font-weight: 400;
+    color: var(--p-ink-2);
+    margin-left: 6px;
+  }
+`;
+
+export const DeskWaitBand = ({
+  headline,
+  targets,
+  onDrill,
+}: {
+  headline: ScorecardHeadline;
+  targets: ScorecardTargets;
+  onDrill: (metric: ScorecardDrillMetric, title: string) => void;
+}) => {
+  const d = headline.deskWait;
+  if (d.leads === 0) return null;
+  return (
+    <Band type="button" $tone={toneForDeskWait(d.medianHours, targets.deskWaitHours)} onClick={() => onDrill('deskWait', 'Waiting at the desk')}>
+      <BandLabel>Waiting at the desk</BandLabel>
+      <BandFig>
+        <b>{d.leads}</b>
+        <span>{d.leads === 1 ? 'lead sitting there' : 'leads sitting there'}</span>
+      </BandFig>
+      <BandFig>
+        <b>{hoursLabel(d.medianHours)}</b>
+        <span>typical wait</span>
+      </BandFig>
+      {d.overTarget > 0 ? (
+        <Pill $tone={toneForDeskWait(d.medianHours, targets.deskWaitHours)}>
+          {d.overTarget} past {targets.deskWaitHours}h
+        </Pill>
+      ) : (
+        <Pill $tone="good">all within {targets.deskWaitHours}h</Pill>
+      )}
+    </Band>
+  );
+};
 
 export const HeadlineTiles = ({
   headline,

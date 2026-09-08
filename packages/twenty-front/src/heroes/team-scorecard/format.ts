@@ -52,6 +52,21 @@ export const toneForAgents = (active: number, target: number): Tone => {
   return 'bad';
 };
 
+// Waiting time reads in the units a person would say out loud: minutes under an hour,
+// hours under two days, then days. Never a bare number whose unit you have to guess.
+export const hoursLabel = (h: number | null): string => {
+  if (h === null) return '—';
+  if (h < 1) return `${Math.max(1, Math.round(h * 60))}m`;
+  if (h < 48) return h < 10 ? `${h}h` : `${Math.round(h)}h`;
+  return `${Math.round(h / 24)}d`;
+};
+
+export const toneForDeskWait = (h: number | null, targetHours: number): Tone => {
+  if (h === null) return 'neutral';
+  if (h <= targetHours) return 'good';
+  return h <= targetHours * 3 ? 'warn' : 'bad';
+};
+
 export const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 
 export const targetLine = (t: ScorecardTargets): string =>
