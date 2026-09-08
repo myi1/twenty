@@ -201,6 +201,18 @@ export const OutcomeSheet = ({
   // note describing one must not sit there ready to be filed as if it did. Only
   // ever clears text that is STILL the untouched draft, never anything the
   // agent typed or edited, which flips lineIsDraftRef false the moment they touch it.
+  //
+  // Reopening note: when `open` flips false to true, `outcome` still holds
+  // whatever it was before the sheet closed, so this effect and the reset
+  // effect above both fire in the same commit, in declaration order. This one
+  // runs second and briefly writes that stale `outcome` into outcomeRef, right
+  // after the reset effect just wrote null there. That looks like it undoes
+  // the reset, but it is harmless: lineIsDraftRef.current is already false by
+  // then (the reset effect just set it), so the clear below cannot fire off
+  // the stale value here. The reset effect's setOutcome(null) then forces one
+  // more render, which reruns this effect with the corrected `outcome` and
+  // overwrites outcomeRef back to null, all before draftCallNote's response
+  // (a network round trip, at least one tick away) can ever read it.
   useEffect(() => {
     outcomeRef.current = outcome;
     if (!open) return;
@@ -210,11 +222,26 @@ export const OutcomeSheet = ({
     }
   }, [outcome, open]);
 
-  const missingCustomTime = when === 'CUSTOM' && !custom;
+  // Gated on nextStep too: the "When" block (Pick a time, the datetime input)
+  // only renders at all when nextStep !== 'NOTHING' (see the JSX below), so an
+  // agent who picked "Pick a time", left it empty, then switched to "Nothing
+  // yet" must not be left with Save disabled by a control that is no longer on
+  // screen. Gating here (rather than resetting `when`/`custom` back to their
+  // defaults on that switch) means nothing the agent already entered is lost:
+  // switching back to a real next step brings the exact same selection back,
+  // so there is no half-state, just the same screen they left.
+  const missingCustomTime = nextStep !== 'NOTHING' && when === 'CUSTOM' && !custom;
 
   const save = async () => {
     if (!outcome || saving || missingCustomTime) return;
     setSaving(true);
+    // Tracks whether the save itself landed, independent of anything that runs
+    // after it (the stage-move call, onSaved's own side effects). The catch
+    // below consults this so a throw that happens AFTER a successful save (in
+    // practice, only onSaved() itself, since callPropelRoute never throws)
+    // never reports the false "That did not save" toast, which would send the
+    // agent to redo work that was not actually lost.
+    let saved = false;
     try {
       const zone = zoneFor(person.country);
       const r = await saveOutcome(host, {
@@ -222,44 +249,54 @@ export const OutcomeSheet = ({
         dealId: selectedDeal?.id,
         outcome,
         nextStep,
-        when: when === 'CUSTOM' ? customTimeInZone(custom, zone) : when,
+        // Same nextStep gate as missingCustomTime above: when nextStep is
+        // NOTHING, customTimeInZone is never called (custom may be empty, and
+        // it would not matter if it wasn't), and whatever `when` still holds
+        // is sent as-is. That is safe because the route only reads `when`
+        // inside its `if (kind)` branch, and NEXT_STEP_KIND.NOTHING is null,
+        // so this value never reaches anything when nextStep is NOTHING.
+        when: nextStep !== 'NOTHING' && when === 'CUSTOM' ? customTimeInZone(custom, zone) : when,
         zone,
         line,
         clientRequestId,
       });
-      if (!r || r.ok === false) {
-        if (r && r.ok === false && r.error === 'DUPLICATE_REQUEST') {
-          // The first attempt already went through: this is a success the agent
-          // was previously told nothing about, not a failure.
-          host.notify(errorText(r), 'success');
-          onSaved();
-          return;
-        }
+      if (r && r.ok === false && r.error === 'DUPLICATE_REQUEST') {
+        // The first attempt already went through: this is a success the agent
+        // was previously told nothing about, not a failure.
+        saved = true;
+        host.notify(errorText(r), 'success');
+      } else if (!r || r.ok === false) {
         host.notify(errorText(r), 'warning');
-        return;
-      }
-      const partial = r.partial ?? [];
-      if (partial.length) host.notify(`Saved, except: ${partialWords(partial)}.`, 'warning');
-      else host.notify('Saved.', 'success');
+      } else {
+        saved = true;
+        const partial = r.partial ?? [];
+        if (partial.length) host.notify(`Saved, except: ${partialWords(partial)}.`, 'warning');
+        else host.notify('Saved.', 'success');
 
-      if (r.suggestedStage && selectedDeal && !TERMINAL_OUTCOMES.has(outcome)) {
-        const mv = await moveStage(host, selectedDeal.deskLane, selectedDeal.id, r.suggestedStage);
-        // Any non-success (a refusal with a reason, one with neither, or no
-        // response at all) always tells the agent something true.
-        if (mv?.ok) host.notify(`Moved to ${stageWords(r.suggestedStage)}.`, 'info');
-        else host.notify(mv?.reason ?? mv?.error ?? 'The stage did not move.', 'info');
+        if (r.suggestedStage && selectedDeal && !TERMINAL_OUTCOMES.has(outcome)) {
+          const mv = await moveStage(host, selectedDeal.deskLane, selectedDeal.id, r.suggestedStage);
+          // Any non-success (a refusal with a reason, one with neither, or no
+          // response at all) always tells the agent something true.
+          if (mv?.ok) host.notify(`Moved to ${stageWords(r.suggestedStage)}.`, 'info');
+          else host.notify(mv?.reason ?? mv?.error ?? 'The stage did not move.', 'info');
+        }
       }
-      onSaved();
     } catch {
       // Any unexpected input (a malformed custom time, say) must never strand the
       // sheet on "Saving…" forever with the typed note thrown away. The agent
       // gets a plain message, the sheet stays open, and nothing typed is lost.
-      host.notify('That did not save. Try again.', 'warning');
+      // But only when the save itself did not land: see the `saved` comment above.
+      if (!saved) host.notify('That did not save. Try again.', 'warning');
     } finally {
       // Waits for the awaited moveStage above too, so Save cannot look pressable
       // again while a stage move is still in flight.
       setSaving(false);
     }
+    // Runs once, after the try/catch/finally above has fully settled, and only
+    // when the save actually landed. Keeping it out of the try means a throw in
+    // onSaved() itself (or anything else after a landed save) can never be
+    // mistaken, by the catch above, for the save having failed.
+    if (saved) onSaved();
   };
 
   // Escape, a scrim tap, and the drawer's own header close button all call this
