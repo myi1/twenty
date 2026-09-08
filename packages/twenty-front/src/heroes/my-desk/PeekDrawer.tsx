@@ -246,6 +246,25 @@ const OBJECT_SINGULAR: Record<DeskRow['laneObject'], string> = {
 
 export const deskRecordPath = (row: DeskRow) => `/object/${OBJECT_SINGULAR[row.laneObject]}/${row.recordId}`;
 
+// Where a ROW CLICK goes, which is deliberately NOT deskRecordPath. Three of that
+// helper's call sites are controls that say "open the record" — PeekDrawer's
+// openFullRecord, StagePicker's onOpenRecord, and AskPipeline's answer references —
+// and retargeting a control that names its own destination would make it lie.
+//
+// ANY row with a person behind it opens the lead workspace (Yahya, 2026-09-08), not
+// lead rows only: once converted leads stop showing a separate `lead` row, the leads
+// an agent works hardest would lose the doorway again. Rows with no person (a listing)
+// keep the record page. The workspace already handles deals — chips, stage stepper —
+// so a deal row landing there is not a compromise.
+//
+// /h/lead-page?id=<personId> resolves through the fork's /h/:bundle catch-all: the
+// host's navigate is react-router's, and HeroRoute reads the id with useSearchParams,
+// so the query survives. No registry entry and no engine rebuild.
+export const deskRowOpenPath = (row: DeskRow) =>
+  row.personId
+    ? `/h/lead-page?id=${encodeURIComponent(row.personId)}`
+    : deskRecordPath(row);
+
 const eventLabel = (event: DeskTimelineEvent): string => ({
   NOTE: 'Note', TASK: 'Task', CALL: 'Call', WHATSAPP: 'WhatsApp',
 })[event.type];

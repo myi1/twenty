@@ -28,7 +28,7 @@ import { AskPipeline } from './AskPipeline';
 import { createBoardLoadCoordinator } from './boardLoad';
 import { BoardTable } from './BoardTable';
 import { BriefingCard } from './BriefingCard';
-import { deskRecordPath, PeekDrawer, type DrawerMode } from './PeekDrawer';
+import { deskRowOpenPath, PeekDrawer, type DrawerMode } from './PeekDrawer';
 import { KeyGlyph, ReidinDrawer } from './ReidinDrawer';
 import { railRowsFrom } from './railRows';
 import { RightRail } from './RightRail';
@@ -308,7 +308,7 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
       return;
     }
     if (action === 'open') {
-      host.navigate(deskRecordPath(row));
+      host.navigate(deskRowOpenPath(row));
       return;
     }
     setDrawer({ rowId: row.id, mode: action === 'call' ? 'overview' : action });
