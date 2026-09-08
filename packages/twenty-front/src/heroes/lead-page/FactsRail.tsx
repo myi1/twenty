@@ -249,6 +249,14 @@ const purchasePriceAed = (deal: LeadDeal): number | null => {
 // someone else while this page sat open. Refreshing redraws the chips from what
 // they can actually see. That is not the retry errorText's fallback invites: it
 // does not re-send the write that was refused.
+//
+// NOT_AUTHENTICATED deliberately gets NO sentence here and falls through to
+// errorText. A lapsed session is not deal-scoped — it is not about this chip, this
+// deal or this page, and there is no truer thing to say about it from inside a
+// deal field than 'You need to sign in again.' The two overrides above exist only
+// because errorText's LEAD-scoped wording would state something untrue about a
+// DEAL; that reason does not apply to a session, and inventing a third sentence
+// for one condition is how a codebase ends up saying the same thing three ways.
 const dealFieldErrorText = (r: LeadErr | null): string => {
   if (r?.error === 'FORBIDDEN') return 'This deal is not assigned to you.';
   if (r?.error === 'NOT_VISIBLE') return 'This deal is no longer there, or it is not assigned to you. Refresh the page, or ask a manager.';

@@ -116,6 +116,22 @@ export const sendFirstWhatsApp = (host: PropelHeroHost, waPhoneNumber: string, p
 export const errorText = (r: LeadErr | null | { ok: false; error?: string }): string => {
   const code = r && 'error' in r ? r.error : null;
   if (!r) return 'The CRM did not answer. Check your connection and try again.';
+  // The login lapsed: the route could not identify the caller at all. This is the
+  // commonest refusal on this route and it says nothing whatever about ownership,
+  // so it must never reach FORBIDDEN's sentence below — until the route split the
+  // two codes apart, an agent whose session had merely expired was told the lead
+  // was not theirs and sent to a manager over a problem that did not exist. It must
+  // equally never fall through to 'That did not save. Try again.': the same call is
+  // refused identically until there is a session, so signing in again is the ONE
+  // action that works.
+  //
+  // The words are the sibling hero's, minus its load-only tail: My Desk says 'You
+  // need to sign in again to load this.' (heroes/my-desk/format.ts). That tail
+  // reads wrong on a failed save, and this hero hits the code on both paths — the
+  // route's session gate sits above its action dispatch, so it refuses a save
+  // exactly as it refuses a load. Dropping four words keeps ONE sentence for one
+  // condition and makes it true on both, which two variants would not.
+  if (code === 'NOT_AUTHENTICATED') return 'You need to sign in again.';
   if (code === 'FORBIDDEN') return 'This lead is not assigned to you.';
   if (code === 'NOT_FOUND') return 'This lead no longer exists.';
   // NOT_VISIBLE is the row-level-security refusal, and it is exactly the two

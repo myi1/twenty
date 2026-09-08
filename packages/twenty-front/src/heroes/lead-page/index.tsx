@@ -46,11 +46,18 @@ type LoadFailure = { text: string; backTo: 'desk' | 'contact' };
 // those the record is reachable and opening it is a real next step:
 //   UPSTREAM_FAILED   the CRM broke; nothing is wrong with the record.
 //   INVALID_INPUT     a malformed request (an unparseable timeline cursor); ditto.
-//   FORBIDDEN         from `load` this is either no session at all, or RLS being
-//                     off AND the route's own owner check firing. In the second
-//                     case the record IS readable, so the contact page works; in
-//                     the first every destination alike bounces to sign-in, so
-//                     neither choice is better. Left on the contact button.
+//   FORBIDDEN         the route's own owner check fired — reachable only with RLS
+//                     off, and then the record IS readable, so the contact page
+//                     works. (It ALSO meant 'no session at all' until the route
+//                     split NOT_AUTHENTICATED out of it; see types.ts.)
+//   NOT_AUTHENTICATED the login lapsed. Sign-in is the only place either button can
+//                     end up, so neither destination is better and there is nothing
+//                     to choose. Left on the contact button — which is also what
+//                     any code this set does not name gets by default, and that
+//                     default is the safe one: My Desk is the better answer ONLY
+//                     when the contact record is known to refuse the agent too, so
+//                     a code added upstream and not yet handled here can be wordy
+//                     but never strands anyone.
 //   DUPLICATE_REQUEST `saveOutcome` only — it cannot reach this block.
 //   null              a transport failure (callPropelRoute answers null): the
 //                     record is not known to be unreachable, and this is the one

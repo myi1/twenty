@@ -67,9 +67,18 @@ export type LeadTimelineEvent = {
 // healthy workspace it is what an agent reaching someone else's record actually
 // gets: the route's own FORBIDDEN owner checks sit BEHIND the RLS refusal and are
 // unreachable while RLS works, so do not treat FORBIDDEN as the live case.
+//
+// NOT_AUTHENTICATED is the SESSION refusal, and it is the one refusal on this
+// route that a healthy workspace produces every day. Its gate sits ABOVE the
+// action dispatch (lead-page-route.ts:204), not inside gatePerson, so it comes
+// back from a page load and from every save alike — any wording for it has to be
+// true on both. It says NOTHING about ownership: the caller has simply not been
+// identified. Until 2026-09-09 the route answered FORBIDDEN here, which is how an
+// agent whose login had merely expired was told the lead was not theirs, about a
+// lead that probably was. Never merge the two codes back together.
 export type LeadErr = {
   ok: false;
-  error: 'NOT_FOUND' | 'NOT_VISIBLE' | 'FORBIDDEN' | 'INVALID_INPUT' | 'UPSTREAM_FAILED' | 'DUPLICATE_REQUEST';
+  error: 'NOT_FOUND' | 'NOT_VISIBLE' | 'FORBIDDEN' | 'NOT_AUTHENTICATED' | 'INVALID_INPUT' | 'UPSTREAM_FAILED' | 'DUPLICATE_REQUEST';
 };
 
 export type LeadLoad = {
