@@ -37,8 +37,14 @@ import {
 
 // ── Route calls ──────────────────────────────────────────────────────────────
 
+// `includePool: true` — the Inbox is the ONE surface that may see unowned threads, so
+// it is the one surface that asks. The route is owner-scoped by default for every
+// caller (2026-09-08): the same route feeds the floating WhatsApp dock and the role
+// probe, and when it could not tell the surfaces apart the dock rendered the entire
+// unassigned intake to every agent. Do not copy this flag into another caller without
+// meaning it.
 export const fetchInbox = (): Promise<InboxPayload | null> =>
-  callPropelRoute<InboxPayload>('/marketing/inbox', {});
+  callPropelRoute<InboxPayload>('/marketing/inbox', { includePool: true });
 
 export const fetchInboxThread = (
   id: string,
