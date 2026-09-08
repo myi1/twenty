@@ -253,18 +253,25 @@ export const deskRecordPath = (row: DeskRow) => `/object/${OBJECT_SINGULAR[row.l
 //
 // ANY row with a person behind it opens the lead workspace, not lead rows only.
 //
-// Attribution, precisely: Yahya CHOSE this on 2026-09-08 from three options put to him
-// — "any row with a person", "lead rows only", and "add a second action rather than
-// replace". The CHOICE is his; the WORDING of the options, and of this comment, is
-// mine.
+// Attribution, precisely, and it is worth the lines because nothing tests it.
 //
-// Then the deployment desk went and asked him directly — "the code now says you
-// decided that ANY My Desk row with a person opens the new lead page (not just lead
-// rows). Did you say that?" — and he answered "Yes, that's what I said". So he owns
-// the sentence as well as the choice. Both halves are recorded because they are
-// different facts: he picked from options I authored, AND he confirmed it unprompted
-// when a second party checked. The options are kept above so a future reader can see
-// what was NOT chosen, which is what makes a decision legible later.
+// Yahya SELECTED this behaviour on 2026-09-08 from three options written by me:
+// "any row with a person", "lead rows only", and "add a second action rather than
+// replace". I had marked the first (Recommended) — my thumb was on the scale, and it
+// is the one he picked.
+//
+// The deployment desk then double-checked the attribution by asking him whether he
+// had said it. That question was ALSO multiple-choice, with options the desk wrote,
+// and he selected one labelled "Yes, that's what I said". An earlier version of this
+// comment quoted that label as his words. It is not his sentence either.
+//
+// So: THE CHOICES ARE HIS AND BINDING. NONE OF THE WORDING IS HIS — not this
+// paragraph, not the option labels, not the confirmation. He must not be quoted as
+// having said any of it. A multiple-choice answer has no verbatim to quote, because
+// whoever writes the option writes the sentence.
+//
+// The rejected options stay above on purpose: a decision is only legible later if a
+// reader can see what was not chosen.
 //
 // The reason the option was framed this way: once converted leads stop showing a
 // separate `lead` row, a lead-only rule takes the doorway away from exactly the leads
