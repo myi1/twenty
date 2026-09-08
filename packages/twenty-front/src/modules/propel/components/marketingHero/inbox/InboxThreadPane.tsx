@@ -55,6 +55,7 @@ export const InboxThreadPane = ({
   reloadToken,
   row,
   viewerRole,
+  canTriage,
   actingMemberId,
   agentName,
   officeName,
@@ -68,6 +69,9 @@ export const InboxThreadPane = ({
   // + actions read it; null when the row isn't in the current list slice.
   row: InboxThreadRow | null;
   viewerRole: InboxViewerRole;
+  // May this viewer work the unassigned pool (MANAGER/ADMIN, or an AGENT with the
+  // Inbox-triage tier)? Gates the assign action in the rail — see types/inbox.ts.
+  canTriage: boolean;
   // Acting-viewer identity (from /marketing/inbox + the viewer-context GraphQL) for
   // canned-reply merge tags + the quick-reply manager's owner gate.
   actingMemberId: string;
@@ -624,6 +628,7 @@ export const InboxThreadPane = ({
         thread={thread}
         row={row}
         viewerRole={viewerRole}
+        canTriage={canTriage}
         onActed={onActed}
       />
     </Box>

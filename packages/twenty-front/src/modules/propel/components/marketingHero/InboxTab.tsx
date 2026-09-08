@@ -564,10 +564,14 @@ export const InboxTab = () => {
             leftSection={<IconSearch size={14} />}
             aria-label="Search conversations"
           />
-          {/* Triage segmentation (MANAGER/ADMIN only — agents already see only their
-              own threads). Needs-triage = the unowned pool that wants a human; Mine =
-              threads assigned to me; All = the whole pool. */}
-          {payload.viewerRole === 'MANAGER' ||
+          {/* Triage segmentation — for anyone who can work the pool: MANAGER/ADMIN, and
+              (CRM 0.7.34) an AGENT holding PROPEL_INBOX_TRIAGE, whose list already
+              contains the unassigned pool. An agent without the tier still sees only
+              their own threads, so the segments would be noise. Needs-triage = the
+              unowned pool that wants a human; Mine = threads assigned to me; All = the
+              whole pool. */}
+          {payload.canTriage ||
+          payload.viewerRole === 'MANAGER' ||
           payload.viewerRole === 'ADMIN' ? (
             <Group gap={6} mb={6} style={{ flexWrap: 'wrap' }}>
               <Button
@@ -802,6 +806,7 @@ export const InboxTab = () => {
             ) ?? null
           }
           viewerRole={payload.viewerRole ?? 'AGENT'}
+          canTriage={payload.canTriage ?? false}
           actingMemberId={viewer.memberId || viewerMemberId}
           agentName={viewer.agentName}
           officeName={viewer.officeName}

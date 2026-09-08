@@ -228,11 +228,13 @@ const TriageActions = ({
   thread,
   row,
   viewerRole,
+  canTriage,
   onActed,
 }: {
   thread: InboxThreadPayload;
   row: InboxThreadRow | null;
   viewerRole: InboxViewerRole;
+  canTriage: boolean;
   onActed: () => void;
 }) => {
   const notify = usePropelToast();
@@ -244,6 +246,13 @@ const TriageActions = ({
   const [converting, setConverting] = useState(false);
 
   const isManager = viewerRole === 'MANAGER' || viewerRole === 'ADMIN';
+  // Who may take a lead off the pool: managers, and (CRM 0.7.34) an agent holding the
+  // Inbox-triage tier — /lead/assign accepts them, and their list already contains the
+  // unassigned pool, so hiding the button left them able to see a lead and unable to
+  // claim it. /lead/create-opportunity is open to any authenticated member, so it
+  // rides along; /lead/events stays MANAGER/ADMIN below (that route refuses an agent,
+  // and an honest UI does not show a control that is guaranteed to return nothing).
+  const canAssign = isManager || canTriage;
   const personId = thread.personId;
   // Comment-inbox-gate (2026-07-11): FB/IG comment ingestion creates Inbox items
   // ONLY — no Person/Opportunity/Task. A no-contact FB/IG thread therefore offers
@@ -405,7 +414,7 @@ const TriageActions = ({
     >
       <Stack gap={8}>
         {convertButton}
-        {isManager && personId ? (
+        {canAssign && personId ? (
           <>
             <Button
               size="xs"
@@ -531,7 +540,7 @@ const TriageActions = ({
           </Button>
         ) : null}
 
-        {!isManager && personId ? (
+        {!canAssign && personId ? (
           <Text size="xs" c="dimmed">
             <IconCheck size={11} style={{ verticalAlign: -1 }} /> This thread is
             yours — managers handle pool assignment.
@@ -804,11 +813,13 @@ export const InboxContextRail = ({
   thread,
   row,
   viewerRole,
+  canTriage,
   onActed,
 }: {
   thread: InboxThreadPayload;
   row: InboxThreadRow | null;
   viewerRole: InboxViewerRole;
+  canTriage: boolean;
   onActed: () => void;
 }) => {
   const navigate = useNavigate();
@@ -856,6 +867,7 @@ export const InboxContextRail = ({
         thread={thread}
         row={row}
         viewerRole={viewerRole}
+        canTriage={canTriage}
         onActed={onActed}
       />
 

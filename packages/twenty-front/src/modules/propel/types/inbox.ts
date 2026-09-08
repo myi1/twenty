@@ -88,6 +88,13 @@ export interface InboxPayload {
   // (assign / create-opp) to MANAGER/ADMIN only. Optional for back-compat with an
   // older route response (treated as 'AGENT' when absent).
   viewerRole?: InboxViewerRole;
+  // Inbox TRIAGE tier (CRM 0.7.34): true for every MANAGER/ADMIN and for an AGENT
+  // holding PROPEL_INBOX_TRIAGE — their list already includes the unassigned pool
+  // server-side and /lead/assign accepts them. Gate the triage SEGMENTS and the
+  // assign action on this, never on viewerRole, or a triage agent sees pool threads
+  // with no way to take one. `viewerRole` stays the gate for genuinely MANAGER/ADMIN
+  // routes (e.g. /lead/events). Optional for back-compat with an older route.
+  canTriage?: boolean;
   // The acting member's own workspaceMember id (from /marketing/inbox). Used by the
   // "Mine" segment to show only threads assigned to me (assignedAgentId === this).
   // Optional for back-compat with an older route response.
