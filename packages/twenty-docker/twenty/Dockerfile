@@ -67,15 +67,28 @@ COPY ./packages/twenty-ui /app/packages/twenty-ui
 COPY ./packages/twenty-shared /app/packages/twenty-shared
 COPY ./packages/twenty-sdk /app/packages/twenty-sdk
 COPY ./packages/twenty-client-sdk /app/packages/twenty-client-sdk
-RUN npx nx run twenty-front:lingui:extract && \
-    npx nx run twenty-front:lingui:compile
+# Build the shared packages ONCE, up front.
+#
+# lingui:extract, lingui:compile and twenty-front:build each carry
+# dependsOn: ["^build"], so each invocation re-runs the whole dependency graph.
+# twenty-shared hits the nx cache every time; twenty-ui never does, and
+# everything downstream of it misses with it. Measured on the amd64 build of
+# 2026-09-08 (run 34247374370): the dependency tasks cost 4m29s across the two
+# RUN layers below where building them once costs 1m33s.
+RUN npx nx run-many -t build -p twenty-shared twenty-ui twenty-client-sdk \
+                              twenty-sdk twenty-front-component-renderer
+
+# --excludeTaskDependencies ("Skips running dependent tasks first") stops each
+# of these re-deriving the graph above. Verified present in nx 22.5.4.
+RUN npx nx run twenty-front:lingui:extract --excludeTaskDependencies && \
+    npx nx run twenty-front:lingui:compile --excludeTaskDependencies
 # To skip the memory-intensive frontend build, pre-build on the host:
 #   npx nx build twenty-front
 # The check below will use packages/twenty-front/build/ if it already exists.
 RUN if [ -d /app/packages/twenty-front/build ]; then \
       echo "Using pre-built frontend from host"; \
     else \
-      NODE_OPTIONS="--max-old-space-size=8192" npx nx build twenty-front; \
+      NODE_OPTIONS="--max-old-space-size=8192" npx nx build twenty-front --excludeTaskDependencies; \
     fi
 
 
