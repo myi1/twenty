@@ -83,11 +83,25 @@ jobs:
 
       - name: Install dependencies
         uses: ./.github/actions/yarn-install
+        with:
+          skip-disk-clean: ${{ github.event.inputs.skip_disk_clean }}
 
       # twenty-front's types resolve into twenty-shared/twenty-ui .d.ts files.
       # `npm run build` in those packages is ONLY `vite build` and emits NO
       # declarations — the nx target is what produces them. Skip this and tsc
       # reads whatever stale .d.ts happens to be lying around, or none at all.
+      # PROBE: persist nx's own cache between runs. This prebuild is the FOURTH
+      # time these packages get built in one release; nx can skip any whose
+      # inputs are unchanged, which for twenty-shared/twenty-ui is most releases.
+      - name: Restore nx cache
+        uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: nxcache-${{ runner.os }}-${{ hashFiles('yarn.lock') }}-${{ github.run_id }}
+          restore-keys: |
+            nxcache-${{ runner.os }}-${{ hashFiles('yarn.lock') }}-
+            nxcache-${{ runner.os }}-
+
       - name: Build the packages twenty-front's types resolve into
         run: |
           npx nx build twenty-shared
