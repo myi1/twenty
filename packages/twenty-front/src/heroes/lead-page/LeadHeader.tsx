@@ -205,6 +205,7 @@ const PulsePortalScope = styled(PulseScope)`
 export const LeadHeader = ({
   host,
   data,
+  activeDealId,
   phone,
   onLogOutcome,
   onCallStarted,
@@ -213,6 +214,12 @@ export const LeadHeader = ({
 }: {
   host: PropelHeroHost;
   data: LeadLoad;
+  // The one deal id the whole page agrees on (lifted to index.tsx), so "Move to
+  // another pipeline" and "Mark lost" always act on the same deal FactsRail's
+  // chip row shows as active, never a stale `data.selectedDealId`. No deals[0]
+  // fallback: while this has not settled yet (first load) it resolves to no
+  // deal below, same as a lead with none, rather than guessing the wrong one.
+  activeDealId: string | null;
   phone: boolean;
   onLogOutcome: () => void;
   onCallStarted: () => void;
@@ -220,8 +227,7 @@ export const LeadHeader = ({
   onFocusComposer: () => void;
 }) => {
   const { person } = data;
-  const selectedDeal: LeadDeal | null =
-    data.deals.find((d) => d.id === data.selectedDealId) ?? data.deals[0] ?? null;
+  const selectedDeal: LeadDeal | null = data.deals.find((d) => d.id === activeDealId) ?? null;
 
   // ── add name ────────────────────────────────────────────────────────────
   const [namePopoverOpen, setNamePopoverOpen] = useState(false);

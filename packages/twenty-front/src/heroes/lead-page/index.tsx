@@ -155,7 +155,7 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
             {!error && !data && <div style={{ padding: 24, display: 'grid', gap: 12 }}><Skeleton style={{ width: 240, height: 24 }} /><Skeleton style={{ width: 360 }} /><Skeleton style={{ width: 300 }} /></div>}
             {data && (
               <>
-                <LeadHeader host={host} data={data} phone={phone} onLogOutcome={openSheet} onCallStarted={onCallStarted} onChanged={reload} onFocusComposer={focusComposer} />
+                <LeadHeader host={host} data={data} activeDealId={activeDealId} phone={phone} onLogOutcome={openSheet} onCallStarted={onCallStarted} onChanged={reload} onFocusComposer={focusComposer} />
                 {phone && (
                   <PhoneTabs role="tablist">
                     <PhoneTab role="tab" $active={tab === 'facts'} onClick={() => setTab('facts')}>Facts</PhoneTab>
