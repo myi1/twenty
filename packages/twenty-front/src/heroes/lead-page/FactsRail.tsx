@@ -307,8 +307,10 @@ const DealMoreFields = ({ host, deal, onChanged }: { host: PropelHeroHost; deal:
   );
 };
 
-// ── off-plan-only picks: unit type (deal field) + purpose / buy timeline /
-// money comfort (person-level picks) ─────────────────────────────────────────
+// ── off-plan-only picks: unit type (deal field) + purpose / money comfort
+// (person-level picks). The buying timeline used to sit in here too; it moved
+// out to its own group (TimelinePick, below) because it is neither off-plan nor
+// deal-scoped — the other three really are off-plan qualification questions. ──
 const OffplanPicks = ({
   host,
   deal,
@@ -335,7 +337,7 @@ const OffplanPicks = ({
     onChanged();
   };
 
-  const savePick = async (field: 'purpose' | 'buyingTimeline' | 'moneyComfort', value: string | null) => {
+  const savePick = async (field: 'purpose' | 'moneyComfort', value: string | null) => {
     const r = await setLeadPick(host, personId, field, value);
     if (!r || r.ok === false) {
       host.notify(errorText(r), 'warning');
@@ -370,29 +372,6 @@ const OffplanPicks = ({
           style={{ minWidth: 170 }}
         />
       </Row>
-      {/*
-        The lead's CURRENT buying timeline, and the only one the CRM acts on. It is
-        the same column the Meta lead form fills in, so this dropdown starts already
-        answered for a form lead — the agent's job here is to CORRECT it when the
-        call says something different, not to enter it from scratch. It shares its
-        label with the CRM field ("Buying timeline") on purpose; the raw form answer
-        in the FROM THE AD FORM group below carries "(from the form)" and stays as it
-        arrived, so the two rows read as answer-and-origin rather than as a
-        duplicate. Clearing it is how the agent says "they did not tell me": there is
-        no "Not captured" option, because that would be a second way to say nothing.
-      */}
-      <Row>
-        <span>Buying timeline</span>
-        <Select
-          data={BUYING_TIMELINE_OPTIONS}
-          value={picks.buyingTimeline}
-          onChange={(v) => void savePick('buyingTimeline', v)}
-          placeholder="Not set"
-          clearable
-          comboboxProps={{ zIndex: 5000 }}
-          style={{ minWidth: 170 }}
-        />
-      </Row>
       <Row>
         <span>Money comfort</span>
         <Select
@@ -407,6 +386,57 @@ const OffplanPicks = ({
       </Row>
       <DealMoreFields key={deal.id} host={host} deal={deal} onChanged={onChanged} />
     </>
+  );
+};
+
+// ── the buying timeline: every lead, every lane, deal or no deal ─────────────
+// Deliberately OUTSIDE OffplanPicks. It used to render in there, beside the
+// off-plan qualification questions, which meant an agent could only correct it
+// when the ACTIVE DEAL happened to be off-plan — and a lead straight off the
+// Meta form has no deal at all, which is exactly the call on which an agent
+// learns the real timing. Leads on secondary / sell / RCBI / institutional
+// could not be corrected either. Nothing about the write was ever deal-shaped:
+// setLeadPick posts a personId, and the route gates it with gatePerson and
+// writes it with updatePerson (lead-page-route.ts, action `setLeadPick`) — no
+// deal is read on either side. Nor is the value decoration: buying-timeline.ts
+// turns it into the URGENCY of the WhatsApp alert the owner gets ("🔥 HOT …
+// Call NOW" for READY_NOW, "🟠 Warm … within 10 min" for WITHIN_3_MONTHS), and
+// on-lead-reassigned.ts reads it again when a lead changes hands, so a stale
+// value misdirects a real alert. Same Row/label/Select shape as its former
+// neighbours, on purpose: the rail should not show that it moved.
+const TimelinePick = ({
+  host,
+  personId,
+  value,
+  onChanged,
+}: {
+  host: PropelHeroHost;
+  personId: string;
+  value: string | null;
+  onChanged: () => void;
+}) => {
+  const savePick = async (next: string | null) => {
+    const r = await setLeadPick(host, personId, 'buyingTimeline', next);
+    if (!r || r.ok === false) {
+      host.notify(errorText(r), 'warning');
+      return;
+    }
+    onChanged();
+  };
+
+  return (
+    <Row>
+      <span>Buying timeline</span>
+      <Select
+        data={BUYING_TIMELINE_OPTIONS}
+        value={value}
+        onChange={(v) => void savePick(v)}
+        placeholder="Not set"
+        clearable
+        comboboxProps={{ zIndex: 5000 }}
+        style={{ minWidth: 170 }}
+      />
+    </Row>
   );
 };
 
@@ -668,6 +698,27 @@ export const FactsRail = ({
         )}
       </Group>
 
+      {/*
+        Its own group, directly above FROM THE AD FORM, because the two belong in
+        one glance: this row is the answer the CRM acts on, and the "Buying timeline
+        (from the form)" row just below is where that answer came from. It is
+        deliberately NOT inside THE DEAL — it is a person field, it is already
+        answered before any deal exists, and every lane needs it. It shares its
+        label with the CRM field ("Buying timeline") on purpose; the form row
+        carries "(from the form)" and stays as it arrived, so the pair reads as
+        answer-and-origin rather than as a duplicate. Clearing it is how the agent
+        says "they did not tell me": there is no "Not captured" option, because that
+        would be a second way to say nothing.
+      */}
+      <Group>
+        <GroupTitle>HOW SOON THEY WILL BUY</GroupTitle>
+        <MutedNote>
+          The ad form fills this in. Correct it if the call says something different — it sets how urgently the owner is
+          told to call.
+        </MutedNote>
+        <TimelinePick host={host} personId={person.id} value={person.picks.buyingTimeline} onChanged={onChanged} />
+      </Group>
+
       <Group>
         <GroupTitle>FROM THE AD FORM</GroupTitle>
         {person.formAnswers.length === 0 ? (
@@ -678,9 +729,10 @@ export const FactsRail = ({
               This group is the PROVENANCE, not a second copy of the deal fields
               above. It is what the lead themselves put on the ad, kept exactly as it
               arrived — including "Buying timeline (from the form)", which is the
-              same question as the editable Buying timeline above and is meant to
-              differ from it once an agent has corrected it on a call. Saying so in
-              one line is what stops the pair reading as a bug. The value is never
+              same question as the editable Buying timeline in the group directly
+              above (shown for every lead, on every lane) and is meant to differ from
+              it once an agent has corrected it on a call. Saying so in one line is
+              what stops the pair reading as a bug. The value is never
               translated either: a bare `opt3` is Meta's option POSITION, not the
               lead's words, so it is left looking exactly as unresolved as it is.
             */}
