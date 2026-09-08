@@ -8,6 +8,7 @@ import {
   type Options,
 } from 'react-hotkeys-hook/dist/types';
 import { isDefined } from 'twenty-shared/utils';
+import { bindsTypeableCharacter } from '@/ui/utilities/hotkey/utils/bindsTypeableCharacter';
 
 type UseHotkeysOptionsWithoutBuggyOptions = Omit<Options, 'enabled'>;
 
@@ -29,13 +30,22 @@ export const useHotkeysOnFocusedElement = ({
   const callScopedHotkeyCallback =
     useHotkeysOnFocusedElementCallback(dependencies);
 
+  // A shortcut bound to a character someone could be typing must not fire — and with
+  // preventDefault below, EAT that character — while they are typing. `k` (row-up) did
+  // exactly that: an agent's "speak soon ok" reached a client as "spea soon o".
+  // Escape / Enter / Tab / arrows are not typeable and keep their old behaviour, which is
+  // why this is conditional rather than a blanket flip: 69 of 76 registrations rely on the
+  // default and most of them are Escape and Enter inside field editors.
+  // A caller that genuinely wants a printable key to fire in a field may still say so.
+  const defaultEnableInText = !bindsTypeableCharacter(keys);
+
   const enableOnContentEditable = isDefined(options?.enableOnContentEditable)
     ? options.enableOnContentEditable
-    : true;
+    : defaultEnableInText;
 
   const enableOnFormTags = isDefined(options?.enableOnFormTags)
     ? options.enableOnFormTags
-    : true;
+    : defaultEnableInText;
 
   const preventDefault = isDefined(options?.preventDefault)
     ? options.preventDefault === true
