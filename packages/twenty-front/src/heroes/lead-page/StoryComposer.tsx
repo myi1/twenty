@@ -48,6 +48,24 @@ const writeDraft = (personId: string, text: string) => {
   }
 };
 
+// Plain words for a failed first-contact send. whatsapp-send-route.ts (and the
+// wa-service it proxies) can hand back a raw engineering string here, such as
+// "wa-service returned 502", "failed to reach wa-service: <whatever the fetch
+// threw>", a WA_SERVICE_URL/WA_SERVICE_TOKEN config error, a REJECTED `reason`
+// we don't recognise, or nothing at all on a pure transport failure. None of
+// that belongs in front of an agent. Map what we actually know is a
+// service/connectivity problem to one plain sentence; anything else,
+// including an unrecognised rejection reason, gets the same plain, actionable
+// fallback rather than a guess at a cause we don't have. In the spirit of
+// errorText in leadApi.ts.
+const sendFailureText = (r: { reason?: string; error?: string } | null): string => {
+  const raw = r?.error ?? r?.reason ?? '';
+  if (/wa-service|WA_SERVICE_URL|WA_SERVICE_TOKEN/i.test(raw)) {
+    return 'The messaging service is not responding right now. Try again in a moment, and tell a manager if it keeps happening.';
+  }
+  return 'That message did not go. Try again, and tell a manager if it keeps happening.';
+};
+
 export const StoryComposer = ({
   host,
   data,
@@ -74,9 +92,14 @@ export const StoryComposer = ({
   const [noteText, setNoteText] = useState('');
   const [savingNote, setSavingNote] = useState(false);
 
-  // A different lead's page mounted the same Story without a remount (personId
-  // changes via the URL without unmounting, see index.tsx). Load THAT lead's
-  // own draft rather than carrying the previous one forward.
+  // index.tsx sets `data` to null on a personId change, which unmounts Story
+  // (and this composer) through its `{data && ...}` render guard, so in the
+  // current wiring a personId change already remounts this component, and the
+  // `useState(() => readDraft(person.id))` initializer above already loads the
+  // right draft on that fresh mount. This effect is a defensive backstop for if
+  // that guard is ever relaxed and a future personId change reaches this
+  // component WITHOUT a remount: it re-reads THAT lead's own draft rather than
+  // carrying the previous one forward.
   useEffect(() => {
     setFirstMsg(readDraft(person.id));
   }, [person.id]);
@@ -116,7 +139,7 @@ export const StoryComposer = ({
     }
     // Anything else: keep the draft (already mirrored to localStorage above) so
     // the agent never has to retype a message that didn't go out.
-    host.notify(`Not sent: ${r?.reason ?? r?.error ?? 'the line did not answer'}`, 'warning');
+    host.notify(sendFailureText(r), 'warning');
   };
 
   const saveNote = async () => {
@@ -171,6 +194,15 @@ export const StoryComposer = ({
           </Btn>
         </div>
       ) : blocked ? (
+        // Deliberately no textarea here, even a read-only focus anchor: a
+        // blocked lead gets NO message mode at all, full stop. That means
+        // index.tsx's focusComposer (which only ever focuses a <textarea>
+        // inside #lead-page-composer) still can't reach this Pill, so the
+        // header's and phone bar's WhatsApp buttons stay a no-op for a
+        // blocked lead specifically. Closing that requires either a
+        // non-textarea fallback in focusComposer itself or index.tsx calling
+        // scrollIntoView on the container directly; both are index.tsx
+        // changes, out of scope here (see the task-11 fix-round-1 report).
         <Pill $tone="bad">{`Do not message on WhatsApp: ${person.isLost ? 'lead marked lost' : 'opted out'}`}</Pill>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -194,7 +226,27 @@ export const StoryComposer = ({
                 approvedTemplates={thread.approvedTemplates}
               />
             ) : (
-              <div style={{ fontSize: 13, color: 'var(--p-ink-2)' }}>{thread.replyHint}</div>
+              // Read-only, not a message box: the agent cannot type into it and
+              // nothing here can send. It's a real <textarea> purely so
+              // index.tsx's focusComposer (getElementById('lead-page-composer')
+              // .querySelector('textarea')?.focus()) has something to find:
+              // a plain <div> here is a dead tap for both the header's WhatsApp
+              // button and the phone bar's, since neither can reach a bare div.
+              // tabIndex={-1} keeps it out of normal keyboard Tab order (it's
+              // programmatically focusable, which is all that call needs) while
+              // still triggering the browser's default scroll-into-view on
+              // focus. A fallback sentence covers an empty replyHint from the
+              // route, so the agent is never left looking at a blank box.
+              <Textarea
+                readOnly
+                tabIndex={-1}
+                variant="unstyled"
+                autosize
+                minRows={1}
+                aria-label="Why you can’t message on this conversation right now"
+                value={thread.replyHint || 'Messaging isn’t available on this conversation right now.'}
+                styles={{ input: { fontSize: 13, color: 'var(--p-ink-2)', cursor: 'default', padding: 0 } }}
+              />
             )
           ) : wa.canReply && person.phoneE164 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
