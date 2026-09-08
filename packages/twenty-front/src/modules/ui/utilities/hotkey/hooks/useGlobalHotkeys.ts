@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 
 import { useGlobalHotkeysCallback } from '@/ui/utilities/hotkey/hooks/useGlobalHotkeysCallback';
 import { pendingHotkeyState } from '@/ui/utilities/hotkey/states/internal/pendingHotkeysState';
+import { bindsTypeableCharacter } from '@/ui/utilities/hotkey/utils/bindsTypeableCharacter';
 import { useStore } from 'jotai';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
@@ -30,13 +31,21 @@ export const useGlobalHotkeys = ({
 
   const callGlobalHotkeysCallback = useGlobalHotkeysCallback(dependencies);
 
+  // A GLOBAL shortcut bound to a character someone could be typing must not fire — and
+  // with preventDefault below, EAT that character — inside a message box or a rich-text
+  // field. `/` (open search) and `@` (open Ask AI) are both bound here, both typeable, and
+  // both were swallowed in the WhatsApp composer: an agent could not type an email address.
+  // Modifier combos (ctrl+k, meta+k) are not typeable, so the command menu keeps opening
+  // from inside a field exactly as before. An explicit option still wins.
+  const defaultEnableInText = !bindsTypeableCharacter(keys);
+
   const enableOnContentEditable = isDefined(options?.enableOnContentEditable)
     ? options.enableOnContentEditable
-    : true;
+    : defaultEnableInText;
 
   const enableOnFormTags = isDefined(options?.enableOnFormTags)
     ? options.enableOnFormTags
-    : true;
+    : defaultEnableInText;
 
   const preventDefault = isDefined(options?.preventDefault)
     ? options.preventDefault === true

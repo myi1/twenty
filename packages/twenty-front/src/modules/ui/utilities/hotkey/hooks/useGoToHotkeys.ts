@@ -16,6 +16,13 @@ export const useGoToHotkeys = ({
 }: GoToHotkeysProps) => {
   const navigate = useNavigate();
 
+  // No enableOnFormTags / enableOnContentEditable here — deliberately. `g` opens this
+  // sequence, and it used to be enabled inside text fields WITH preventDefault, so an
+  // agent typing "good morning" into the WhatsApp composer lost the g, and the pending
+  // sequence then turned the `d` of "good" into a jump to Dashboards. A go-to shortcut
+  // has no business firing while someone is writing a message; the sequence hook now
+  // decides that per key, and `g` (typeable) stays out of text. preventDefault still
+  // applies where the sequence DOES fire, so the browser doesn't also act on the key.
   useGlobalHotkeysSequence(
     'g',
     key,
@@ -23,11 +30,7 @@ export const useGoToHotkeys = ({
       preNavigateFunction?.();
       navigate(location);
     },
-    {
-      enableOnContentEditable: true,
-      enableOnFormTags: true,
-      preventDefault: true,
-    },
+    { preventDefault: true },
     [navigate],
   );
 };
