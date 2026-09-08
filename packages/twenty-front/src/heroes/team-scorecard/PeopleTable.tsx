@@ -80,14 +80,6 @@ const Eyebrow = styled.span`
   text-transform: uppercase;
   color: var(--p-ink-2);
   font-weight: 500;
-  b {
-    font-family: ${FONT_UI};
-    font-weight: 400;
-    text-transform: none;
-    letter-spacing: 0;
-    font-size: 12.5px;
-    margin-left: 8px;
-  }
 `;
 
 const Who = styled.span`
@@ -181,12 +173,12 @@ export const PeopleTable = ({
   scopeMine: boolean;
   onDrill: (metric: ScorecardDrillMetric, title: string, personId: string) => void;
 }) => {
-  type Group = { key: 'DESK' | 'AGENT'; title: string; note: string; rows: ScorecardPersonRow[] };
+  type Group = { key: 'DESK' | 'AGENT'; title: string; rows: ScorecardPersonRow[] };
   const allGroups: Group[] = scopeMine
-    ? [{ key: 'AGENT', title: 'You', note: 'your own numbers against the targets', rows }]
+    ? [{ key: 'AGENT', title: 'You', rows }]
     : [
-        { key: 'DESK', title: 'Desk', note: 'take every pool lead first', rows: rows.filter((r) => r.group === 'DESK') },
-        { key: 'AGENT', title: 'Agents', note: 'received a lead in this window', rows: rows.filter((r) => r.group === 'AGENT') },
+        { key: 'DESK', title: 'Desk', rows: rows.filter((r) => r.group === 'DESK') },
+        { key: 'AGENT', title: 'Agents', rows: rows.filter((r) => r.group === 'AGENT') },
       ];
   const groups = allGroups.filter((g) => g.rows.length > 0);
 
@@ -211,13 +203,13 @@ export const PeopleTable = ({
           {!scopeMine && collapsed > 0 ? (
             <tr className="more">
               <td colSpan={7}>
-                {collapsed} more {collapsed === 1 ? 'member held' : 'members held'} first-response tasks in this window, but none for these leads.
+{collapsed} more held tasks for other leads.
               </td>
             </tr>
           ) : null}
           {rows.length === 0 && !scopeMine ? (
             <tr className="more">
-              <td colSpan={7}>Nobody held a lead in this window.</td>
+              <td colSpan={7}>Nobody held a lead yet.</td>
             </tr>
           ) : null}
         </tbody>
@@ -231,17 +223,14 @@ const GroupRows = ({
   targets,
   onDrill,
 }: {
-  group: { key: 'DESK' | 'AGENT'; title: string; note: string; rows: ScorecardPersonRow[] };
+  group: { key: 'DESK' | 'AGENT'; title: string; rows: ScorecardPersonRow[] };
   targets: ScorecardTargets;
   onDrill: (metric: ScorecardDrillMetric, title: string, personId: string) => void;
 }) => (
   <>
     <tr className="group">
       <td colSpan={7}>
-        <Eyebrow>
-          {group.title}
-          <b>· {group.note}</b>
-        </Eyebrow>
+        <Eyebrow>{group.title}</Eyebrow>
       </td>
     </tr>
     {group.rows.map((r) => {

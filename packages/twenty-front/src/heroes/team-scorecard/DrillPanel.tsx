@@ -9,7 +9,6 @@ import { Btn, FONT_MONO, FONT_UI } from '../_pulse/pulse';
 const Card = styled.section`
   background: var(--p-surface);
   border: 1px solid var(--p-line);
-  border-left: 3px solid var(--p-accent);
   border-radius: var(--p-radius);
   padding: 14px 18px;
   margin-bottom: 14px;
