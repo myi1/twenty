@@ -28,7 +28,7 @@ import { AskPipeline } from './AskPipeline';
 import { createBoardLoadCoordinator } from './boardLoad';
 import { BoardTable } from './BoardTable';
 import { BriefingCard } from './BriefingCard';
-import { deskRowOpenPath, PeekDrawer, type DrawerMode } from './PeekDrawer';
+import { deskRecordPath, PeekDrawer, type DrawerMode } from './PeekDrawer';
 import { KeyGlyph, ReidinDrawer } from './ReidinDrawer';
 import { railRowsFrom } from './railRows';
 import { RightRail } from './RightRail';
@@ -308,7 +308,10 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
       return;
     }
     if (action === 'open') {
-      host.navigate(deskRowOpenPath(row));
+      // Back to the record page. This item is labelled "Open full record →"; pointing it
+      // at the lead workspace made a control lie about its own destination — the exact
+      // thing deskRecordPath's other three call sites were left alone to avoid.
+      host.navigate(deskRecordPath(row));
       return;
     }
     setDrawer({ rowId: row.id, mode: action === 'call' ? 'overview' : action });
@@ -586,7 +589,19 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
                 setView(next);
                 persist({ view: next });
               }}
-              onRowClick={(row) => setDrawer({ rowId: row.id, mode: 'overview' })}
+              // Clicking a row GOES to the record page. Yahya, 2026-09-08, after seeing
+              // the shipped behaviour: "click row -> record page. go back on browser
+              // should go back to my desk." host.navigate is react-router's, so this
+              // PUSHES history and Back returns to My Desk.
+              //
+              // This supersedes the earlier decision that a row opened the lead
+              // workspace. That change only ever reached the overflow menu — the row
+              // click opened the peek drawer and always had — so the workspace was
+              // never actually reachable from a row. Rather than move it to the click,
+              // he chose the record page. The peek drawer is still reachable from the
+              // row's own action buttons (call / whatsapp / note / task / viewing /
+              // snooze) and from the rail; it just no longer owns the plain click.
+              onRowClick={(row) => host.navigate(deskRecordPath(row))}
               onRowAction={handleRowAction}
               onStagePick={(row, anchor) => setStagePicker({ rowId: row.id, anchor })}
               onCardDrop={handleKanbanDrop}

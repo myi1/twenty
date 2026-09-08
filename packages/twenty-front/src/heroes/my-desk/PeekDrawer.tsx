@@ -246,52 +246,13 @@ const OBJECT_SINGULAR: Record<DeskRow['laneObject'], string> = {
 
 export const deskRecordPath = (row: DeskRow) => `/object/${OBJECT_SINGULAR[row.laneObject]}/${row.recordId}`;
 
-// Where a ROW CLICK goes, which is deliberately NOT deskRecordPath. Three of that
-// helper's call sites are controls that say "open the record" — PeekDrawer's
-// openFullRecord, StagePicker's onOpenRecord, and AskPipeline's answer references —
-// and retargeting a control that names its own destination would make it lie.
-//
-// ANY row with a person behind it opens the lead workspace, not lead rows only.
-//
-// Attribution, precisely, and it is worth the lines because nothing tests it.
-//
-// Yahya SELECTED this behaviour on 2026-09-08 from three options written by me:
-// "any row with a person", "lead rows only", and "add a second action rather than
-// replace". I had marked the first (Recommended) — my thumb was on the scale, and it
-// is the one he picked.
-//
-// The deployment desk then double-checked the attribution by asking him whether he
-// had said it. That question was ALSO multiple-choice, with options the desk wrote,
-// and he selected one labelled "Yes, that's what I said". An earlier version of this
-// comment quoted that label as his words. It is not his sentence either.
-//
-// What that DOES establish, and it is why this stands: the choice is confirmed
-// TWICE, by two parties who asked independently and arrived at the same answer. That
-// corroboration is real. It corroborates the CHOICE. It corroborates nothing whatever
-// about the wording, and it is not a second independent witness to a sentence — it is
-// one decision, asked twice, by two people using their own words both times.
-//
-// So: THE CHOICES ARE HIS AND BINDING. NONE OF THE WORDING IS HIS — not this
-// paragraph, not the option labels, not the confirmation. He must not be quoted as
-// having said any of it. A multiple-choice answer has no verbatim to quote, because
-// whoever writes the option writes the sentence.
-//
-// The rejected options stay above on purpose: a decision is only legible later if a
-// reader can see what was not chosen.
-//
-// The reason the option was framed this way: once converted leads stop showing a
-// separate `lead` row, a lead-only rule takes the doorway away from exactly the leads
-// an agent works hardest. Rows with no person (a listing)
-// keep the record page. The workspace already handles deals — chips, stage stepper —
-// so a deal row landing there is not a compromise.
-//
-// /h/lead-page?id=<personId> resolves through the fork's /h/:bundle catch-all: the
-// host's navigate is react-router's, and HeroRoute reads the id with useSearchParams,
-// so the query survives. No registry entry and no engine rebuild.
-export const deskRowOpenPath = (row: DeskRow) =>
-  row.personId
-    ? `/h/lead-page?id=${encodeURIComponent(row.personId)}`
-    : deskRecordPath(row);
+// A row click and the row's "Open full record" overflow item both go to the RECORD PAGE
+// via deskRecordPath. deskRowOpenPath (which sent rows to /h/lead-page) was removed on
+// 2026-09-08: it only ever reached the overflow menu — the plain row click opened the
+// peek drawer and always had — so the lead workspace was never reachable from a row, and
+// the one place it did land was an item labelled "Open full record". Yahya chose the
+// record page once he saw it. The lead workspace is reached from the LEAD_ASSIGNED
+// WhatsApp link and the pinned "Open lead page" command-menu item on the contact.
 
 const eventLabel = (event: DeskTimelineEvent): string => ({
   NOTE: 'Note', TASK: 'Task', CALL: 'Call', WHATSAPP: 'WhatsApp',
