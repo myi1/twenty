@@ -90,6 +90,11 @@ const asSentence = (s: string | null | undefined): string => {
   return !t || /[.!?…:]$/.test(t) ? t : `${t}.`;
 };
 export const moveStageErrorText = (r: MoveStageResult | null): string => {
+  // A lapsed session reaches here too: /my-desk returns NOT_AUTHENTICATED from its own
+  // session gate (my-desk-route.ts:900), exactly as /lead-page does. Without this branch
+  // it fell through to "Try again." — inviting a retry that cannot succeed, which is the
+  // same dead end this release fixes everywhere else. One condition, one sentence.
+  if (r && !r.ok && r.error === 'NOT_AUTHENTICATED') return 'You need to sign in again.';
   if (r && !r.ok && r.error === 'GATE_BLOCKED' && r.gate) {
     const said = [asSentence(r.gate.label), asSentence(r.gate.fix)].filter(Boolean).join(' ');
     if (said) return said;
