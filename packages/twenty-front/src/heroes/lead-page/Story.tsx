@@ -34,15 +34,23 @@ const NO_MEDIA = 'NONE' as InboxMediaKind;
 // Consecutive WhatsApp messages under this gap fold into one burst.
 const BURST_GAP_MS = 30 * 60_000;
 
-// A CALL event's title is built in lead-timeline.ts (a shared module this
-// branch moved verbatim and must not re-edit here): the call direction, the
-// word "call", then a separator and the lowercased disposition code, so an
-// underscored enum like NOT_INTERESTED can land on screen unhumanised. This
-// humanises that trailing part at render time instead: OUTCOME_WORDS gives
-// the exact words an agent already sees in the outcome sheet for the six
-// call outcomes, and anything not in that list (a call-disposition code this
-// page doesn't know about yet) still degrades to a spaced, capitalised
-// phrase rather than the raw code.
+// A CALL event's title is built in lead-timeline.ts (a shared module this branch
+// moved verbatim and must not re-edit here): the call direction, the word
+// "call", then a separator and the lowercased disposition code. The code is
+// `Call.disposition`, which is a SELECT of exactly ANSWERED / MISSED /
+// VOICEMAIL / FAILED (call.object.ts) — single words, never underscored, and
+// written only by the external voice-service, never by this repo.
+//
+// So this is defensive, not corrective, and the OUTCOME_WORDS lookup below is
+// currently UNREACHABLE: OUTCOME_WORDS is keyed by `Task.disposition` values
+// (NOT_INTERESTED, WRONG_NUMBER, …), which is a DIFFERENT field — the one this
+// lane's saveOutcome writes — and the two vocabularies do not overlap at all.
+// Do not read this function as evidence that a Call disposition can be
+// underscored; it cannot. Its only live effect today is capitalising the
+// suffix ("answered" -> "Answered"). It is kept so that a code this page does
+// not know about (a disposition added to either field later, or a lane that
+// starts writing Call.disposition) degrades to a spaced, capitalised phrase
+// rather than putting a raw enum in front of an agent.
 const humaniseCallTitle = (title: string): string => {
   const sep = title.lastIndexOf(' — '); // lead-timeline.ts's own separator
   if (sep === -1) return title;

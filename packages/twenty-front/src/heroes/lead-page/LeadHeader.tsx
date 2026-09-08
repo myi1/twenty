@@ -35,6 +35,45 @@ const LANE_LABELS: Record<string, string> = {
   institutional: 'Institutional',
 };
 
+// Plain words for a pipeline move that did not fully work. `failed[].reason`
+// (perform-move.ts, the shared orchestrator behind /opportunities/move) is
+// written for a developer, not an agent: three of its four branches interpolate
+// a raw exception message and one of those also interpolates the new record's
+// raw UUID. None of that goes in front of an agent. Every reason that route can
+// produce is mapped here:
+//   'created in <lane> (<uuid>) but could not remove the original …'
+//        THE ONE THAT MATTERS. The copy really was made and the old record
+//        really is still sitting in the old pipeline, so this is said in full,
+//        in words — suppressing it would leave a duplicate nobody knows to
+//        clean up. Named lane, no id, no exception text.
+//   'not found (or no access)'      the record is gone, or belongs to someone else.
+//   'read failed: …'                nothing was created; nothing changed.
+//   'create in <lane> failed: …'    nothing was created; nothing changed.
+//   'invalid move (same or unknown lane)'  unreachable through the route (it
+//        validates both lanes before calling performMove), mapped rather than echoed.
+// Anything a later branch adds falls through to a true, generic sentence that
+// claims nothing about what did or did not change.
+const movePipelineFailureText = (reason: string | undefined, fromLabel: string, destLabel: string): string => {
+  const r = reason ?? '';
+  if (r.startsWith('created in')) {
+    return `This lead was copied into ${destLabel}, but the old ${fromLabel} one could not be removed — it is still there. Delete it, and tell a manager if you cannot.`;
+  }
+  if (r.startsWith('not found')) return 'That pipeline is no longer there, or it is not assigned to you.';
+  if (r.startsWith('read failed') || r.startsWith('create in') || r.startsWith('invalid move')) {
+    return `Could not move this into ${destLabel}. Nothing was changed. Try again, and tell a manager if it keeps happening.`;
+  }
+  return `Could not move this into ${destLabel}. Try again, and tell a manager if it keeps happening.`;
+};
+
+// A refusal BEFORE any record was touched: either a transport failure (null) or
+// move-opportunity-route.ts's own top-level `{ error }` for malformed input
+// ('invalid lane', 'no records selected'), which is an engineering string and
+// never shown. Same shape as FactsRail.tsx's createDealErrorText.
+const movePipelineRefusedText = (r: unknown): string =>
+  r
+    ? 'Could not move this pipeline. Try again, and tell a manager if it keeps happening.'
+    : 'The CRM did not answer. Check your connection and try again.';
+
 const initials = (name: string, hasName: boolean): string => {
   if (!hasName) return '?';
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -310,17 +349,20 @@ export const LeadHeader = ({
     setMoveBusy(true);
     const r = await movePipeline(host, selectedDeal.laneKey, moveDest, selectedDeal.id);
     setMoveBusy(false);
+    const destLabel = LANE_LABELS[moveDest] ?? 'the new pipeline';
+    const fromLabel = LANE_LABELS[selectedDeal.laneKey] ?? 'previous';
     if (!r || 'error' in r) {
-      host.notify((r && 'error' in r ? r.error : null) ?? 'Could not move this pipeline. Try again.', 'warning');
+      host.notify(movePipelineRefusedText(r), 'warning');
       return;
     }
     // move-opportunity-route.ts:56-63 answers `ok: true` even when nothing
     // actually moved: a per-record failure lands in `failed`, not in a
     // top-level `error`. Closing the modal on that would tell the agent the
     // move worked when it did not, so a zero-moved or a non-empty `failed` is
-    // treated as a failure and its own reason is surfaced, not silence.
+    // treated as a failure — and what actually happened to the record is told
+    // in plain words (movePipelineFailureText), never by echoing `reason`.
     if (r.moved.length === 0 || r.failed.length > 0) {
-      host.notify(r.failed[0]?.reason ?? 'Could not move this pipeline. Try again.', 'warning');
+      host.notify(movePipelineFailureText(r.failed[0]?.reason, fromLabel, destLabel), 'warning');
       return;
     }
     setMoveOpen(false);

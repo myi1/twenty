@@ -35,7 +35,7 @@ import { Drawer, Radio, SegmentedControl, Textarea } from '@mantine/core';
 import type { PropelHeroHost } from '@/propel/runtime/heroHost';
 import { Btn, FONT_UI, NOCTURNE_LIGHT_VARS, PulseScope } from '../_pulse/pulse';
 import { draftCallNote, errorText, moveStage, moveStageErrorText, saveOutcome } from './leadApi';
-import { OUTCOME_WORDS, dueWords, minutesWords, relativeWords, stageWords, zoneFor, zoneWords } from './words';
+import { OUTCOME_WORDS, customTimeInZone, dueWords, minutesWords, relativeWords, stageWords, zoneFor, zoneWords } from './words';
 import type { LeadDeal, LeadLoad, SaveOutcomeInput } from './types';
 
 type Outcome = SaveOutcomeInput['outcome'];
@@ -73,23 +73,6 @@ const PARTIAL_WORDS: Record<string, string> = {
 };
 const partialWords = (codes: string[]): string =>
   codes.map((c) => PARTIAL_WORDS[c] ?? 'something else was not saved').join(', ');
-
-// Converts a <input type="datetime-local"> value (digits with no zone attached)
-// into the correct absolute instant for those digits read as wall-clock time in
-// `zone`, never the agent's own browser zone, which is what
-// `new Date(str).toISOString()` alone would give. The caption right under the
-// picker names the LEAD's zone ("UK time" / "Dubai time"), so that is what the
-// agent means by what they type. Same technique FactsRail.tsx's tomorrowTenAmIn
-// already uses (read the offset fresh, so it is correct across the DST edge
-// too), just run in the other direction: that one starts from `now` and wants
-// the zone's wall clock; this one starts from a typed wall clock and wants it
-// treated as the zone's.
-export const customTimeInZone = (localDateTime: string, zone: string): string => {
-  const asBrowserLocal = new Date(localDateTime);
-  const inZone = new Date(asBrowserLocal.toLocaleString('en-US', { timeZone: zone }));
-  const offsetMs = asBrowserLocal.getTime() - inZone.getTime();
-  return new Date(asBrowserLocal.getTime() + offsetMs).toISOString();
-};
 
 // Mantine's Drawer defaults to withinPortal, mounting its content straight into
 // document.body, outside LeadNocturne's `--p-*` token declarations (pulse.tsx).
@@ -285,6 +268,11 @@ export const OutcomeSheet = ({
           // enters NEW with an auto-created stage task, so the very next call
           // (NEW -> CONTACTED) is gated on it, and this refusal fires on it
           // routinely, not as an edge case.
+          // 'info', deliberately milder than FactsRail.tsx's 'warning' for this
+          // same text: there, the agent pressed a stage button and the thing
+          // they asked for did not happen; here, everything they asked for DID
+          // save and only the automatic follow-on move was refused, so this is
+          // news, not a failed action.
           if (mv?.ok) host.notify(`Moved to ${stageWords(r.suggestedStage)}.`, 'info');
           else host.notify(moveStageErrorText(mv), 'info');
         }

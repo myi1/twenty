@@ -68,6 +68,23 @@ export const zoneFor = (country: string | null) => (country === 'UK' ? 'Europe/L
 export const zoneWords = (country: string | null) => (country === 'UK' ? 'UK time' : 'Dubai time');
 export const timeThere = (country: string | null, now = new Date()) =>
   new Intl.DateTimeFormat('en-GB', { timeZone: zoneFor(country), hour: '2-digit', minute: '2-digit' }).format(now);
+// Converts a <input type="datetime-local"> value (digits with no zone attached)
+// into the correct absolute instant for those digits read as wall-clock time in
+// `zone`, never the agent's own browser zone, which is what
+// `new Date(str).toISOString()` alone would give. The caption right under the
+// picker names the LEAD's zone ("UK time" / "Dubai time"), so that is what the
+// agent means by what they type. Same technique FactsRail.tsx's tomorrowTenAmIn
+// already uses (read the offset fresh, so it is correct across the DST edge
+// too), just run in the other direction: that one starts from `now` and wants
+// the zone's wall clock; this one starts from a typed wall clock and wants it
+// treated as the zone's. Lives here beside zoneFor/zoneWords/timeThere, its two
+// callers being OutcomeSheet.tsx and FactsRail.tsx.
+export const customTimeInZone = (localDateTime: string, zone: string): string => {
+  const asBrowserLocal = new Date(localDateTime);
+  const inZone = new Date(asBrowserLocal.toLocaleString('en-US', { timeZone: zone }));
+  const offsetMs = asBrowserLocal.getTime() - inZone.getTime();
+  return new Date(asBrowserLocal.getTime() + offsetMs).toISOString();
+};
 export const dueWords = (iso: string | null, now = Date.now()): { text: string; overdue: boolean } => {
   if (!iso) return { text: 'No time set', overdue: false };
   const ms = Date.parse(iso) - now;

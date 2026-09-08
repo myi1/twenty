@@ -70,8 +70,23 @@ export const moveStage = (host: PropelHeroHost, deskLane: string, recordId: stri
 // missing precondition), and gate.label/gate.fix are the plain-language reason
 // and remedy the route already computed. Never show `error` itself: it is a code
 // (GATE_BLOCKED, INVALID_INPUT, WRITE_FAILED, ...), not a sentence.
+// gate.label (the reason) and gate.fix (the remedy) are two separate sentences,
+// and my-desk-gates.ts writes both as bare clauses with no terminal punctuation,
+// so joining them raw ran them together on the most common refusal on the most
+// common action: "Set the SPA signing date first Enter the date the SPA was
+// signed." Each half is closed with a full stop unless it already ends in
+// punctuation of its own, so a gate whose author DID punctuate does not get a
+// doubled stop. gate.fix is always supplied at every GATE_BLOCKED site, but an
+// empty one would simply leave the reason standing on its own.
+const asSentence = (s: string): string => {
+  const t = s.trim();
+  return !t || /[.!?…:]$/.test(t) ? t : `${t}.`;
+};
 export const moveStageErrorText = (r: MoveStageResult | null): string => {
-  if (r && !r.ok && r.error === 'GATE_BLOCKED' && r.gate) return `${r.gate.label} ${r.gate.fix}`.trim();
+  if (r && !r.ok && r.error === 'GATE_BLOCKED' && r.gate) {
+    const said = [asSentence(r.gate.label), asSentence(r.gate.fix)].filter(Boolean).join(' ');
+    if (said) return said;
+  }
   return 'The stage did not move. Try again.';
 };
 export const createDeal = (host: PropelHeroHost, laneKey: 'offplan' | 'secondary' | 'sell' | 'rcbi' | 'institutional', contactId: string, name: string) =>

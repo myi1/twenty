@@ -27,13 +27,13 @@ import {
   setDealField,
   setLeadPick,
 } from './leadApi';
-import { customTimeInZone } from './OutcomeSheet';
 import {
   BUY_TIMELINE_WORDS,
   MONEY_COMFORT_WORDS,
   OFFPLAN_STAGES,
   PURPOSE_WORDS,
   UNIT_TYPE_WORDS,
+  customTimeInZone,
   dueWords,
   stageWords,
   timeThere,
@@ -135,6 +135,9 @@ const StageStepper = ({ host, deal, onChanged }: { host: PropelHeroHost; deal: L
       // A refusal here is routinely GATE_BLOCKED (a stage task not yet done, an
       // RCBI compliance check not cleared): moveStageErrorText names the reason
       // (gate.label) and the remedy (gate.fix) instead of the raw code.
+      // 'warning', not the 'info' OutcomeSheet.tsx uses for the same text: the
+      // agent pressed a stage button here, so the action they asked for failed;
+      // there, the save landed and only the suggested follow-on move was refused.
       host.notify(moveStageErrorText(r), 'warning');
       return;
     }
@@ -203,9 +206,30 @@ const StageStepper = ({ host, deal, onChanged }: { host: PropelHeroHost; deal: L
 // validateDealFieldValue in lead-page-core.ts); the write side already sends a
 // plain AED number, which that same validator turns into micros server-side, so
 // only the read direction needed fixing.
+//
+// amountMicros is COERCED rather than type-checked. This is HARDENING, not a bug
+// fix: it reaches the client as a NUMBER, and the plain `typeof === 'number'`
+// read this replaced did work. Two server layers coerce it, and both were read
+// rather than assumed: the ORM's formatCompositeFieldValue
+// (twenty-server/src/engine/twenty-orm/utils/format-result.util.ts) parseInt()s a
+// non-empty DB string, and the BigFloat scalar
+// (.../graphql-types/scalars/big-float.scalar.ts) serialises with parseFloat().
+// Sibling modules that say otherwise are NOT evidence, and it is worth knowing
+// why: lane-move.ts's `amountMicros: string | null` is a hand-written mirror,
+// its Number(...) is a defensive coercion (written BECAUSE the author was
+// unsure), and lane-move.test.ts's string fixtures are authored, never captured
+// from the wire. Five files agreeing can all be downstream of one guess.
+// Coercing is kept because it is correct under BOTH shapes, so it cannot break
+// if the scalar ever changes.
+// Number('') is 0, not NaN, so an empty string is rejected up front alongside
+// null and an absent field: an unset price must read as "nothing recorded",
+// never as a price of AED 0.
 const purchasePriceAed = (deal: LeadDeal): number | null => {
   const money = deal.fields.purchasePrice as { amountMicros?: unknown } | null | undefined;
-  return money && typeof money.amountMicros === 'number' ? money.amountMicros / 1_000_000 : null;
+  const raw = money?.amountMicros;
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n / 1_000_000 : null;
 };
 
 // setDealField refuses FORBIDDEN when the DEAL (not the lead) belongs to another
@@ -408,7 +432,7 @@ const AddFollowUp = ({
     else if (when === 'TOMORROW_10') dueIso = tomorrowTenAmIn(zoneFor(country));
     else {
       if (!customWhen) return;
-      // customTimeInZone (OutcomeSheet.tsx) reads the typed digits as wall-clock
+      // customTimeInZone (words.ts) reads the typed digits as wall-clock
       // time in the LEAD's zone, not the agent's own browser zone. A bare
       // `new Date(customWhen).toISOString()` here (the previous bug) meant this
       // control and the outcome sheet's own "Pick a time" disagreed by up to
