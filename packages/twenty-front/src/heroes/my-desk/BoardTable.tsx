@@ -424,7 +424,11 @@ export const BoardTable = ({
   /** Top bar's "Today's plan" focus mode — ANDs a "needs you today" pass over
    *  every other filter, and re-labels the header count to the focused subset. */
   focusToday: boolean;
-  /** Row click opens the peek drawer; action clicks are kept separate below. */
+  /** Row click NAVIGATES to the record page (index.tsx wires it to deskRecordPath);
+   *  action clicks are kept separate below via the actionClickRef flag. It opened the
+   *  peek drawer until 2026-09-08 — and this line still said so afterwards, which is how
+   *  a change aimed at "the row-open action" landed on the overflow menu instead of the
+   *  row click. If you change the wiring, change this line with it. */
   onRowClick: (row: DeskRow) => void;
   onRowAction: (action: 'call' | 'whatsapp' | 'note' | 'task' | 'viewing' | 'snooze' | 'open', row: DeskRow) => void;
   onStagePick: (row: DeskRow, anchor: StagePickerAnchor) => void;
