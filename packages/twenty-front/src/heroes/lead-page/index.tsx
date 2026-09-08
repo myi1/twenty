@@ -31,11 +31,22 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
   const [storyReload, setStoryReload] = useState(0);
   const phone = usePhoneLayout();
   const callStartedAt = useRef<number | null>(null);
+  const dataRef = useRef<LeadLoad | null>(null);
+  dataRef.current = data;
 
+  // A first load with no data yet on screen shows the error block: there is
+  // nothing else to show. A background refresh (the visibilitychange listener
+  // below fires one every time the agent switches back to this tab) must not
+  // blank out a page that already loaded successfully; it surfaces the
+  // failure as a toast instead and leaves the page exactly as it was.
   const reload = useCallback(async () => {
     if (!personId) { setError('No lead was given. Open this page from a lead.'); return; }
     const r = await loadLead(host, personId);
-    if (!r || r.ok === false) { setError(errorText(r)); return; }
+    if (!r || r.ok === false) {
+      if (dataRef.current) { host.notify(errorText(r), 'warning'); return; }
+      setError(errorText(r));
+      return;
+    }
     setError(null); setData(r); setStoryReload((v) => v + 1);
   }, [host, personId]);
 
@@ -72,10 +83,10 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
       <HeroTypingGuard>
         <PageContainer>
           <LeadNocturne>
-            {error && (
+            {error && !data && (
               <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 480 }}>
                 <div style={{ fontSize: 15 }}>{error}</div>
-                <Btn variant="secondary" onClick={() => host.navigate(personId ? `/object/person/${personId}` : '/')}>Back to the contact</Btn>
+                <Btn variant="secondary" style={{ minHeight: 44 }} onClick={() => host.navigate(personId ? `/object/person/${personId}` : '/')}>Back to the contact</Btn>
               </div>
             )}
             {!error && !data && <div style={{ padding: 24, display: 'grid', gap: 12 }}><Skeleton style={{ width: 240, height: 24 }} /><Skeleton style={{ width: 360 }} /><Skeleton style={{ width: 300 }} /></div>}

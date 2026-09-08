@@ -126,9 +126,12 @@ export const StoryList = styled.div`
   min-width: 0;
 `;
 
+// 12px, not the 11px an earlier draft had. This page is read on a phone, often at
+// night, and the day separator is what an agent scans to find "what happened when".
+// The repo has 11px meta labels elsewhere, but our own floor is 12 and it costs nothing.
 export const DaySep = styled.div`
   text-align: center;
-  font: 600 11px ${FONT_UI};
+  font: 600 12px ${FONT_UI};
   letter-spacing: 0.04em;
   color: var(--p-ink-2);
   padding: 8px 0;

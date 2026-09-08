@@ -47,7 +47,7 @@ export const createDeal = (host: PropelHeroHost, laneKey: 'offplan' | 'secondary
 export const movePipeline = (host: PropelHeroHost, sourceLane: string, destinationLane: string, dealId: string) =>
   host.callPropelRoute<{ error?: string; moved?: number }>('/opportunities/move', { sourceLane, destinationLane, sourceIds: [dealId] });
 export const draftCallNote = (host: PropelHeroHost, personId: string) =>
-  host.callPropelRoute<{ ok: true; draft: string; why: string } | { ok: false; code: string }>('/my-desk/assist', { action: 'callNote', laneObject: 'lead', recordId: personId });
+  host.callPropelRoute<{ ok: true; draft: string; why: string } | { ok: false; code?: string; error?: string }>('/my-desk/assist', { action: 'callNote', laneObject: 'lead', recordId: personId });
 export const sendFirstWhatsApp = (host: PropelHeroHost, waPhoneNumber: string, personId: string, body: string) =>
   host.callPropelRoute<{ kind?: 'SENT' | 'QUEUED_FOR_RETRY' | 'REJECTED'; reason?: string; error?: string; conversationId?: string }>('/whatsapp/send', { waPhoneNumber, personId, body });
 
