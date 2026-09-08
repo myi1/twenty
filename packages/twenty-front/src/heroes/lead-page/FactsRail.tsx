@@ -4,11 +4,11 @@
 // host.notify(..., 'warning') on failure (leaving the agent's input untouched so
 // they can retry without retyping), call onChanged() on success.
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Checkbox, Collapse, NumberInput, Popover, SegmentedControl, Select, Textarea, TextInput } from '@mantine/core';
 import styled from '@emotion/styled';
 import type { PropelHeroHost } from '@/propel/runtime/heroHost';
-import { Btn } from '../_pulse/pulse';
+import { Btn, NOCTURNE_LIGHT_VARS, PulseScope } from '../_pulse/pulse';
 import { Group, GroupTitle, Pill, Rail, Row } from './styles';
 import {
   completeTask,
@@ -94,6 +94,21 @@ const MutedNote = styled.div`
   color: var(--p-ink-2);
 `;
 
+// Mantine's Popover defaults to withinPortal, mounting its Dropdown straight into
+// document.body, outside LeadNocturne's `--p-*` token declarations (pulse.tsx).
+// Every var(--p-...) inside would otherwise resolve to nothing: the "All stages"
+// list's primary/ghost Btns and AddFollowUp's datetime input both rely on the
+// ledger. PulseScope re-declares it; display:contents keeps the wrapper invisible
+// to layout. The light-mode selector mirrors LeadNocturne's own (styles.ts),
+// duplicated here (and in OutcomeSheet.tsx / LeadHeader.tsx) because styles.ts is
+// outside this fix's file scope.
+const PulsePortalScope = styled(PulseScope)`
+  display: contents;
+  html[data-mantine-color-scheme='light'] & {
+    ${NOCTURNE_LIGHT_VARS}
+  }
+`;
+
 // ── the stage stepper (off-plan: prev / current / next + "+N more"; other
 // lanes: the current stage word only, per the brief) ─────────────────────────
 const StageStepper = ({ host, deal, onChanged }: { host: PropelHeroHost; deal: LeadDeal; onChanged: () => void }) => {
@@ -145,19 +160,21 @@ const StageStepper = ({ host, deal, onChanged }: { host: PropelHeroHost; deal: L
             </Btn>
           </Popover.Target>
           <Popover.Dropdown>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 170 }}>
-              {OFFPLAN_STAGES.map((s) => (
-                <Btn
-                  key={s}
-                  variant={s === deal.stage ? 'primary' : 'ghost'}
-                  disabled={s === deal.stage || moveBusy}
-                  onClick={() => void moveTo(s)}
-                  style={{ justifyContent: 'flex-start', minHeight: 44 }}
-                >
-                  {stageWords(s)}
-                </Btn>
-              ))}
-            </div>
+            <PulsePortalScope>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 170 }}>
+                {OFFPLAN_STAGES.map((s) => (
+                  <Btn
+                    key={s}
+                    variant={s === deal.stage ? 'primary' : 'ghost'}
+                    disabled={s === deal.stage || moveBusy}
+                    onClick={() => void moveTo(s)}
+                    style={{ justifyContent: 'flex-start', minHeight: 44 }}
+                  >
+                    {stageWords(s)}
+                  </Btn>
+                ))}
+              </div>
+            </PulsePortalScope>
           </Popover.Dropdown>
         </Popover>
       )}
@@ -380,39 +397,41 @@ const AddFollowUp = ({
         </Btn>
       </Popover.Target>
       <Popover.Dropdown>
-        <FieldStack style={{ width: 260 }}>
-          <TextInput
-            label="What"
-            placeholder="e.g. Call back about the villa"
-            value={title}
-            onChange={(e) => setTitle(e.currentTarget.value)}
-          />
-          <SegmentedControl fullWidth data={KIND_OPTIONS} value={kind} onChange={(v) => setKind(v as typeof kind)} />
-          <SegmentedControl fullWidth data={WHEN_OPTIONS} value={when} onChange={(v) => setWhen(v as typeof when)} />
-          {when === 'CUSTOM' && (
-            <input
-              type="datetime-local"
-              value={customWhen}
-              onChange={(e) => setCustomWhen(e.currentTarget.value)}
-              style={{
-                minHeight: 44,
-                borderRadius: 8,
-                border: '1px solid var(--p-line)',
-                background: 'var(--p-surface)',
-                color: 'var(--p-ink)',
-                padding: '0 10px',
-              }}
+        <PulsePortalScope>
+          <FieldStack style={{ width: 260 }}>
+            <TextInput
+              label="What"
+              placeholder="e.g. Call back about the villa"
+              value={title}
+              onChange={(e) => setTitle(e.currentTarget.value)}
             />
-          )}
-          <Btn
-            variant="primary"
-            disabled={busy || !title.trim() || (when === 'CUSTOM' && !customWhen)}
-            onClick={() => void save()}
-            style={{ justifyContent: 'center', minHeight: 44 }}
-          >
-            Save
-          </Btn>
-        </FieldStack>
+            <SegmentedControl fullWidth data={KIND_OPTIONS} value={kind} onChange={(v) => setKind(v as typeof kind)} />
+            <SegmentedControl fullWidth data={WHEN_OPTIONS} value={when} onChange={(v) => setWhen(v as typeof when)} />
+            {when === 'CUSTOM' && (
+              <input
+                type="datetime-local"
+                value={customWhen}
+                onChange={(e) => setCustomWhen(e.currentTarget.value)}
+                style={{
+                  minHeight: 44,
+                  borderRadius: 8,
+                  border: '1px solid var(--p-line)',
+                  background: 'var(--p-surface)',
+                  color: 'var(--p-ink)',
+                  padding: '0 10px',
+                }}
+              />
+            )}
+            <Btn
+              variant="primary"
+              disabled={busy || !title.trim() || (when === 'CUSTOM' && !customWhen)}
+              onClick={() => void save()}
+              style={{ justifyContent: 'center', minHeight: 44 }}
+            >
+              Save
+            </Btn>
+          </FieldStack>
+        </PulsePortalScope>
       </Popover.Dropdown>
     </Popover>
   );
@@ -421,33 +440,26 @@ const AddFollowUp = ({
 export const FactsRail = ({
   host,
   data,
+  activeDealId,
+  onActiveDealChange,
   onChanged,
 }: {
   host: PropelHeroHost;
   data: LeadLoad;
+  // Lifted to index.tsx (and shared with OutcomeSheet) so the deal a chip click
+  // makes active here is the SAME deal an outcome logged from this page writes
+  // to: a local, rail-only activeDealId let the sheet silently disagree with
+  // whatever the agent had actually switched to. The healing effect that used
+  // to live here (fires on the "no deal selected yet, but one now exists"
+  // transition, and after /opportunities/move recreates a deal under a NEW id)
+  // now lives alongside the lifted state in index.tsx.
+  activeDealId: string | null;
+  onActiveDealChange: (dealId: string) => void;
   onChanged: () => void;
 }) => {
   const { person } = data;
-  const [activeDealId, setActiveDealId] = useState<string | null>(
-    () => data.selectedDealId ?? data.deals[0]?.id ?? null,
-  );
   const [creatingDeal, setCreatingDeal] = useState(false);
   const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
-
-  // Fires on the "no deal selected yet, but one now exists" transition (e.g. just
-  // created via "Start one…"), and also heals a stale activeDealId that no longer
-  // matches anything: /opportunities/move recreates the deal in the destination
-  // lane with a NEW id and soft-deletes the source, so after a move the id this
-  // rail is holding points at nothing. Either case falls back the same way, and a
-  // manual chip pick afterward is never fought because that pick IS a deal that
-  // still exists.
-  useEffect(() => {
-    if (data.deals.length === 0) return;
-    const stillExists = activeDealId !== null && data.deals.some((d) => d.id === activeDealId);
-    if (activeDealId === null || !stillExists) {
-      setActiveDealId(data.selectedDealId ?? data.deals[0]!.id);
-    }
-  }, [data.deals, data.selectedDealId, activeDealId]);
 
   const deal = data.deals.find((d) => d.id === activeDealId) ?? null;
 
@@ -541,7 +553,7 @@ export const FactsRail = ({
                   <button
                     key={d.id}
                     type="button"
-                    onClick={() => setActiveDealId(d.id)}
+                    onClick={() => onActiveDealChange(d.id)}
                     style={{
                       border: 0,
                       background: 'none',

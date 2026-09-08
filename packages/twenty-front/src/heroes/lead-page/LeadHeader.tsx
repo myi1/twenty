@@ -17,7 +17,7 @@ import type { PropelHeroHost } from '@/propel/runtime/heroHost';
 import { startPropelCall } from '@/dialer-dock/utils/startPropelCall';
 import { assignLead, listInboxAgents } from '@/propel/lib/inboxApi';
 import type { InboxAgentOption } from '@/propel/types/inbox';
-import { Btn, FONT_DISPLAY, FONT_MONO } from '../_pulse/pulse';
+import { Btn, FONT_DISPLAY, FONT_MONO, NOCTURNE_LIGHT_VARS, PulseScope } from '../_pulse/pulse';
 import { Pill } from './styles';
 import { errorText, markLost, movePipeline, setName } from './leadApi';
 import { LOST_REASONS, dueWords, relativeWords, stageWords, timeThere, zoneWords } from './words';
@@ -184,6 +184,22 @@ const ModalActions = styled.div`
   justify-content: flex-end;
   gap: 8px;
   margin-top: 4px;
+`;
+
+// Mantine's Modal/Menu/Popover all default to withinPortal, mounting straight
+// into document.body, outside LeadNocturne's `--p-*` token declarations
+// (pulse.tsx). Every var(--p-...) inside would otherwise resolve to nothing:
+// most visibly the "Mark lost" button's explicit `var(--p-bad)` background and
+// every primary/secondary Btn's gradient. PulseScope re-declares the ledger;
+// display:contents keeps the wrapper invisible to layout. The light-mode
+// selector mirrors LeadNocturne's own (styles.ts), duplicated here (and in
+// OutcomeSheet.tsx / FactsRail.tsx) because styles.ts is outside this fix's
+// file scope.
+const PulsePortalScope = styled(PulseScope)`
+  display: contents;
+  html[data-mantine-color-scheme='light'] & {
+    ${NOCTURNE_LIGHT_VARS}
+  }
 `;
 
 export const LeadHeader = ({
@@ -365,18 +381,20 @@ export const LeadHeader = ({
                   </Btn>
                 </Popover.Target>
                 <Popover.Dropdown>
-                  <ModalFieldStack style={{ width: 220 }}>
-                    <TextInput label="First name" value={firstName} onChange={(e) => setFirstName(e.currentTarget.value)} />
-                    <TextInput label="Last name" value={lastName} onChange={(e) => setLastName(e.currentTarget.value)} />
-                    <Btn
-                      variant="primary"
-                      disabled={savingName || (!firstName.trim() && !lastName.trim())}
-                      onClick={() => void saveName()}
-                      style={{ justifyContent: 'center', minHeight: 44 }}
-                    >
-                      Save
-                    </Btn>
-                  </ModalFieldStack>
+                  <PulsePortalScope>
+                    <ModalFieldStack style={{ width: 220 }}>
+                      <TextInput label="First name" value={firstName} onChange={(e) => setFirstName(e.currentTarget.value)} />
+                      <TextInput label="Last name" value={lastName} onChange={(e) => setLastName(e.currentTarget.value)} />
+                      <Btn
+                        variant="primary"
+                        disabled={savingName || (!firstName.trim() && !lastName.trim())}
+                        onClick={() => void saveName()}
+                        style={{ justifyContent: 'center', minHeight: 44 }}
+                      >
+                        Save
+                      </Btn>
+                    </ModalFieldStack>
+                  </PulsePortalScope>
                 </Popover.Dropdown>
               </Popover>
             )}
@@ -415,9 +433,11 @@ export const LeadHeader = ({
                 <Btn variant="ghost">More</Btn>
               </Menu.Target>
               <Menu.Dropdown>
-                {selectedDeal && <Menu.Item onClick={() => setMoveOpen(true)}>Move to another pipeline</Menu.Item>}
-                <Menu.Item onClick={() => setLostOpen(true)}>Mark lost / do not contact</Menu.Item>
-                <Menu.Item onClick={() => host.navigate(`/object/person/${person.id}`)}>Open the full record</Menu.Item>
+                <PulsePortalScope>
+                  {selectedDeal && <Menu.Item onClick={() => setMoveOpen(true)}>Move to another pipeline</Menu.Item>}
+                  <Menu.Item onClick={() => setLostOpen(true)}>Mark lost / do not contact</Menu.Item>
+                  <Menu.Item onClick={() => host.navigate(`/object/person/${person.id}`)}>Open the full record</Menu.Item>
+                </PulsePortalScope>
               </Menu.Dropdown>
             </Menu>
           </ActionsRow>
@@ -464,50 +484,54 @@ export const LeadHeader = ({
       {lastTouchRel && <NextLine>{`Last touch: ${lastTouchRel}`}</NextLine>}
 
       <Modal opened={moveOpen} onClose={() => setMoveOpen(false)} title="Move to another pipeline" zIndex={5000} centered>
-        <ModalFieldStack>
-          <Select
-            label="Move to"
-            placeholder="Pick a pipeline"
-            data={laneOptions}
-            value={moveDest}
-            onChange={setMoveDest}
-            comboboxProps={{ zIndex: 5000 }}
-          />
-          <ModalActions>
-            <Btn variant="secondary" onClick={() => setMoveOpen(false)}>
-              Cancel
-            </Btn>
-            <Btn variant="primary" disabled={!moveDest || moveBusy} onClick={() => void confirmMove()}>
-              Move
-            </Btn>
-          </ModalActions>
-        </ModalFieldStack>
+        <PulsePortalScope>
+          <ModalFieldStack>
+            <Select
+              label="Move to"
+              placeholder="Pick a pipeline"
+              data={laneOptions}
+              value={moveDest}
+              onChange={setMoveDest}
+              comboboxProps={{ zIndex: 5000 }}
+            />
+            <ModalActions>
+              <Btn variant="secondary" onClick={() => setMoveOpen(false)}>
+                Cancel
+              </Btn>
+              <Btn variant="primary" disabled={!moveDest || moveBusy} onClick={() => void confirmMove()}>
+                Move
+              </Btn>
+            </ModalActions>
+          </ModalFieldStack>
+        </PulsePortalScope>
       </Modal>
 
       <Modal opened={lostOpen} onClose={() => setLostOpen(false)} title="Mark lost / do not contact" zIndex={5000} centered>
-        <ModalFieldStack>
-          <Select
-            label="Reason"
-            placeholder="Pick a reason"
-            data={LOST_REASONS}
-            value={lostReason}
-            onChange={setLostReason}
-            comboboxProps={{ zIndex: 5000 }}
-          />
-          <ModalActions>
-            <Btn variant="secondary" onClick={() => setLostOpen(false)}>
-              Cancel
-            </Btn>
-            <Btn
-              variant="secondary"
-              disabled={!lostReason || lostBusy}
-              onClick={() => void confirmLost()}
-              style={{ background: 'var(--p-bad)', color: '#fff', borderColor: 'var(--p-bad)' }}
-            >
-              Mark lost
-            </Btn>
-          </ModalActions>
-        </ModalFieldStack>
+        <PulsePortalScope>
+          <ModalFieldStack>
+            <Select
+              label="Reason"
+              placeholder="Pick a reason"
+              data={LOST_REASONS}
+              value={lostReason}
+              onChange={setLostReason}
+              comboboxProps={{ zIndex: 5000 }}
+            />
+            <ModalActions>
+              <Btn variant="secondary" onClick={() => setLostOpen(false)}>
+                Cancel
+              </Btn>
+              <Btn
+                variant="secondary"
+                disabled={!lostReason || lostBusy}
+                onClick={() => void confirmLost()}
+                style={{ background: 'var(--p-bad)', color: '#fff', borderColor: 'var(--p-bad)' }}
+              >
+                Mark lost
+              </Btn>
+            </ModalActions>
+          </ModalFieldStack>
+        </PulsePortalScope>
       </Modal>
     </HeaderWrap>
   );

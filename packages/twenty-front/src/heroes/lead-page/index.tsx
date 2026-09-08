@@ -32,6 +32,26 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
   const phone = usePhoneLayout();
   const callStartedAt = useRef<number | null>(null);
 
+  // The ONE deal id the whole page agrees on: which chip FactsRail shows as
+  // active, and which deal OutcomeSheet writes the outcome and any stage move
+  // to. Lifted up from FactsRail (which used to own this locally) because a
+  // sheet computing its own answer from `data.selectedDealId` could silently
+  // disagree with whatever deal the agent had actually switched to in the
+  // rail, logging a call outcome, or moving a stage, against the wrong deal.
+  const [activeDealId, setActiveDealId] = useState<string | null>(null);
+
+  // Heals a stale or missing activeDealId: ported from FactsRail.tsx's own
+  // effect (same trigger: /opportunities/move recreates a deal with a NEW id
+  // and soft-deletes the source, so an id this hero is holding can point at
+  // nothing after a move) now that the state itself lives here instead.
+  useEffect(() => {
+    if (!data || data.deals.length === 0) return;
+    const stillExists = activeDealId !== null && data.deals.some((d) => d.id === activeDealId);
+    if (activeDealId === null || !stillExists) {
+      setActiveDealId(data.selectedDealId ?? data.deals[0]!.id);
+    }
+  }, [data, activeDealId]);
+
   // personId comes from host.searchParams, which is live: HeroRoute reads it
   // with react-router's useSearchParams, so changing ?id= re-renders this
   // hero with a new personId WITHOUT remounting it. Without this reset, the
@@ -41,7 +61,22 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
   // rendered under the new lead's URL.
   const loadedFor = useRef<string | null>(null);
   const requestSeq = useRef(0);
-  useEffect(() => { setData(null); setError(null); loadedFor.current = null; requestSeq.current += 1; }, [personId]);
+  // callStartedAt.current is reset here too: the fourth path of the same
+  // wrong-record class in this file. Without it, navigating from a lead with a
+  // call in progress to another lead left the poll armed with the FIRST lead's
+  // start time, so a call ending on the new lead popped the outcome sheet for
+  // the old one. activeDealId is reset alongside it for the same reason: an old
+  // lead's deal id happening to still look "valid" (it never will, ids are
+  // globally unique, but nothing should rely on that) has no business
+  // surviving a navigation to a different lead.
+  useEffect(() => {
+    setData(null);
+    setError(null);
+    loadedFor.current = null;
+    requestSeq.current += 1;
+    callStartedAt.current = null;
+    setActiveDealId(null);
+  }, [personId]);
 
   // A first load with no data yet on screen shows the error block: there is
   // nothing else to show. A background refresh (the visibilitychange listener
@@ -128,7 +163,9 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
                   </PhoneTabs>
                 )}
                 <Columns $phone={phone}>
-                  {(!phone || tab === 'facts') && <FactsRail host={host} data={data} onChanged={reload} />}
+                  {(!phone || tab === 'facts') && (
+                    <FactsRail host={host} data={data} activeDealId={activeDealId} onActiveDealChange={setActiveDealId} onChanged={reload} />
+                  )}
                   {(!phone || tab === 'story') && <Story host={host} data={data} reloadToken={storyReload} onChanged={reload} />}
                 </Columns>
                 {phone && (
@@ -138,7 +175,16 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
                     <Btn variant="primary" onClick={openSheet}>Log outcome</Btn>
                   </PhoneBar>
                 )}
-                <OutcomeSheet host={host} data={data} open={sheet.open} callSeconds={sheet.callSeconds} phone={phone} onClose={() => setSheet({ open: false, callSeconds: null })} onSaved={() => { setSheet({ open: false, callSeconds: null }); void reload(); }} />
+                <OutcomeSheet
+                  host={host}
+                  data={data}
+                  activeDealId={activeDealId}
+                  open={sheet.open}
+                  callSeconds={sheet.callSeconds}
+                  phone={phone}
+                  onClose={() => setSheet({ open: false, callSeconds: null })}
+                  onSaved={() => { setSheet({ open: false, callSeconds: null }); void reload(); }}
+                />
               </>
             )}
           </LeadNocturne>
