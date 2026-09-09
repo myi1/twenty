@@ -78,7 +78,13 @@ export const OUTCOME_WORDS: Record<string, { label: string; hint: string }> = {
   NOT_INTERESTED: { label: 'Not interested', hint: 'Marks the lead lost' },
   WRONG_NUMBER: { label: 'Wrong number', hint: 'Do not contact again' },
 };
-export const LOST_REASONS = ['Not interested', 'Bought elsewhere', 'Budget', 'Timing', 'Wrong number', 'Other'];
+// LOST_REASONS was here: six invented labels ('Budget', 'Wrong number', …) sent to
+// the CRM as free text. They matched no lane's stored values, which is why every
+// closed opportunity on prod carries a NULL loss reason — the agent picked, and the
+// CRM had nothing to write. The real options are per-lane and now arrive on each
+// deal (`LeadDeal.lostReasons`, served from the CRM's lead-outcome.ts). Deliberately
+// not left behind as a fallback: a plausible-looking constant is exactly what would
+// get wired back in.
 export const zoneFor = (country: string | null) => (country === 'UK' ? 'Europe/London' : 'Asia/Dubai');
 export const zoneWords = (country: string | null) => (country === 'UK' ? 'UK time' : 'Dubai time');
 export const timeThere = (country: string | null, now = new Date()) =>

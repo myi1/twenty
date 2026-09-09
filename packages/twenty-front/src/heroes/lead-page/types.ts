@@ -37,6 +37,16 @@ export type LeadDeal = {
   status: string | null;
   updatedAt: string;
   fields: Record<string, unknown>;
+  // How THIS lane closes, served by the route from lead-outcome.ts. The four lanes
+  // with a loss reason of their own do not share a vocabulary (buyerLostReason,
+  // sellerLostReason, offplanLostReason, rcbiLostReason; institutional keeps the
+  // generic lostReason), so the picker's options are a per-DEAL fact, never a
+  // constant in this bundle. A hardcoded list is what the page had before, and it
+  // is why every closed opportunity on prod carries a NULL reason: the labels it
+  // offered ("Budget", "Wrong number") were not values any lane could store.
+  lostReasons?: { value: string; label: string }[];
+  wonStage?: string;
+  isWon?: boolean;
 };
 
 // my-desk-timeline-page.ts's TimelineEvent, verbatim.

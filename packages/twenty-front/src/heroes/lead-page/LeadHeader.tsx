@@ -20,8 +20,8 @@ import { assignLead, listInboxAgents } from '@/propel/lib/inboxApi';
 import type { InboxAgentOption } from '@/propel/types/inbox';
 import { Btn, FONT_DISPLAY, FONT_MONO, NOCTURNE_LIGHT_VARS, PulseScope } from '../_pulse/pulse';
 import { Pill } from './styles';
-import { errorText, markLost, movePipeline, setName } from './leadApi';
-import { LOST_REASONS, dueWords, relativeWords, rotationWords, stageWords, timeThere, zoneWords } from './words';
+import { errorText, markLost, markWon, movePipeline, setName } from './leadApi';
+import { dueWords, relativeWords, rotationWords, stageWords, timeThere, zoneWords } from './words';
 import type { LeadDeal, LeadLoad } from './types';
 
 // The five lane keys createDeal / movePipeline speak, with the plain-language
@@ -237,6 +237,16 @@ const ModalActions = styled.div`
   margin-top: 4px;
 `;
 
+// A plain sentence above the fields, for a modal whose consequence is not obvious
+// from its title — "Mark won" moves a stage AND hands the record to the deal
+// automation, and an agent should be told that before they press it, not after.
+const ModalHint = styled.p`
+  margin: 0;
+  color: var(--p-ink-2);
+  font-size: 13px;
+  line-height: 1.45;
+`;
+
 // Mantine's Modal/Menu/Popover all default to withinPortal, mounting straight
 // into document.body, outside LeadNocturne's `--p-*` token declarations
 // (pulse.tsx). Every var(--p-...) inside would otherwise resolve to nothing:
@@ -382,22 +392,61 @@ export const LeadHeader = ({
     onChanged();
   };
 
-  // ── mark lost ────────────────────────────────────────────────────────────
+  // ── close the lead out ───────────────────────────────────────────────────
+  // One save now does what used to take four places and so got done in one: the
+  // record closes, the lane's loss-reason column is filled, and a reason that means
+  // the person was never a real buyer stamps that verdict on the contact too.
   const [lostOpen, setLostOpen] = useState(false);
   const [lostReason, setLostReason] = useState<string | null>(null);
+  const [lostNote, setLostNote] = useState('');
   const [lostBusy, setLostBusy] = useState(false);
 
+  // The options come from the SELECTED DEAL, because they are that lane's own
+  // vocabulary. With no deal open there is no lane, so there is no list to show and
+  // the reason picker is not offered — the free-text line still closes the contact.
+  const laneReasons = selectedDeal?.lostReasons ?? [];
+
   const confirmLost = async () => {
-    if (!lostReason) return;
+    if (laneReasons.length > 0 && !lostReason) return;
+    if (laneReasons.length === 0 && !lostNote.trim()) return;
     setLostBusy(true);
-    const r = await markLost(host, person.id, lostReason, selectedDeal?.id, selectedDeal?.lane);
+    const r = await markLost(host, person.id, {
+      ...(lostReason ? { reasonCode: lostReason } : {}),
+      ...(lostNote.trim() ? { reason: lostNote.trim() } : {}),
+      dealId: selectedDeal?.id,
+      lane: selectedDeal?.lane,
+    });
     setLostBusy(false);
     if (!r || r.ok === false) {
       host.notify(errorText(r), 'warning');
       return;
     }
+    // Say what was actually recorded. "Not a real lead" is a different statement
+    // from "lost", and the agent should see which one they just made.
+    host.notify(r.junk ? 'Recorded — not a real lead' : 'Recorded as closed', 'success');
     setLostOpen(false);
     setLostReason(null);
+    setLostNote('');
+    onChanged();
+  };
+
+  // ── won ──────────────────────────────────────────────────────────────────
+  const [wonOpen, setWonOpen] = useState(false);
+  const [wonNote, setWonNote] = useState('');
+  const [wonBusy, setWonBusy] = useState(false);
+
+  const confirmWon = async () => {
+    if (!selectedDeal) return;
+    setWonBusy(true);
+    const r = await markWon(host, person.id, selectedDeal.id, selectedDeal.lane, wonNote.trim() || undefined);
+    setWonBusy(false);
+    if (!r || r.ok === false) {
+      host.notify(errorText(r), 'warning');
+      return;
+    }
+    host.notify(r.alreadyWon ? 'Already marked won' : 'Marked won 🎉', 'success');
+    setWonOpen(false);
+    setWonNote('');
     onChanged();
   };
 
@@ -510,7 +559,13 @@ export const LeadHeader = ({
               <Menu.Dropdown>
                 <PulsePortalScope>
                   {selectedDeal && <Menu.Item onClick={() => setMoveOpen(true)}>Move to another pipeline</Menu.Item>}
-                  <Menu.Item onClick={() => setLostOpen(true)}>Mark lost / do not contact</Menu.Item>
+                  {/* Won sits above the close-out, and only when there is a deal to
+                      win. Until now there was no way to say this from the page an
+                      agent works in — the record had to be moved on a board. */}
+                  {selectedDeal && !selectedDeal.isWon && (
+                    <Menu.Item onClick={() => setWonOpen(true)}>Mark won 🎉</Menu.Item>
+                  )}
+                  <Menu.Item onClick={() => setLostOpen(true)}>Close this lead…</Menu.Item>
                   <Menu.Item onClick={() => host.navigate(`/object/person/${person.id}`)}>Open the full record</Menu.Item>
                 </PulsePortalScope>
               </Menu.Dropdown>
@@ -594,16 +649,28 @@ export const LeadHeader = ({
         </PulsePortalScope>
       </Modal>
 
-      <Modal opened={lostOpen} onClose={() => setLostOpen(false)} title="Mark lost / do not contact" zIndex={5000} centered>
+      <Modal opened={lostOpen} onClose={() => setLostOpen(false)} title="Close this lead" zIndex={5000} centered>
         <PulsePortalScope>
           <ModalFieldStack>
-            <Select
-              label="Reason"
-              placeholder="Pick a reason"
-              data={LOST_REASONS}
-              value={lostReason}
-              onChange={setLostReason}
-              comboboxProps={{ zIndex: 5000 }}
+            {laneReasons.length > 0 && (
+              <Select
+                label="Why?"
+                description="This fills the reason on the deal — one save, nothing left blank."
+                placeholder="Pick a reason"
+                // The lane's own values, served by the route. `value` is the stored
+                // SELECT code and `label` is what the agent reads; sending the label
+                // is what the old hardcoded list did, and nothing could store it.
+                data={laneReasons.map((r) => ({ value: r.value, label: r.label }))}
+                value={lostReason}
+                onChange={setLostReason}
+                comboboxProps={{ zIndex: 5000 }}
+              />
+            )}
+            <TextInput
+              label="Anything to add?"
+              placeholder="Optional — goes in the note"
+              value={lostNote}
+              onChange={(e) => setLostNote(e.currentTarget.value)}
             />
             <ModalActions>
               <Btn variant="secondary" onClick={() => setLostOpen(false)}>
@@ -611,11 +678,42 @@ export const LeadHeader = ({
               </Btn>
               <Btn
                 variant="secondary"
-                disabled={!lostReason || lostBusy}
+                disabled={(laneReasons.length > 0 ? !lostReason : !lostNote.trim()) || lostBusy}
                 onClick={() => void confirmLost()}
                 style={{ background: 'var(--p-bad)', color: '#fff', borderColor: 'var(--p-bad)' }}
               >
-                Mark lost
+                {lostBusy ? 'Saving…' : 'Close lead'}
+              </Btn>
+            </ModalActions>
+          </ModalFieldStack>
+        </PulsePortalScope>
+      </Modal>
+
+      <Modal opened={wonOpen} onClose={() => setWonOpen(false)} title="Mark this won" zIndex={5000} centered>
+        <PulsePortalScope>
+          <ModalFieldStack>
+            <ModalHint>
+              {selectedDeal
+                ? `Moves the ${selectedDeal.laneLabel.toLowerCase()} deal to ${stageWords(selectedDeal.wonStage ?? '')} and hands it over — the deal record, the close date and the owner's alert all follow automatically.`
+                : ''}
+            </ModalHint>
+            <TextInput
+              label="Anything to add?"
+              placeholder="Optional — goes in the note"
+              value={wonNote}
+              onChange={(e) => setWonNote(e.currentTarget.value)}
+            />
+            <ModalActions>
+              <Btn variant="secondary" onClick={() => setWonOpen(false)}>
+                Cancel
+              </Btn>
+              <Btn
+                variant="secondary"
+                disabled={wonBusy || !selectedDeal}
+                onClick={() => void confirmWon()}
+                style={{ background: 'var(--p-good)', color: '#fff', borderColor: 'var(--p-good)' }}
+              >
+                {wonBusy ? 'Saving…' : 'Mark won'}
               </Btn>
             </ModalActions>
           </ModalFieldStack>

@@ -31,8 +31,35 @@ export const completeTask = (host: PropelHeroHost, taskId: string) =>
 // The route derives the lane from the record itself (it no longer trusts a
 // caller-supplied lane); `lane` is still sent because the contract accepts it, but
 // it is advisory only.
-export const markLost = (host: PropelHeroHost, personId: string, reason: string, dealId?: string, lane?: string) =>
-  host.callPropelRoute<R<{}>>(ROUTE, { action: 'markLost', personId, reason, ...(dealId ? { dealId, lane } : {}) });
+// `reasonCode` is the lane's own SELECT value (deal.lostReasons) and is what fills
+// the loss-reason column; `reason` stays as the optional free-text line that goes in
+// the note. Sending only free text still works — the route keeps that path for the
+// bundle that is live while this one is being deployed — but it fills no field and
+// can never mark a lead junk, because a free-text label cannot be mapped to a SELECT
+// value without guessing, and a guess here becomes a negative signal sent to Meta
+// about a real person. `ok: true, junk: true` in the reply means the reason chosen
+// said this person was never a real buyer.
+export const markLost = (
+  host: PropelHeroHost,
+  personId: string,
+  opts: { reasonCode?: string; reason?: string; dealId?: string; lane?: string },
+) =>
+  host.callPropelRoute<R<{ junk?: boolean }>>(ROUTE, {
+    action: 'markLost',
+    personId,
+    ...(opts.reasonCode ? { reasonCode: opts.reasonCode } : {}),
+    ...(opts.reason ? { reason: opts.reason } : {}),
+    ...(opts.dealId ? { dealId: opts.dealId, lane: opts.lane } : {}),
+  });
+
+// Moves the opportunity to its lane's won stage. The route writes ONLY that stage —
+// the existing on-<lane>-stage-entered automation is what creates the Deal, notifies
+// the owner and stamps the close date, exactly as it does when the stage is moved on
+// a board. `alreadyWon: true` means the record was already there and nothing moved.
+export const markWon = (host: PropelHeroHost, personId: string, dealId: string, lane: string, line?: string) =>
+  host.callPropelRoute<R<{ wonStage?: string; alreadyWon?: boolean }>>(ROUTE, {
+    action: 'markWon', personId, dealId, lane, ...(line ? { line } : {}),
+  });
 export const setName = (host: PropelHeroHost, personId: string, firstName: string, lastName: string) =>
   host.callPropelRoute<R<{}>>(ROUTE, { action: 'setName', personId, firstName, lastName });
 export const setContactField = (host: PropelHeroHost, personId: string, field: 'email' | 'preferredLanguage', value: string) =>
