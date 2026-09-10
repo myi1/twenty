@@ -14,6 +14,7 @@ import { getTokenPair } from '@/apollo/utils/getTokenPair';
 import { fetchWithRenewal } from '@/apollo/utils/renewAndRetryFetch';
 import {
   createPersonWithPhone,
+  logCallNoteForPerson,
   lookupPeopleByNumbers,
   navigateCrm,
   openWhatsAppInCrm,
@@ -274,7 +275,57 @@ type DialerIframeRequest =
   | { type: 'propel:lookup'; numbers: string[] }
   | { type: 'propel:add-to-crm'; number: string }
   | { type: 'propel:open'; path: string }
-  | { type: 'propel:open-whatsapp'; number: string };
+  | { type: 'propel:open-whatsapp'; number: string }
+  | { type: 'propel:log-call'; entry: DialerLogCallEntry };
+
+// A post-call capture the dialer wants written to the CRM. `id` is the dialer's
+// own call-log entry id: it correlates the reply, nothing more — the dock does
+// not trust it as a CRM key. `personId` is optional because the dialer may have
+// called a number it never resolved; the dock re-resolves and reports honestly
+// when there is no contact to attach to.
+type DialerLogCallEntry = {
+  id: string;
+  number: string;
+  personId?: string;
+  note?: string;
+  disposition?: string;
+  outcome?: string;
+  atMs?: number;
+  durationMs?: number;
+  followUpAtMs?: number;
+};
+
+const optionalStringField = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.length > 0 ? value : undefined;
+
+const optionalNumberField = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+
+// Every field is re-validated here rather than trusted: this message crosses an
+// origin boundary, and `note` ends up in a record the whole brokerage reads.
+const parseLogCallEntry = (value: unknown): DialerLogCallEntry | null => {
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  const candidate = value as Record<string, unknown>;
+  const id = optionalStringField(candidate.id);
+  const number = optionalStringField(candidate.number);
+  if (id === undefined || number === undefined) {
+    return null;
+  }
+  return {
+    id,
+    number,
+    personId: optionalStringField(candidate.personId),
+    // Cap the free text: a runaway paste should not become an unbounded write.
+    note: optionalStringField(candidate.note)?.slice(0, 5000),
+    disposition: optionalStringField(candidate.disposition)?.slice(0, 120),
+    outcome: optionalStringField(candidate.outcome)?.slice(0, 120),
+    atMs: optionalNumberField(candidate.atMs),
+    durationMs: optionalNumberField(candidate.durationMs),
+    followUpAtMs: optionalNumberField(candidate.followUpAtMs),
+  };
+};
 
 const parseDialerIframeRequest = (data: unknown): DialerIframeRequest | null => {
   if (typeof data !== 'object' || data === null) {
@@ -309,6 +360,10 @@ const parseDialerIframeRequest = (data: unknown): DialerIframeRequest | null => 
     candidate.number.length > 0
   ) {
     return { type: 'propel:open-whatsapp', number: candidate.number };
+  }
+  if (candidate.type === 'propel:log-call') {
+    const entry = parseLogCallEntry(candidate.entry);
+    return entry === null ? null : { type: 'propel:log-call', entry };
   }
   return null;
 };
@@ -555,6 +610,43 @@ export const DialerDock = () => {
         }
         case 'propel:open-whatsapp': {
           void openWhatsAppInCrm(request.number);
+          return;
+        }
+        case 'propel:log-call': {
+          const { entry } = request;
+          void (async () => {
+            // Resolve the contact if the dialer never did. No contact => no
+            // note: an unattached note is invisible, which is the bug being
+            // fixed, so the dialer is told and keeps the text on the device.
+            let personId = entry.personId;
+            if (personId === undefined) {
+              const [match] = await lookupPeopleByNumbers([entry.number]);
+              personId = match?.personId;
+            }
+            if (personId === undefined) {
+              postToDialer({
+                type: 'propel:log-call-result',
+                id: entry.id,
+                ok: false,
+                reason: 'no-contact',
+              });
+              return;
+            }
+            const ok = await logCallNoteForPerson({ ...entry, personId });
+            postToDialer({
+              type: 'propel:log-call-result',
+              id: entry.id,
+              ok,
+              ...(ok ? {} : { reason: 'write-failed' }),
+            });
+          })().catch(() => {
+            postToDialer({
+              type: 'propel:log-call-result',
+              id: entry.id,
+              ok: false,
+              reason: 'write-failed',
+            });
+          });
           return;
         }
       }
