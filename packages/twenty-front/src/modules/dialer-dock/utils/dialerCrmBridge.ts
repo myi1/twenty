@@ -281,3 +281,112 @@ export const openWhatsAppInCrm = async (number: string): Promise<void> => {
   }
   navigateCrm(`/search?s=${encodeURIComponent(number)}`);
 };
+
+// ── Post-call note → CRM ─────────────────────────────────────────────────────
+//
+// The gap this closes (found 2026-09-10): the dialer's post-call sheet has said
+// "Save to CRM" since it shipped, but softphone-lab's CrmSink was a STUB —
+// `logCall()` returned 'pending' without a single network call, so every note an
+// agent typed after a call lived only in that browser's localStorage
+// (`propel-dialer-recents`, 100 entries deep) and was never written anywhere.
+// Prod bore that out: of 636 notes in the workspace, zero came from the dialer,
+// and Ayoub's 2026-09-09 call to Gaurav left no row of any kind.
+//
+// Where the note goes, and why here: a Note attached to the PERSON. That is the
+// place the agent already looks — Twenty's built-in Notes tab on the contact —
+// and it is also already read by the lead page's timeline
+// (propel-crm-integration src/shared/lead-timeline.ts loads noteTargets → note
+// on targetPersonId). So nothing new has to be built on the CRM side to make the
+// note visible; it simply had to arrive. A free-text note does not belong on the
+// Call object either: Call is the structured telephony record (direction, trunk,
+// duration, externalId) and carries no body field.
+//
+// Written from the DOCK rather than the dialer iframe for the same reason as
+// every other bridge call here: the dock runs on the CRM origin with the agent's
+// own session, so the note is attributed to the agent and respects their RLS
+// tier. The dialer has no CRM credentials and must not get any.
+
+export type LogCallNoteInput = {
+  personId: string;
+  number: string;
+  note?: string;
+  disposition?: string;
+  outcome?: string;
+  atMs?: number;
+  durationMs?: number;
+  followUpAtMs?: number;
+};
+
+const formatDuration = (ms: number): string => {
+  const total = Math.round(ms / 1000);
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+};
+
+/**
+ * Compose the note body. The agent's own words come FIRST and verbatim — the
+ * call metadata is a footer, never a rewrite of what they typed. An empty note
+ * with only a disposition is still worth writing: "no answer, 0s" is a fact the
+ * lead's history should carry.
+ */
+export const composeCallNote = (
+  input: LogCallNoteInput,
+): { title: string; markdown: string } => {
+  const outcome = input.disposition ?? input.outcome ?? 'Call';
+  const duration =
+    input.durationMs !== undefined && input.durationMs > 0
+      ? formatDuration(input.durationMs)
+      : undefined;
+
+  const facts = [
+    `Number: ${input.number}`,
+    duration !== undefined ? `Duration: ${duration}` : undefined,
+    input.disposition !== undefined ? `Outcome: ${input.disposition}` : undefined,
+    input.followUpAtMs !== undefined
+      ? `Follow-up: ${new Date(input.followUpAtMs).toISOString()}`
+      : undefined,
+  ].filter((line): line is string => line !== undefined);
+
+  const typed = input.note?.trim() ?? '';
+  const markdown =
+    typed.length > 0
+      ? `${typed}\n\n---\n${facts.map((line) => `- ${line}`).join('\n')}`
+      : facts.map((line) => `- ${line}`).join('\n');
+
+  return {
+    title: duration !== undefined ? `📞 ${outcome} · ${duration}` : `📞 ${outcome}`,
+    markdown,
+  };
+};
+
+/**
+ * Write the post-call note onto the contact. Returns true only when BOTH the
+ * note and its person link were created — a note with no target would be
+ * invisible in exactly the way this whole change exists to fix, so a failed
+ * link is reported as failure and the dialer keeps the text on the device.
+ */
+export const logCallNoteForPerson = async (
+  input: LogCallNoteInput,
+): Promise<boolean> => {
+  const { title, markdown } = composeCallNote(input);
+
+  const created = await graphql<{ createNote?: { id?: string } }>(
+    `mutation DialerCreateCallNote($data: NoteCreateInput!) {
+       createNote(data: $data) { id }
+     }`,
+    { data: { title, bodyV2: { markdown } } },
+  );
+  const noteId = created?.createNote?.id;
+  if (noteId === undefined) {
+    return false;
+  }
+
+  const linked = await graphql<{ createNoteTarget?: { id?: string } }>(
+    `mutation DialerLinkCallNote($data: NoteTargetCreateInput!) {
+       createNoteTarget(data: $data) { id }
+     }`,
+    { data: { noteId, targetPersonId: input.personId } },
+  );
+  return linked?.createNoteTarget?.id !== undefined;
+};
