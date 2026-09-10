@@ -583,6 +583,10 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
               onRetry={() => void loadBoard()}
               nowMs={nowMs}
               stripFilter={stripFilter}
+              onStripFilterClear={() => {
+                setStripFilter(null);
+                persist({ stripFilter: null });
+              }}
               focusToday={focusToday}
               view={view}
               onViewChange={(next) => {

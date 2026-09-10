@@ -26,6 +26,16 @@ import type { DeskRailOk, DeskRow } from './types';
 
 export type StripFilter = 'slaAtRisk' | 'viewingToday' | 'unreadWa' | 'taskDueToday';
 
+// ONE source of truth for a tile's name. The board header names the active filter
+// back to the agent using this same map, so the pill can never drift from the tile
+// that set it.
+export const STRIP_FILTER_LABEL: Record<StripFilter, string> = {
+  slaAtRisk: 'Needs you now',
+  viewingToday: 'Viewings today',
+  unreadWa: 'Unread WhatsApp',
+  taskDueToday: 'Tasks due today',
+};
+
 // Reserves the hint line's height while its content is still unknown (a plain
 // space whitespace-collapses to zero height and reserves nothing) — carried
 // over from index.tsx's original S1 scaffold rationale.
@@ -129,7 +139,7 @@ export const TodayStrip = ({
   const tiles: TileSpec[] = [
     {
       key: 'slaAtRisk',
-      label: 'Needs you now',
+      label: STRIP_FILTER_LABEL.slaAtRisk,
       status: boardStatus,
       figure: slaAtRiskCount,
       hint:
@@ -140,21 +150,30 @@ export const TodayStrip = ({
     },
     {
       key: 'viewingToday',
-      label: 'Viewings today',
+      label: STRIP_FILTER_LABEL.viewingToday,
       status: railStatus,
       figure: rail ? rail.viewings.length : null,
       hint: nextViewingClock ? `next at ${nextViewingClock}` : 'none scheduled',
     },
     {
       key: 'unreadWa',
-      label: 'Unread WhatsApp',
+      label: STRIP_FILTER_LABEL.unreadWa,
       status: railStatus,
-      figure: rail ? rail.unreadWa.reduce((n, item) => n + (item.unreadCount ?? 1), 0) : null,
-      hint: rail && rail.unreadWa.length > 0 ? 'conversations waiting on a reply' : 'all caught up',
+      // COUNT CONVERSATIONS, not messages. This summed `unreadCount` while the hint
+      // said "conversations", so a desk with two chats holding 1 and 3 unread read
+      // "4 conversations waiting on a reply" — and contradicted the rail beside it,
+      // which lists the actual two. Every sibling tile counts ITEMS (viewings, tasks),
+      // and clicking this one filters the board to one row per conversation, so the
+      // figure now matches both the rail and the board it opens.
+      figure: rail ? rail.unreadWa.length : null,
+      hint:
+        rail && rail.unreadWa.length > 0
+          ? `conversation${rail.unreadWa.length === 1 ? '' : 's'} waiting on a reply`
+          : 'all caught up',
     },
     {
       key: 'taskDueToday',
-      label: 'Tasks due today',
+      label: STRIP_FILTER_LABEL.taskDueToday,
       status: railStatus,
       figure: rail ? rail.tasks.length : null,
       hint: rail && rail.tasks.length > 0 ? "on today's list" : 'nothing due today',

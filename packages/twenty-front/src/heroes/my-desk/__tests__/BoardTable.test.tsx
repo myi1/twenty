@@ -246,3 +246,74 @@ describe('BoardTable interactions', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 });
+
+// Ayoub Merali, 2026-09-09/10: the header read "33 open" while the table rendered
+// two rows. Nothing was lost — he had the "Unread WhatsApp" strip tile active (it
+// persists in localStorage, so it survived from one day to the next) and exactly two
+// of his 33 rows carried unread WhatsApp. The count was sourced from the UNFILTERED
+// `rows`, so the header kept announcing the whole book while the body showed a slice
+// of it. An agent reads that as "the CRM lost my pipeline".
+describe('BoardTable header count under an active filter', () => {
+  const book = (n: number, unread: number[]): DeskRow[] =>
+    Array.from({ length: n }, (_, i) =>
+      row(`row-${i}`, {
+        laneObject: 'rcbiOpportunity',
+        name: `Client ${i}`,
+        unreadWa: unread.includes(i) ? 1 : 0,
+      }),
+    );
+
+  const renderFiltered = (props: Partial<Parameters<typeof BoardTable>[0]> = {}) =>
+    render(
+      <BoardTable
+        status="ready"
+        rows={book(33, [4, 9])}
+        error={null}
+        partial={false}
+        partialFailures={[]}
+        onRetry={jest.fn()}
+        nowMs={NOW_MS}
+        stripFilter="unreadWa"
+        focusToday={false}
+        view="table"
+        onViewChange={jest.fn()}
+        onRowClick={jest.fn()}
+        onRowAction={jest.fn()}
+        onStagePick={jest.fn()}
+        onCardDrop={jest.fn()}
+        {...props}
+      />,
+    );
+
+  it('reports the rendered count, not the whole book, when a strip filter narrows the board', () => {
+    renderFiltered();
+
+    // Two rows are on screen — the header must not claim 33.
+    expect(screen.getAllByTestId(/^desk-row-/)).toHaveLength(2);
+    expect(screen.getByText('2 of 33 open')).toBeInTheDocument();
+    expect(screen.queryByText(/^33 open/)).not.toBeInTheDocument();
+  });
+
+  it('names the active strip filter so the agent can see why the board is short', () => {
+    renderFiltered();
+
+    expect(screen.getByText('Unread WhatsApp')).toBeInTheDocument();
+  });
+
+  it('offers a control that clears the active strip filter', async () => {
+    const onStripFilterClear = jest.fn();
+    renderFiltered({ onStripFilterClear });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Clear the Unread WhatsApp filter' }));
+
+    expect(onStripFilterClear).toHaveBeenCalledTimes(1);
+  });
+
+  it('still reports the plain open count when nothing is filtering', () => {
+    renderFiltered({ stripFilter: null });
+
+    expect(screen.getAllByTestId(/^desk-row-/)).toHaveLength(33);
+    expect(screen.getByText(/^33 open/)).toBeInTheDocument();
+    expect(screen.queryByText('33 of 33 open')).not.toBeInTheDocument();
+  });
+});

@@ -23,7 +23,7 @@ import { bandOf, isGoingCold, needsAttentionToday } from './banding';
 import { BoardKanban } from './BoardKanban';
 import { SlaRing } from './SlaRing';
 import { stageTone } from './stageTone';
-import type { StripFilter } from './TodayStrip';
+import { STRIP_FILTER_LABEL, type StripFilter } from './TodayStrip';
 import type { LadderStep } from './gates';
 import { formatAedTotal, formatRelative, formatStageLabel, friendlyError } from './format';
 import { formatPartialFailureMessage } from './partialFailureLabels';
@@ -276,6 +276,49 @@ const Ellipsis = styled.div`
   min-width: 0;
 `;
 
+// Shared by the "Focus: today" and active-strip-filter pills in the header — both
+// exist to explain a short board, so they must look like one another.
+const FILTER_PILL_STYLE = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  fontFamily: FONT_UI,
+  fontSize: 11.5,
+  fontWeight: 500,
+  color: P.ink,
+  padding: '3px 10px',
+  borderRadius: 999,
+  border: '1px solid var(--p-accent)',
+  background: 'var(--p-accent-tint)',
+} as const;
+
+const PillClearBtn = styled.button`
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 1px;
+  border-radius: 999px;
+  color: var(--p-ink-2);
+  transition:
+    color ${DUR.tooltip}ms ${EASE.out},
+    background ${DUR.tooltip}ms ${EASE.out};
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      color: var(--p-ink);
+      background: color-mix(in srgb, var(--p-accent) 22%, transparent);
+    }
+  }
+  &:focus-visible {
+    outline: 2px solid var(--p-accent);
+    outline-offset: 2px;
+  }
+`;
+
 const Chip = styled.button<{ $on: boolean; $cold?: boolean }>`
   all: unset;
   box-sizing: border-box;
@@ -406,6 +449,7 @@ export const BoardTable = ({
   initialLaneFilter,
   onColWidthsChange,
   onLaneFilterChange,
+  onStripFilterClear,
 }: {
   status: 'loading' | 'ready' | 'error';
   rows: DeskRow[];
@@ -447,6 +491,10 @@ export const BoardTable = ({
   /** Fired at the END of a resize / on reset — never every drag frame. */
   onColWidthsChange?: (widths: (string | null)[]) => void;
   onLaneFilterChange?: (laneFilter: LaneFilter) => void;
+  /** Clears the Today Strip tile from the header pill. The strip filter PERSISTS in
+   *  localStorage, so without a way to drop it here an agent can carry yesterday's
+   *  tile into today and read the short board as a lost pipeline. */
+  onStripFilterClear?: () => void;
 }) => {
   // Restore the lane chip only if it's a value this table actually knows.
   const seededLaneFilter: LaneFilter =
@@ -492,14 +540,6 @@ export const BoardTable = ({
     [rows],
   );
 
-  // How many of the open book needs the agent today — drives the header count
-  // when focus mode is on (independent of the lane/strip chips, so the number
-  // always reads "of everything, this many need you today").
-  const focusCount = useMemo(
-    () => rows.filter((r) => needsAttentionToday(r, nowMs)).length,
-    [rows, nowMs],
-  );
-
   const passesStripFilter = (row: DeskRow): boolean => {
     if (!stripFilter) return true;
     if (stripFilter === 'slaAtRisk') return bandOf(row, nowMs) === 'slaAtRisk';
@@ -525,6 +565,14 @@ export const BoardTable = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [rows, stripFilter, laneFilter, nowMs, focusToday],
   );
+
+  // The header count MUST describe the rows actually on screen. It used to be
+  // sourced from the unfiltered `rows`, so an agent with a strip tile active read
+  // "33 open" above a two-row table and concluded the CRM had lost his pipeline
+  // (Ayoub Merali, 2026-09-09/10 — the two rows were the only two carrying unread
+  // WhatsApp, and the tile had persisted from the day before). Whenever anything
+  // narrows the board, say so and name what is doing it.
+  const narrowed = visibleRows.length !== rows.length;
 
   const startDrag = (i: number, e: ReactMouseEvent) => {
     e.preventDefault();
@@ -646,28 +694,42 @@ export const BoardTable = ({
           {status === 'ready' && (
             <span style={{ fontFamily: FONT_MONO, fontSize: 12, color: P.ink2, fontWeight: 400 }}>
               {focusToday
-                ? `${focusCount} need you today · of ${rows.length} open`
-                : `${rows.length} open${totalValue > 0 ? ` · ~${formatAedTotal(totalValue)} in play` : ''}`}
+                ? `${visibleRows.length} need you today · of ${rows.length} open`
+                : narrowed
+                  ? `${visibleRows.length} of ${rows.length} open`
+                  : `${rows.length} open${totalValue > 0 ? ` · ~${formatAedTotal(totalValue)} in play` : ''}`}
             </span>
           )}
           {status === 'ready' && focusToday && (
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                fontFamily: FONT_UI,
-                fontSize: 11.5,
-                fontWeight: 500,
-                color: P.ink,
-                padding: '3px 10px',
-                borderRadius: 999,
-                border: '1px solid var(--p-accent)',
-                background: 'var(--p-accent-tint)',
-              }}
-            >
+            <span style={FILTER_PILL_STYLE}>
               <span style={{ width: 6, height: 6, borderRadius: 999, background: P.accent, flex: 'none' }} />
               Focus: today
+            </span>
+          )}
+          {/* The strip tile is the weakest-signposted filter on this screen — its only
+              affordance is a 14% tint on a tile above, and it survives a reload. Name it
+              here, beside the count it explains, and give the agent one click to drop it. */}
+          {status === 'ready' && stripFilter && (
+            <span style={FILTER_PILL_STYLE}>
+              <span style={{ width: 6, height: 6, borderRadius: 999, background: P.accent, flex: 'none' }} />
+              {STRIP_FILTER_LABEL[stripFilter]}
+              {onStripFilterClear && (
+                <PillClearBtn
+                  type="button"
+                  aria-label={`Clear the ${STRIP_FILTER_LABEL[stripFilter]} filter`}
+                  title={`Clear the ${STRIP_FILTER_LABEL[stripFilter]} filter`}
+                  onClick={onStripFilterClear}
+                >
+                  <svg viewBox="0 0 16 16" width="9" height="9" fill="none" aria-hidden>
+                    <path
+                      d="M3.5 3.5l9 9M12.5 3.5l-9 9"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </PillClearBtn>
+              )}
             </span>
           )}
         </div>
