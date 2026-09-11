@@ -3,6 +3,9 @@ import { Module } from '@nestjs/common';
 import { RoleModule } from 'src/engine/metadata-modules/role/role.module';
 import { UserRoleModule } from 'src/engine/metadata-modules/user-role/user-role.module';
 import { PropelTierService } from 'src/modules/propel-rls/propel-tier.service';
+import { PropelWritePolicyService } from 'src/modules/propel-rls/propel-write-policy.service';
+import { GenericRlsUpdateOnePreQueryHook } from 'src/modules/propel-rls/generic-rls-update-one.pre-query.hook';
+import { GenericRlsUpdateManyPreQueryHook } from 'src/modules/propel-rls/generic-rls-update-many.pre-query.hook';
 import { SecondaryOpportunityRlsPreQueryHook } from 'src/modules/propel-rls/secondary-opportunity-rls.pre-query.hook';
 import { SecondaryOpportunityFindOneRlsPreQueryHook } from 'src/modules/propel-rls/secondary-opportunity-find-one-rls.pre-query.hook';
 import { SecondaryOpportunityGroupByRlsPreQueryHook } from 'src/modules/propel-rls/secondary-opportunity-group-by-rls.pre-query.hook';
@@ -94,6 +97,18 @@ import { GenericRlsGroupByPreQueryHook } from 'src/modules/propel-rls/generic-rl
   imports: [RoleModule, UserRoleModule],
   providers: [
     PropelTierService,
+    // ── the WRITE half (2026-09-12) ──────────────────────────────────────────
+    // This module scoped reads and nothing else, which was demonstrated rather than
+    // suspected: on staging an agent could not read another agent's lead by id, could
+    // not list it, could not count it — and changed it twice, via updateOne and
+    // updateMany, both confirmed in Postgres. Twenty grants the Agent role
+    // canUpdateAllObjectRecords; the read hooks compensated for readAll and nothing
+    // compensated for updateAll. These two wildcards close it with the SAME owner
+    // convention, tier service and bypass rules the read hooks use, so an object that
+    // is read-scoped is now write-scoped and no object changes meaning.
+    PropelWritePolicyService,
+    GenericRlsUpdateOnePreQueryHook,
+    GenericRlsUpdateManyPreQueryHook,
     SecondaryOpportunityRlsPreQueryHook,
     SecondaryOpportunityFindOneRlsPreQueryHook,
     SecondaryOpportunityGroupByRlsPreQueryHook,
