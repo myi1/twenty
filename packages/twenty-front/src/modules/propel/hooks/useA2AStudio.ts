@@ -9,6 +9,7 @@ import {
   summariseDistribution,
   type SendOutcome,
 } from '@/propel/lib/a2aSendOutcome';
+import { planResume } from '@/propel/lib/a2aResume';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import {
   type A2ADocumentStatus,
@@ -19,6 +20,7 @@ import {
   type CounterpartyPerson,
   type CreateDraftRequest,
   type CreateDraftResponse,
+  type DealStateResponse,
   type DiscardRequest,
   type DiscardResponse,
   type FinalizeResponse,
@@ -57,7 +59,6 @@ export interface A2ADraft {
   documensoDocumentId: string;
   ourRecipientToken: string | null;
   counterpartyRecipientToken: string | null;
-  counterpartySigningUrl: string | null;
   isRera: boolean;
 }
 
@@ -79,6 +80,17 @@ export interface A2AStudioState {
   /** What the last send really did, from the service's own report. */
   sendOutcome: SendOutcome | null;
   sendMessage: string | null;
+  /** The counterparty's signing link — set ONLY from a send (or from an
+   * agreement we resumed, whose link the service wrote at send time). Never the
+   * link create-draft returned: that one is resolved before our side is baked and
+   * is dead by the time anyone could forward it (task 49, proven on prod). */
+  shareUrl: string | null;
+  /** True while the opening read is in flight. */
+  resuming: boolean;
+  /** An earlier, unfinished agreement exists for this deal. We do NOT resume one
+   * of these (its Documenso draft may be long gone) — the screen warns instead of
+   * silently creating a second agreement. */
+  existingDraftNotice: { status: string; createdAt: string | null } | null;
   creating: boolean;
   finalizing: boolean;
   sending: boolean;
@@ -118,6 +130,12 @@ export const useA2AStudio = (
   );
   const [sendOutcome, setSendOutcome] = useState<SendOutcome | null>(null);
   const [sendMessage, setSendMessage] = useState<string | null>(null);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [resuming, setResuming] = useState(false);
+  const [existingDraftNotice, setExistingDraftNotice] = useState<{
+    status: string;
+    createdAt: string | null;
+  } | null>(null);
   const [creating, setCreating] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [sending, setSending] = useState(false);
@@ -189,7 +207,6 @@ export const useA2AStudio = (
         documensoDocumentId: idToString(res.documensoDocumentId),
         ourRecipientToken: res.ourRecipientToken ?? null,
         counterpartyRecipientToken: res.counterpartyRecipientToken ?? null,
-        counterpartySigningUrl: res.counterpartySigningUrl ?? null,
         isRera: res.isRera === true,
       };
       setDraft(next);
@@ -293,23 +310,17 @@ export const useA2AStudio = (
         // service's per-leg report, never by `ok`.
         live.sent = true;
         setStatus(res.status ?? 'OUT_FOR_SIGNATURE');
-        if (res.counterpartySigningUrl !== undefined) {
-          setDraft((cur) =>
-            cur === null
-              ? cur
-              : {
-                  ...cur,
-                  counterpartySigningUrl:
-                    res.counterpartySigningUrl ?? cur.counterpartySigningUrl,
-                },
-          );
-        }
+        // The ONLY link we will ever hand the agent: the one this send resolved
+        // off the live document. If the service could not resolve one, we hold
+        // nothing rather than offering the dead pre-bake link (task 49).
+        const returnedUrl = res.counterpartySigningUrl ?? null;
+        if (returnedUrl !== null) setShareUrl(returnedUrl);
         const outcome = summariseDistribution(res.distribution);
-        // The link exists once the envelope is activated, whatever the legs did.
-        const linkReady =
-          outcome.linkReady ||
-          (res.counterpartySigningUrl ?? d.counterpartySigningUrl) !== null;
-        const finalOutcome: SendOutcome = { ...outcome, linkReady };
+        const finalOutcome: SendOutcome = {
+          ...outcome,
+          linkReady:
+            outcome.linkReady || returnedUrl !== null || shareUrl !== null,
+        };
         const message = describeSendOutcome(
           finalOutcome,
           counterparty?.name ?? null,
@@ -322,7 +333,7 @@ export const useA2AStudio = (
         setSending(false);
       }
     },
-    [counterparty, live],
+    [counterparty, live, shareUrl],
   );
 
   const searchPeople = useCallback(
@@ -364,7 +375,66 @@ export const useA2AStudio = (
     setCounterparty(null);
     setSendOutcome(null);
     setSendMessage(null);
+    setShareUrl(null);
+    setExistingDraftNotice(null);
   }, [live]);
+
+  // ── What this deal already has (task 52) ──────────────────────────────────
+  // Proven on prod: reopening the Studio on a deal whose agreement was already
+  // out for signature showed the blank prepare form and a "Create draft" button.
+  // One read at mount answers it. An agreement that is already out for signature
+  // or signed is RESUMED; an older unfinished draft is only reported, because its
+  // Documenso draft may be long gone and silently continuing it would be a guess.
+  useEffect(() => {
+    if (opportunityId === null || opportunityId === '') return;
+    let cancelled = false;
+    setResuming(true);
+    void (async () => {
+      const res = await callPropelRoute<DealStateResponse>('/a2a/deal-state', {
+        opportunityId,
+        variant,
+      });
+      if (cancelled) return;
+      if (res !== null && res.error === undefined) {
+        // Anything the agent (or the launcher) already typed wins over the deal.
+        if (res.prefill !== undefined) {
+          setPrefillState((cur) => ({ ...res.prefill, ...cur }));
+        }
+        const plan = planResume(res.agreement);
+        if (plan.kind === 'resume') {
+          const resumed: A2ADraft = {
+            a2aDocumentId: plan.draft.a2aDocumentId,
+            documensoDocumentId: plan.draft.documensoDocumentId,
+            ourRecipientToken: null,
+            counterpartyRecipientToken: null,
+            isRera: false,
+          };
+          setDraft(resumed);
+          live.draft = resumed;
+          // ⚠️ plan.markSent is always true, and it must be applied: the unmount
+          // cleanup discards an UN-SENT draft, so without this an agent who opens
+          // the deal and navigates away would void a live agreement.
+          live.sent = plan.markSent;
+          setStatus(plan.status);
+          setShareUrl(plan.shareUrl);
+          setSignedPdfUrl(plan.signedPdfUrl);
+          setAuditUrl(plan.auditUrl);
+          setStep(plan.step);
+        } else if (plan.kind === 'notice') {
+          setExistingDraftNotice({
+            status: plan.status,
+            createdAt: plan.createdAt,
+          });
+        }
+      }
+      setResuming(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Reads once per deal/variant; the form owns everything after that.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opportunityId, variant]);
 
   // Poll status while the doc is out for signature, so the strip + the flip to
   // `done` happen without a manual refresh.
@@ -408,6 +478,9 @@ export const useA2AStudio = (
     counterparty,
     sendOutcome,
     sendMessage,
+    shareUrl,
+    resuming,
+    existingDraftNotice,
     creating,
     finalizing,
     sending,

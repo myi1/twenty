@@ -149,6 +149,30 @@ export interface DiscardResponse extends A2ARouteError {
   ok?: boolean;
 }
 
+// ── What the deal already has, read when the Studio opens (task 52) ──────────
+// `/a2a/deal-state` answers both questions the screen needs at mount: is there
+// already an agreement for this deal (so we resume instead of quietly making a
+// second one), and what does the deal already know. The commission share is
+// deliberately absent — the deal's commission RATE is a different number from
+// our agent's SHARE of that commission, and prefilling one with the other would
+// be wrong in a way that looks filled in.
+export interface DealStateAgreement {
+  a2aDocumentId: string;
+  name?: string | null;
+  status?: A2ADocumentStatus | null;
+  documensoDocumentId?: string | null;
+  counterpartySigningUrl?: string | null;
+  signedPdfUrl?: string | null;
+  auditUrl?: string | null;
+  counterpartyPersonId?: string | null;
+  createdAt?: string | null;
+}
+
+export interface DealStateResponse extends A2ARouteError {
+  agreement?: DealStateAgreement | null;
+  prefill?: A2APrefill;
+}
+
 // ── Counterparty Person (design §5 ContactRunner / D5) ───────────────────────
 // The counterparty broker, stored as a Person and linked via the
 // `counterpartyPerson` relation. Read/created over the core GraphQL bridge

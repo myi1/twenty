@@ -1,4 +1,4 @@
-import { Box, Button, Center, Stack, Text } from '@mantine/core';
+import { Alert, Box, Button, Center, Stack, Text } from '@mantine/core';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -97,6 +97,31 @@ export const A2AStudioPage = () => {
               ) : null}
 
               {/* ── prepare ─────────────────────────────────────────────── */}
+              {/* Task 52: an unfinished agreement already exists for this deal.
+                  We do not continue it automatically (its Documenso draft may be
+                  gone), but the agent must not be allowed to create a second one
+                  without knowing. */}
+              {studio.step === 'prepare' &&
+              studio.existingDraftNotice !== null ? (
+                <Alert
+                  color="yellow"
+                  variant="light"
+                  icon={<IconAlertTriangle size={16} />}
+                  title="This deal already has an agreement"
+                >
+                  An agreement for this deal was started
+                  {studio.existingDraftNotice.createdAt != null
+                    ? ` on ${new Date(studio.existingDraftNotice.createdAt).toLocaleDateString()}`
+                    : ''}{' '}
+                  and is still unfinished (
+                  {studio.existingDraftNotice.status
+                    .toLowerCase()
+                    .replace(/_/g, ' ')}
+                  ). Creating another will leave two agreements on the same
+                  deal.
+                </Alert>
+              ) : null}
+
               {studio.step === 'prepare' ? (
                 <A2APrepareForm
                   variant={variant}
@@ -156,9 +181,10 @@ export const A2AStudioPage = () => {
               {studio.step === 'send' ? (
                 <SendPanel
                   counterparty={studio.counterparty}
-                  signingUrl={studio.draft?.counterpartySigningUrl ?? null}
+                  shareUrl={studio.shareUrl}
                   sending={studio.sending}
                   sent={studio.status === 'OUT_FOR_SIGNATURE'}
+                  outcome={studio.sendOutcome}
                   outcomeMessage={studio.sendMessage}
                   onOpenContact={() => setContactOpen(true)}
                   onSend={async (channels) => {

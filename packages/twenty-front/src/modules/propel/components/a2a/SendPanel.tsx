@@ -15,48 +15,48 @@ import {
   IconLink,
   IconMail,
   IconSend,
-  IconUserPlus,
 } from 'twenty-ui/display';
+import { IconUserPlus } from 'twenty-ui/display';
+import { type SendOutcome } from '@/propel/lib/a2aSendOutcome';
 import { type CounterpartyPerson, type SendChannel } from '@/propel/types/a2a';
 
 // The "send" step (design §5 SendPanel / D4).
 //
-// TASK 38 — LAUNCH MODE (founder decisions 2026-09-12, via the desk: delivery at
-// launch is email only; WhatsApp is a later, separate step; the Send step is
-// copy-link PRIMARY plus an "Email the link" button). At launch doc-service has
-// no WhatsApp line (`WA_SERVICE_*` unset) and cannot email the signing link at
-// send time itself — the CRM send route does that through Postmark after the
-// service activates the envelope. So the panel offers two actions:
-//   · "Get signing link" → /a2a/send with `copyLink`: activates the envelope,
-//     marks the agreement Out for signature, stores the counterparty (whose
-//     email later receives the signed PDF), hands the agent the link.
-//   · "Email the link to <email>" → /a2a/send with `email`: the same, plus the
-//     CRM emails the other broker their link (Reply-To our agent).
-// The WhatsApp button stays in code behind WHATSAPP_SEND_ENABLED: flipping it
-// (+ the service's WhatsApp settings) brings it back with the same honest
-// per-leg outcome text.
+// TASK 51 (2026-09-12) — WHAT THE PROD TEST FOUND, and what changed here.
+// The panel used to show a "Copy signing link" button the moment a draft
+// existed, because create-draft returns a counterparty link. That button was
+// pure clipboard — no server call — so an agent who copied the link and sent it
+// on WhatsApp (the natural thing for a broker to do) left the agreement stuck in
+// DRAFT with no counterparty attached, while the caption underneath told them it
+// had been marked out for signature. Worse, the link itself was dead: it carried
+// a token resolved before our side was baked (task 49).
 //
-// Whatever the mode, the sentence under the buttons comes from the service's own
-// per-leg report (a2aSendOutcome.ts) — never from `ok`, which is true even when
-// nothing was delivered.
+// The rule now: you can only copy a link that a SEND has handed back. Before a
+// send there is one primary action and it performs the send; after it, the link
+// that came back is copyable and the outcome says what really happened.
+//
+// LAUNCH MODE (founder, 2026-09-12): delivery is email only; WhatsApp is a later,
+// separate step and stays behind WHATSAPP_SEND_ENABLED.
 const WHATSAPP_SEND_ENABLED = false;
 
 export const SendPanel = ({
   counterparty,
-  signingUrl,
+  shareUrl,
   sending,
   sent,
+  outcome,
   outcomeMessage,
   onOpenContact,
   onSend,
 }: {
   counterparty: CounterpartyPerson | null;
-  /** Live counterparty link — only valid after send activates the envelope. */
-  signingUrl: string | null;
+  /** The counterparty's live signing link — ONLY ever a link a send returned. */
+  shareUrl: string | null;
   sending: boolean;
-  /** The agreement is Out for signature (the envelope was activated). */
+  /** The agreement is out for signature (a send has happened). */
   sent: boolean;
-  /** What the last send really did, in one sentence (from the hook). */
+  /** What that send actually did, per channel. */
+  outcome: SendOutcome | null;
   outcomeMessage: string | null;
   onOpenContact: () => void;
   onSend: (channels: SendChannel[]) => Promise<unknown>;
@@ -65,10 +65,11 @@ export const SendPanel = ({
     counterparty?.phone != null && counterparty.phone.trim() !== '';
   const hasEmail =
     counterparty?.email != null && counterparty.email.trim() !== '';
-  const linkLive = signingUrl != null && signingUrl !== '';
+  const linkReady = shareUrl != null && shareUrl !== '';
+  const somethingFailed = outcome != null && outcome.failed.length > 0;
 
-  // No counterparty at all → must capture one before any channel makes sense:
-  // their email is where the signed PDF goes once both sides have signed.
+  // No counterparty at all → capture one first: their email is where the signed
+  // PDF goes once both sides have signed.
   if (counterparty === null) {
     return (
       <Stack gap="md" maw={560}>
@@ -138,54 +139,30 @@ export const SendPanel = ({
 
       <Box>
         <Text size="xs" c="dimmed" fw={600} tt="uppercase" mb="xs">
-          Send the signing link
+          {sent ? 'The signing link' : 'Send the signing link'}
         </Text>
         <Stack gap="sm">
           {WHATSAPP_SEND_ENABLED ? (
-            <>
-              {/* WhatsApp — the default when a phone exists (needs the
-                  service's WhatsApp line; off at launch). */}
-              <Button
-                color="green"
-                variant={hasPhone ? 'filled' : 'default'}
-                justify="space-between"
-                fullWidth
-                leftSection={<IconSend size={16} />}
-                rightSection={
-                  hasPhone ? <Text size="xs">Recommended</Text> : null
-                }
-                disabled={!hasPhone}
-                loading={sending}
-                onClick={() => void onSend(['whatsapp'])}
-              >
-                {hasPhone
-                  ? `WhatsApp ${counterparty.phone}`
-                  : 'WhatsApp (no phone on file)'}
-              </Button>
-            </>
+            <Button
+              color="green"
+              variant={hasPhone ? 'filled' : 'default'}
+              justify="space-between"
+              fullWidth
+              leftSection={<IconSend size={16} />}
+              disabled={!hasPhone}
+              loading={sending}
+              onClick={() => void onSend(['whatsapp'])}
+            >
+              {hasPhone
+                ? `WhatsApp ${counterparty.phone}`
+                : 'WhatsApp (no phone on file)'}
+            </Button>
           ) : null}
 
-          {/* Email — the CRM sends the link (task 38). Disabled without an
-              email on file; the outcome sentence below says what happened. */}
-          <Button
-            variant="default"
-            justify="flex-start"
-            fullWidth
-            leftSection={<IconMail size={16} />}
-            disabled={!hasEmail}
-            loading={sending}
-            onClick={() => void onSend(['email'])}
-          >
-            {hasEmail
-              ? `Email the link to ${counterparty.email}`
-              : 'Email the link (no email on file)'}
-          </Button>
-
-          {/* Copy link — the one leg that always works. The link is only live
-              after send activates the envelope, so the first click sends with
-              the copyLink channel, then the URL is exposed to copy. */}
-          {linkLive ? (
-            <CopyButton value={signingUrl}>
+          {/* Copy is offered ONLY for a link a send handed back. Before that the
+              same position holds the action that actually sends. */}
+          {sent && linkReady ? (
+            <CopyButton value={shareUrl}>
               {({ copied, copy }) => (
                 <Button
                   color="red"
@@ -213,6 +190,20 @@ export const SendPanel = ({
               Get signing link
             </Button>
           )}
+
+          <Button
+            variant="default"
+            justify="flex-start"
+            fullWidth
+            leftSection={<IconMail size={16} />}
+            disabled={!hasEmail}
+            loading={sending}
+            onClick={() => void onSend(['email'])}
+          >
+            {hasEmail
+              ? `Email the link to ${counterparty.email}`
+              : 'Email the link (no email on file)'}
+          </Button>
         </Stack>
       </Box>
 
@@ -226,13 +217,29 @@ export const SendPanel = ({
 
       {sent && outcomeMessage !== null ? (
         <Alert
-          color={linkLive ? 'green' : 'yellow'}
+          color={somethingFailed ? 'yellow' : 'green'}
           variant="light"
           icon={
-            linkLive ? <IconCheck size={16} /> : <IconAlertTriangle size={16} />
+            somethingFailed ? (
+              <IconAlertTriangle size={16} />
+            ) : (
+              <IconCheck size={16} />
+            )
           }
         >
           {outcomeMessage}
+        </Alert>
+      ) : null}
+
+      {sent && !linkReady ? (
+        <Alert
+          color="red"
+          variant="light"
+          icon={<IconAlertTriangle size={16} />}
+          title="No signing link came back"
+        >
+          The agreement is out for signature but we did not get a link to share.
+          Open it from the agreement record, or start over.
         </Alert>
       ) : null}
     </Stack>
