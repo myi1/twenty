@@ -51,8 +51,31 @@ const PERSON_ID = '11111111-2222-4333-8444-555555555555';
 const PERSON_PATH = `/object/person/${PERSON_ID}`;
 const CALL_URL = `${PERSON_PATH}?call=1`;
 
-// A contact with NO number on file. Every case below uses one: a fixture that
-// carries a number is one bug away from being a real call.
+// The repeat-dial guard exists to stop a SECOND REAL CALL, so the cases that
+// assert "dialled exactly once" need a contact that can actually be dialled.
+// This file mocks `startPropelCall` at the module boundary, so a number here
+// reaches a jest.fn() and nothing else — no dock, no PBX, nothing leaves the
+// process. An earlier version of this file used the phone-less fixture
+// everywhere, reasoning that a number was "one bug away from a real call"; that
+// was wrong in both directions. It cannot dial (the mock), and it made the dial
+// assertions depend on a phone-less contact reaching the dock at all — which
+// task 25 (`deriveE164`) then deliberately stopped doing, taking three of these
+// tests red on the merged tree for a behaviour change that is correct.
+//
+// Country code 999 is unassigned by the ITU, so this is unroutable even if it
+// ever escaped a mock. It also derives to the same string under both the old
+// concatenation and task 25's `deriveE164`, so these tests pin the flag
+// behaviour identically before and after that merge.
+const DIALLABLE_PERSON = {
+  __typename: 'Person',
+  id: PERSON_ID,
+  name: { firstName: 'Diallable', lastName: 'Fixture' },
+  phones: { primaryPhoneNumber: '5550100', primaryPhoneCallingCode: '+999' },
+};
+
+// A contact with NO number on file — the case the staging check actually ran on.
+// Used only where the subject is the FLAG, never to stand in for a dial: whether
+// a phone-less contact reaches the dock is task 25's business, not this file's.
 const PHONE_LESS_PERSON = {
   __typename: 'Person',
   id: PERSON_ID,
@@ -93,7 +116,7 @@ beforeEach(() => {
   navigateFromTest = null;
   startPropelCallMock.mockReturnValue(true);
   useFindOneRecordMock.mockReturnValue({
-    record: PHONE_LESS_PERSON,
+    record: DIALLABLE_PERSON,
     loading: false,
   });
 });
@@ -149,6 +172,24 @@ describe('PropelCallOnQueryParamEffect — the ?call=1 flag never survives the v
 
     expect(startPropelCallMock).toHaveBeenCalledTimes(1);
     expect(latestSearch).toBe('?viewId=view-7');
+  });
+
+  it('clears the flag for a contact with no number too — the staging case', () => {
+    // The 2026-09-12 staging check ran on exactly this: a contact with nothing
+    // in `phones`. Whether that reaches the dock is task 25's call and changed
+    // there, so this asserts only the part this file owns — the visit must not
+    // end armed. A phone-less contact leaving `?call=1` behind is how the bug
+    // was found, and it is the one case that must never regress.
+    useFindOneRecordMock.mockReturnValue({
+      record: PHONE_LESS_PERSON,
+      loading: false,
+    });
+
+    renderEffectAt(CALL_URL);
+    expect(latestSearch).toBe('');
+
+    clickCallAgain();
+    expect(latestSearch).toBe('');
   });
 
   it('does not dial, and does not touch the URL, without the flag', () => {
