@@ -152,5 +152,24 @@ export const CALL_STATUS_TEXT: Record<CallStatus, string | null> = {
   UNCONFIRMED: 'We could not confirm this call started. Check your dialer before trying again.',
 };
 
+/**
+ * How each state LOOKS. Added after a real call on 2026-09-12: the founder placed
+ * one through this page and never noticed the status line, because it was 13px at
+ * 0.85 opacity beside a large, live dialer panel. The words were right and nobody
+ * read them.
+ *
+ * Amber = waiting or unsure. Green = the CRM can actually SEE the call. Red = we
+ * know nothing went out. **Never green on REQUESTED** — "we asked" is not "we
+ * connected", and that distinction is the entire reason these states exist.
+ */
+export const CALL_STATUS_TONE: Record<CallStatus, { icon: string; fg: string; bg: string; border: string }> = {
+  IDLE: { icon: '', fg: 'inherit', bg: 'transparent', border: 'transparent' },
+  REQUESTED: { icon: '📞', fg: 'oklch(0.86 0.10 85)', bg: 'oklch(0.30 0.05 85 / 0.35)', border: 'oklch(0.55 0.10 85 / 0.55)' },
+  CONNECTED: { icon: '🟢', fg: 'oklch(0.88 0.12 150)', bg: 'oklch(0.30 0.06 150 / 0.35)', border: 'oklch(0.55 0.12 150 / 0.55)' },
+  ENDED: { icon: '', fg: 'inherit', bg: 'transparent', border: 'transparent' },
+  REFUSED: { icon: '⚠️', fg: 'oklch(0.85 0.13 25)', bg: 'oklch(0.30 0.07 25 / 0.35)', border: 'oklch(0.55 0.13 25 / 0.55)' },
+  UNCONFIRMED: { icon: '⚠️', fg: 'oklch(0.86 0.10 85)', bg: 'oklch(0.30 0.05 85 / 0.35)', border: 'oklch(0.55 0.10 85 / 0.55)' },
+};
+
 /** Does this state warrant the outcome sheet opening by itself? */
 export const shouldOpenOutcomeSheet = (s: CallState): boolean => s.status === 'ENDED';

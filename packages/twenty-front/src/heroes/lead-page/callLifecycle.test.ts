@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {
   CALL_ACK_TIMEOUT_MS,
   CALL_STATUS_TEXT,
+  CALL_STATUS_TONE,
   CALL_WATCH_TIMEOUT_MS,
   callRefused,
   callRequested,
@@ -159,5 +160,37 @@ describe('the outcome sheet opens for exactly one state', () => {
   it('an UNCONFIRMED call does not pop the sheet — there is no outcome to log', () => {
     const s = nextCallState(callRequested(T0), null, T0 + CALL_ACK_TIMEOUT_MS + 1);
     assert.equal(shouldOpenOutcomeSheet(s), false);
+  });
+});
+
+describe('the status line must be seen, and must never flatter', () => {
+  // Added after a real call on 2026-09-12: the page said "Calling…" correctly for
+  // the whole call and the founder never noticed it — 13px, 0.85 opacity, beside a
+  // large live dialer panel. Right words, unread.
+  it('every state that has words also has a tone', () => {
+    for (const s of ['REQUESTED', 'CONNECTED', 'REFUSED', 'UNCONFIRMED'] as const) {
+      assert.ok(CALL_STATUS_TEXT[s], `${s} must say something`);
+      assert.ok(CALL_STATUS_TONE[s].bg !== 'transparent', `${s} must be visible, not a whisper`);
+      assert.ok(CALL_STATUS_TONE[s].icon !== '', `${s} must carry an icon`);
+    }
+  });
+
+  it('the silent states stay silent', () => {
+    for (const s of ['IDLE', 'ENDED'] as const) {
+      assert.equal(CALL_STATUS_TEXT[s], null);
+      assert.equal(CALL_STATUS_TONE[s].bg, 'transparent');
+    }
+  });
+
+  // THE ONE THAT MATTERS: green is reserved for a call the CRM can actually see.
+  it('REQUESTED is never styled like a connected call', () => {
+    assert.notEqual(CALL_STATUS_TONE.REQUESTED.fg, CALL_STATUS_TONE.CONNECTED.fg);
+    assert.notEqual(CALL_STATUS_TONE.REQUESTED.bg, CALL_STATUS_TONE.CONNECTED.bg);
+    assert.notEqual(CALL_STATUS_TONE.REQUESTED.icon, CALL_STATUS_TONE.CONNECTED.icon);
+  });
+
+  it('UNCONFIRMED is not dressed as success either', () => {
+    assert.notEqual(CALL_STATUS_TONE.UNCONFIRMED.fg, CALL_STATUS_TONE.CONNECTED.fg);
+    assert.equal(CALL_STATUS_TONE.UNCONFIRMED.fg, CALL_STATUS_TONE.REQUESTED.fg, 'both are "we do not know yet"');
   });
 });

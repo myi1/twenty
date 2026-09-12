@@ -35,6 +35,7 @@ import {
 import {
   CALL_POLL_INTERVAL_MS,
   CALL_STATUS_TEXT,
+  CALL_STATUS_TONE,
   callRefused,
   callRequested,
   IDLE_CALL,
@@ -334,6 +335,10 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
   const onCallStarted = (placed: boolean) => setCall(placed ? callRequested(Date.now()) : callRefused());
   const openSheet = () => { setCall(IDLE_CALL); setSheet({ open: true, callSeconds: null }); };
   const callStatusText = CALL_STATUS_TEXT[call.status];
+  // Amber for "waiting or unsure", green ONLY for a call the CRM can see, red for a
+  // refusal. Deliberately no green on REQUESTED: the whole point of these states is
+  // that asking is not the same as connecting.
+  const callTone = CALL_STATUS_TONE[call.status];
   // Always lands the agent on the composer area, even for a lead with no
   // textarea to focus (opted out of WhatsApp, or marked lost): scrolling the
   // container into view is unconditional, so a blocked lead still sees the
@@ -389,16 +394,33 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
                 {callStatusText !== null && (
                   <div
                     role="status"
+                    aria-live="polite"
                     style={{
-                      padding: '6px 12px',
-                      fontSize: 13,
-                      opacity: 0.85,
+                      // Loud on purpose. The first version of this was 13px at 0.85
+                      // opacity tucked under the header, and the founder ran a real
+                      // call through it and never noticed the line existed — his
+                      // attention was on the dialer panel, which is exactly where it
+                      // should have been. A status nobody looks at is barely better
+                      // than no status, so this reads as a band across the page.
+                      margin: '8px 12px 0',
+                      padding: '10px 14px',
+                      borderRadius: 8,
+                      fontSize: 14,
+                      fontWeight: 500,
                       display: 'flex',
                       alignItems: 'center',
-                      gap: 8,
+                      gap: 10,
+                      // Colour carries the same meaning as the words: amber while we
+                      // are waiting or unsure, green only once the CRM can actually
+                      // SEE the call. Never green on REQUESTED — that is the lie this
+                      // whole state machine exists to prevent.
+                      border: `1px solid ${callTone.border}`,
+                      background: callTone.bg,
+                      color: callTone.fg,
                     }}
                   >
-                    {callStatusText}
+                    <span aria-hidden="true">{callTone.icon}</span>
+                    <span style={{ flex: 1 }}>{callStatusText}</span>
                     {(call.status === 'UNCONFIRMED' || call.status === 'REFUSED') && (
                       <Btn variant="secondary" style={{ minHeight: 32 }} onClick={() => setCall(IDLE_CALL)}>Dismiss</Btn>
                     )}
