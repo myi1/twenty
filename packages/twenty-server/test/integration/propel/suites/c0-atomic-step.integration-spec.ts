@@ -304,6 +304,48 @@ describe('C0 — the assignment command boundary (integration)', () => {
     expect(await countReceipts()).toBe(0);
   });
 
+  // ── Part 3b: AUTHORISATION, not merely authentication ─────────────────────
+  // A10-A12 only prove that BROKEN tokens do nothing. These prove that VALID
+  // tokens belonging to people who are not managers do nothing either. Without
+  // A18, a gate that denied everyone would pass A15-A17.
+
+  it('A15 — a valid MEMBER token cannot move a lead', async () => {
+    const response = await postStep({}, APPLE_JONY_MEMBER_ACCESS_TOKEN);
+
+    expect(response.status).toBe(403);
+    expect(await readCity()).toBe(OWNER_A);
+    expect(await countReceipts()).toBe(0);
+    expect(await readVersion()).toBeNull();
+  });
+
+  it('A16 — a valid GUEST token cannot move a lead', async () => {
+    const response = await postStep({}, APPLE_PHIL_GUEST_ACCESS_TOKEN);
+
+    expect(response.status).toBe(403);
+    expect(await readCity()).toBe(OWNER_A);
+    expect(await countReceipts()).toBe(0);
+    expect(await readVersion()).toBeNull();
+  });
+
+  it('A17 — an API-KEY (service) token cannot move a lead', async () => {
+    // The plan allows service-origin commands only under an explicitly scoped
+    // policy. No such policy exists, so this must fail CLOSED rather than
+    // inherit whatever the key can otherwise do.
+    const response = await postStep({}, API_KEY_ACCESS_TOKEN);
+
+    expect(response.status).toBe(403);
+    expect(await readCity()).toBe(OWNER_A);
+    expect(await countReceipts()).toBe(0);
+  });
+
+  it('A18 (control) — an ADMIN token still can, so the gate is not blanket-deny', async () => {
+    const response = await postStep();
+
+    expect(response.status).toBe(201);
+    expect(await readCity()).toBe(OWNER_B);
+    expect(await readVersion()).toBe('1');
+  });
+
   // ── Part 4: the ORM escape, pinned ────────────────────────────────────────
 
   // CHARACTERIZATION of current, WRONG behaviour, so the constraint is executable

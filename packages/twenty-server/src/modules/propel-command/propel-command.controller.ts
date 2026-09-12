@@ -14,7 +14,9 @@ import {
 import { Request } from 'express';
 import { isDefined } from 'twenty-shared/utils';
 
+import { buildUserAuthContext } from 'src/engine/core-modules/auth/utils/build-user-auth-context.util';
 import { JwtAuthGuard } from 'src/engine/guards/jwt-auth.guard';
+import { PropelTierService } from 'src/modules/propel-rls/propel-tier.service';
 import { NoPermissionGuard } from 'src/engine/guards/no-permission.guard';
 import { WorkspaceAuthGuard } from 'src/engine/guards/workspace-auth.guard';
 import {
@@ -69,7 +71,10 @@ const requireString = (value: unknown, field: string): string => {
 @Controller('propel/v1/spike')
 @UseGuards(JwtAuthGuard, WorkspaceAuthGuard, NoPermissionGuard)
 export class PropelCommandController {
-  constructor(private readonly atomicCommandService: AtomicCommandService) {}
+  constructor(
+    private readonly atomicCommandService: AtomicCommandService,
+    private readonly propelTierService: PropelTierService,
+  ) {}
 
   @Post('assignment-step')
   async assignmentStep(@Req() request: Request, @Body() body: AssignmentStepBody) {
@@ -79,6 +84,43 @@ export class PropelCommandController {
 
     if (!isDefined(request.workspace)) {
       throw new ForbiddenException('No verified workspace on this request.');
+    }
+
+    // ── AUTHORISATION, distinct from authentication ───────────────────────
+    // A valid token says who you are. It does not say you may reassign a lead.
+    // Manager/admin only, and FAIL CLOSED: a service or application token gets
+    // no implicit right here. The plan allows service-origin commands only under
+    // an explicitly scoped policy, and no such policy exists yet.
+    if (isDefined(request.apiKey) || isDefined(request.application)) {
+      throw new ForbiddenException(
+        'Assignment is manager-only. A service token needs an explicitly scoped policy, which does not exist.',
+      );
+    }
+
+    if (
+      !isDefined(request.userWorkspaceId) ||
+      !isDefined(request.workspaceMemberId) ||
+      !isDefined(request.workspaceMember) ||
+      !isDefined(request.user)
+    ) {
+      throw new ForbiddenException('No verified user on this request.');
+    }
+
+    // Reuses the tier resolver every RLS hook in this engine already uses, so
+    // the command cannot disagree with the read rules. It fails closed to AGENT
+    // on any lookup miss or thrown error, by its own design.
+    const tier = await this.propelTierService.resolveTier(
+      buildUserAuthContext({
+        workspace: request.workspace,
+        userWorkspaceId: request.userWorkspaceId,
+        user: request.user,
+        workspaceMemberId: request.workspaceMemberId,
+        workspaceMember: request.workspaceMember,
+      }),
+    );
+
+    if (tier !== 'MANAGER') {
+      throw new ForbiddenException('Assignment is manager-only.');
     }
 
     // Identity is never taken from the payload. Sending it is a client bug worth
