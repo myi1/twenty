@@ -1,11 +1,13 @@
 import {
   BadRequestException,
   Body,
+  ConflictException,
   Controller,
   ForbiddenException,
   NotFoundException,
   Post,
   Req,
+  UnprocessableEntityException,
   UseGuards,
 } from '@nestjs/common';
 
@@ -17,9 +19,11 @@ import { NoPermissionGuard } from 'src/engine/guards/no-permission.guard';
 import { WorkspaceAuthGuard } from 'src/engine/guards/workspace-auth.guard';
 import {
   AtomicCommandService,
-  InjectedSpikeFailure,
+  IdempotencyConflictError,
+  StaleFenceError,
+  StaleVersionError,
+  UnknownAggregateError,
   type SpikeFailurePoint,
-  type SpikeWriteMode,
 } from 'src/modules/propel-command/atomic-command.service';
 
 /**
@@ -37,8 +41,7 @@ import {
  * is rejected outright, not merely ignored.
  */
 
-const FAILURE_POINTS: SpikeFailurePoint[] = ['none', 'domain', 'receipt'];
-const WRITE_MODES: SpikeWriteMode[] = ['orm', 'runner'];
+const FAILURE_POINTS: SpikeFailurePoint[] = ['none', 'domain', 'receipt', 'commit'];
 
 interface AssignmentStepBody {
   personId?: unknown;
@@ -48,7 +51,9 @@ interface AssignmentStepBody {
   payloadHash?: unknown;
   assignmentVersion?: unknown;
   failAfter?: unknown;
-  writeMode?: unknown;
+  useOrmWritePath?: unknown;
+  expectedVersion?: unknown;
+  fence?: unknown;
   workspaceId?: unknown;
   memberId?: unknown;
 }
@@ -90,16 +95,19 @@ export class PropelCommandController {
       throw new BadRequestException(`failAfter must be one of ${FAILURE_POINTS.join('|')}`);
     }
 
-    const writeMode = (body.writeMode ?? 'runner') as SpikeWriteMode;
+    const expectedVersion = String(body.expectedVersion ?? '0');
 
-    if (!WRITE_MODES.includes(writeMode)) {
-      throw new BadRequestException(`writeMode must be one of ${WRITE_MODES.join('|')}`);
+    // A version is a non-negative decimal integer, never a timestamp.
+    if (!/^\d+$/.test(expectedVersion)) {
+      throw new UnprocessableEntityException(
+        'expectedVersion must be a non-negative decimal integer',
+      );
     }
 
-    const assignmentVersion = Number(body.assignmentVersion ?? 1);
+    const fence = Number(body.fence ?? 0);
 
-    if (!Number.isInteger(assignmentVersion) || assignmentVersion < 0) {
-      throw new BadRequestException('assignmentVersion must be a non-negative integer');
+    if (!Number.isInteger(fence) || fence < 0) {
+      throw new UnprocessableEntityException('fence must be a non-negative integer');
     }
 
     try {
@@ -110,16 +118,26 @@ export class PropelCommandController {
         operationId: requireString(body.operationId, 'operationId'),
         stepKey: requireString(body.stepKey, 'stepKey'),
         payloadHash: requireString(body.payloadHash, 'payloadHash'),
-        assignmentVersion,
+        expectedVersion,
+        fence,
         failAfter,
-        writeMode,
+        useOrmWritePath: body.useOrmWritePath === true,
       });
     } catch (error) {
-      if (error instanceof InjectedSpikeFailure) {
-        // The spike's injected crash. 500 is the honest status: the caller does
-        // not know whether the work committed, which is precisely the state C1's
-        // recovery path has to resolve from the step receipt.
-        throw error;
+      // Contract mapping. A conflict is NOT a server error: the caller can act on
+      // it. An injected crash stays a 500 on purpose — the caller genuinely does
+      // not know whether the work committed, which is the state C1's recovery
+      // path has to resolve from the step receipt.
+      if (
+        error instanceof StaleVersionError ||
+        error instanceof IdempotencyConflictError ||
+        error instanceof StaleFenceError
+      ) {
+        throw new ConflictException(error.message);
+      }
+
+      if (error instanceof UnknownAggregateError) {
+        throw new UnprocessableEntityException(error.message);
       }
 
       throw error;

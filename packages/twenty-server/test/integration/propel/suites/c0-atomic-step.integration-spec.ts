@@ -2,44 +2,49 @@ import { randomUUID } from 'node:crypto';
 
 import request from 'supertest';
 
-import { SEED_APPLE_WORKSPACE_ID } from 'src/engine/workspace-manager/dev-seeder/core/constants/seeder-workspaces.constant';
+import {
+  SEED_APPLE_WORKSPACE_ID,
+  SEED_YCOMBINATOR_WORKSPACE_ID,
+} from 'src/engine/workspace-manager/dev-seeder/core/constants/seeder-workspaces.constant';
 import { getWorkspaceSchemaName } from 'src/engine/workspace-datasource/utils/get-workspace-schema-name.util';
 
 /**
- * C0 — prove the transaction boundary on the deployed fork.
+ * C0 — can the assignment boundary be TRUSTED?
  *
- * The one question: can this engine change a business record and write proof of
- * that change in a SINGLE transaction that either fully happens or fully does not?
- *
- * The step is driven over the real authenticated HTTP boundary
- * (`POST /propel/v1/spike/assignment-step`), not through the DI container: an
- * integration spec cannot resolve a class provider from `global.app`, because the
- * app is built in jest's globalSetup under a different module registry and the
- * spec's class objects are not the ones Nest registered.
+ * Part 1 (A1–A3) is the transaction: a domain change and its step receipt commit
+ * or roll back as one.
+ * Part 2 (A4–A9) is the adversarial set: replay, changed payload under the same
+ * key, stale version, stale fence, two competing writers, and an aggregate in
+ * another workspace.
+ * Part 3 (A10–A13) is identity: expired, invalid, absent and body-supplied.
+ * Part 4 (A14) pins the ORM write path's known escape.
  *
  * Every assertion reads committed state through `global.testDataSource` — a
- * DIFFERENT connection from the one the transaction runs on. Reading through the
- * transaction's own manager would show uncommitted rows and prove nothing.
+ * DIFFERENT connection from the one the transaction runs on.
  *
- * `person.city` stands in for the ownership field: Propel's `assignedAgentId` is
- * not installed in this workspace, and the subject under test is the transaction.
+ * `person.city` stands in for the ownership field; the subject under test is the
+ * command boundary, not the field.
  */
 
 const WORKSPACE_ID = SEED_APPLE_WORKSPACE_ID;
 const SCHEMA = getWorkspaceSchemaName(WORKSPACE_ID);
+const OTHER_SCHEMA = getWorkspaceSchemaName(SEED_YCOMBINATOR_WORKSPACE_ID);
 const RECEIPTS = 'core."_c0SpikeStepReceipt"';
+const VERSIONS = 'core."_c0SpikeAssignmentVersion"';
 const ROUTE = '/propel/v1/spike/assignment-step';
 
 const OWNER_A = 'C0-OWNER-A';
 const OWNER_B = 'C0-OWNER-B';
+const OWNER_C = 'C0-OWNER-C';
 
 const raw = <T = unknown>(sql: string, params?: unknown[]): Promise<T[]> =>
   global.testDataSource.query(sql, params);
 
 const api = () => request(`http://localhost:${APP_PORT}`);
 
-describe('C0 — atomic business change + step receipt (integration)', () => {
+describe('C0 — the assignment command boundary (integration)', () => {
   let personId: string;
+  let foreignPersonId: string;
 
   beforeAll(async () => {
     await raw(`
@@ -53,37 +58,60 @@ describe('C0 — atomic business change + step receipt (integration)', () => {
         PRIMARY KEY ("workspaceId", "operationId", "stepKey")
       )
     `);
+    await raw(`
+      CREATE TABLE IF NOT EXISTS ${VERSIONS} (
+        "workspaceId" uuid   NOT NULL,
+        "personId"    uuid   NOT NULL,
+        version       bigint NOT NULL,
+        "lastFence"   bigint NOT NULL DEFAULT 0,
+        PRIMARY KEY ("workspaceId", "personId")
+      )
+    `);
   });
 
   beforeEach(async () => {
     personId = randomUUID();
+    foreignPersonId = randomUUID();
+
     await raw(`DELETE FROM ${RECEIPTS} WHERE "workspaceId" = $1`, [WORKSPACE_ID]);
+    await raw(`DELETE FROM ${VERSIONS} WHERE "workspaceId" = $1`, [WORKSPACE_ID]);
     await raw(
       `INSERT INTO "${SCHEMA}".person (id, city, "position") VALUES ($1, $2, 1)`,
       [personId, OWNER_A],
     );
+    // An aggregate that exists, but in a DIFFERENT workspace.
     await raw(
-      `DELETE FROM "${SCHEMA}"."timelineActivity" WHERE "targetPersonId" = $1`,
-      [personId],
+      `INSERT INTO "${OTHER_SCHEMA}".person (id, city, "position") VALUES ($1, $2, 1)`,
+      [foreignPersonId, OWNER_A],
     );
   });
 
   afterEach(async () => {
-    await raw(
-      `DELETE FROM "${SCHEMA}"."timelineActivity" WHERE "targetPersonId" = $1`,
-      [personId],
-    );
     await raw(`DELETE FROM "${SCHEMA}".person WHERE id = $1`, [personId]);
+    await raw(`DELETE FROM "${OTHER_SCHEMA}".person WHERE id = $1`, [
+      foreignPersonId,
+    ]);
     await raw(`DELETE FROM ${RECEIPTS} WHERE "workspaceId" = $1`, [WORKSPACE_ID]);
+    await raw(`DELETE FROM ${VERSIONS} WHERE "workspaceId" = $1`, [WORKSPACE_ID]);
   });
 
-  const readCity = async (): Promise<string | null> => {
+  const readCity = async (id = personId, schema = SCHEMA) => {
     const rows = await raw<{ city: string | null }>(
-      `SELECT city FROM "${SCHEMA}".person WHERE id = $1`,
-      [personId],
+      `SELECT city FROM "${schema}".person WHERE id = $1`,
+      [id],
     );
 
     return rows[0]?.city ?? null;
+  };
+
+  const readVersion = async (): Promise<string | null> => {
+    const rows = await raw<{ version: string }>(
+      `SELECT version::text AS version FROM ${VERSIONS}
+        WHERE "workspaceId" = $1 AND "personId" = $2`,
+      [WORKSPACE_ID, personId],
+    );
+
+    return rows[0]?.version ?? null;
   };
 
   const countReceipts = async (): Promise<number> => {
@@ -95,17 +123,7 @@ describe('C0 — atomic business change + step receipt (integration)', () => {
     return Number(rows[0].n);
   };
 
-  const countTimelineRows = async (): Promise<number> => {
-    const rows = await raw<{ n: string }>(
-      `SELECT count(*)::text AS n FROM "${SCHEMA}"."timelineActivity" WHERE "targetPersonId" = $1`,
-      [personId],
-    );
-
-    return Number(rows[0].n);
-  };
-
   const postStep = (
-    failAfter: 'none' | 'domain' | 'receipt',
     overrides: Record<string, unknown> = {},
     token: string | null = APPLE_JANE_ADMIN_ACCESS_TOKEN,
   ) => {
@@ -121,87 +139,188 @@ describe('C0 — atomic business change + step receipt (integration)', () => {
       operationId: randomUUID(),
       stepKey: 'ASSIGN_LEAD:1',
       payloadHash: 'hash-1',
-      assignmentVersion: 8,
-      failAfter,
+      expectedVersion: '0',
+      fence: 1,
+      failAfter: 'none',
       ...overrides,
     });
   };
 
-  it('T1 — a failure BETWEEN the two writes reverts the first one', async () => {
-    const response = await postStep('domain');
+  // ── Part 1: the transaction ───────────────────────────────────────────────
+
+  it('A1 — a failure BETWEEN the two writes reverts the first one', async () => {
+    const response = await postStep({ failAfter: 'domain' });
 
     expect(response.status).toBeGreaterThanOrEqual(500);
     expect(await readCity()).toBe(OWNER_A);
     expect(await countReceipts()).toBe(0);
+    expect(await readVersion()).toBeNull();
   });
 
-  it('T2 — a failure AFTER both writes leaves neither', async () => {
-    const response = await postStep('receipt');
+  it('A2 — a failure AFTER both writes leaves neither', async () => {
+    const response = await postStep({ failAfter: 'receipt' });
 
     expect(response.status).toBeGreaterThanOrEqual(500);
     expect(await readCity()).toBe(OWNER_A);
     expect(await countReceipts()).toBe(0);
+    expect(await readVersion()).toBeNull();
   });
 
-  it('T3 — a successful transaction contains BOTH writes', async () => {
-    const response = await postStep('none');
+  it('A3 — a successful command advances the version 0 → 1 with its receipt', async () => {
+    const response = await postStep();
 
     expect(response.status).toBe(201);
-    expect(response.body).toMatchObject({ personId, ownerValue: OWNER_B });
+    expect(response.body).toMatchObject({
+      ownerValue: OWNER_B,
+      assignmentVersion: '1',
+      replay: false,
+    });
     expect(await readCity()).toBe(OWNER_B);
+    expect(await readVersion()).toBe('1');
     expect(await countReceipts()).toBe(1);
   });
 
-  // PARKED, NOT PASSING — the probe is not sound yet. The plan requires that a
-  // rollback emit no successful domain event. The intended probe was the
-  // timeline-activity row an UPDATED event writes, but a COMMITTED change wrote
-  // ZERO timeline rows in this fixture, so "zero rows after a rollback" would be
-  // vacuous and would report a pass for a system that had not been measured.
-  // Reinstate only once a committed change is observed to produce a row.
-  it.skip('T4 — a rolled-back transaction must leave no durable event side effect', async () => {
-    await postStep('receipt');
+  // ── Part 2: the adversarial set ───────────────────────────────────────────
 
-    expect(await readCity()).toBe(OWNER_A);
-    expect(await countTimelineRows()).toBe(0);
+  it('A4 — a crash after commit, then a retry, applies the change ONCE', async () => {
+    const operationId = randomUUID();
+
+    // The engine commits, then dies before answering. The caller cannot tell
+    // whether the work landed.
+    const lost = await postStep({ operationId, failAfter: 'commit' });
+
+    expect(lost.status).toBeGreaterThanOrEqual(500);
+    expect(await readCity()).toBe(OWNER_B);
+    expect(await readVersion()).toBe('1');
+
+    // The recovery path: same command id, same payload.
+    const retry = await postStep({ operationId });
+
+    expect(retry.status).toBe(201);
+    expect(retry.body).toMatchObject({ assignmentVersion: '1', replay: true });
+    // One mutation, one receipt — not two.
+    expect(await readVersion()).toBe('1');
+    expect(await countReceipts()).toBe(1);
   });
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // CHARACTERIZATION. These assert the CURRENT, WRONG behaviour of the ORM write
-  // path, so the constraint is executable rather than folklore. They are a
-  // tripwire: the day WorkspaceEntityManager.update passes `this.queryRunner`
-  // instead of `undefined`, they go red and the command may switch to the ORM.
-  // Verified by mutation: applying that one-line change locally turned T1/T2 from
-  // red to green and turned these two red.
-  // ─────────────────────────────────────────────────────────────────────────
-  it('T7 (characterization) — the ORM write path COMMITS THROUGH a rollback', async () => {
-    const response = await postStep('domain', { writeMode: 'orm' });
+  it('A5 — the same command id with a DIFFERENT payload is a conflict', async () => {
+    const operationId = randomUUID();
 
-    expect(response.status).toBeGreaterThanOrEqual(500);
-    // The transaction threw, and the ownership change survived it anyway.
+    expect((await postStep({ operationId })).status).toBe(201);
+
+    const changed = await postStep({
+      operationId,
+      nextOwner: OWNER_C,
+      payloadHash: 'hash-2',
+      expectedVersion: '1',
+    });
+
+    expect(changed.status).toBe(409);
     expect(await readCity()).toBe(OWNER_B);
+    expect(await readVersion()).toBe('1');
+    expect(await countReceipts()).toBe(1);
   });
 
-  it('T8 (characterization) — and it does so with no receipt, the exact split C0 forbids', async () => {
-    const response = await postStep('domain', { writeMode: 'orm' });
+  it('A6 — a stale expected version is refused and changes nothing', async () => {
+    expect((await postStep()).status).toBe(201);
 
-    expect(response.status).toBeGreaterThanOrEqual(500);
+    const stale = await postStep({ expectedVersion: '0', nextOwner: OWNER_C });
+
+    expect(stale.status).toBe(409);
     expect(await readCity()).toBe(OWNER_B);
+    expect(await readVersion()).toBe('1');
+  });
+
+  it('A7 — a fencing token older than one already seen is refused', async () => {
+    expect((await postStep({ fence: 5 })).status).toBe(201);
+
+    const stale = await postStep({
+      fence: 4,
+      expectedVersion: '1',
+      nextOwner: OWNER_C,
+    });
+
+    expect(stale.status).toBe(409);
+    expect(await readCity()).toBe(OWNER_B);
+    expect(await readVersion()).toBe('1');
+  });
+
+  it('A8 — two competing commands at version 0: exactly one advances it', async () => {
+    const [first, second] = await Promise.all([
+      postStep({ nextOwner: OWNER_B }),
+      postStep({ nextOwner: OWNER_C }),
+    ]);
+
+    const statuses = [first.status, second.status].sort();
+
+    expect(statuses).toEqual([201, 409]);
+    expect(await readVersion()).toBe('1');
+    expect(await countReceipts()).toBe(1);
+
+    const winner = first.status === 201 ? OWNER_B : OWNER_C;
+
+    expect(await readCity()).toBe(winner);
+  });
+
+  it('A9 — an aggregate in ANOTHER workspace cannot be touched', async () => {
+    const response = await postStep({ personId: foreignPersonId });
+
+    expect(response.status).toBe(422);
+    expect(await readCity(foreignPersonId, OTHER_SCHEMA)).toBe(OWNER_A);
     expect(await countReceipts()).toBe(0);
   });
 
-  it('T5 — identity in the body is rejected, not silently ignored', async () => {
-    const response = await postStep('none', { workspaceId: WORKSPACE_ID });
+  // ── Part 3: identity ──────────────────────────────────────────────────────
+
+  it('A10 — an expired token performs no work', async () => {
+    const response = await postStep({}, EXPIRED_ACCESS_TOKEN);
+
+    expect([401, 403]).toContain(response.status);
+    expect(await readCity()).toBe(OWNER_A);
+    expect(await countReceipts()).toBe(0);
+  });
+
+  it('A11 — a forged/invalid token performs no work', async () => {
+    const response = await postStep({}, INVALID_ACCESS_TOKEN);
+
+    expect([401, 403]).toContain(response.status);
+    expect(await readCity()).toBe(OWNER_A);
+    expect(await countReceipts()).toBe(0);
+  });
+
+  it('A12 — no token performs no work', async () => {
+    const response = await postStep({}, null);
+
+    expect([401, 403]).toContain(response.status);
+    expect(await readCity()).toBe(OWNER_A);
+    expect(await countReceipts()).toBe(0);
+  });
+
+  it('A13 — identity in the body is rejected, not silently ignored', async () => {
+    const response = await postStep({ workspaceId: WORKSPACE_ID });
 
     expect(response.status).toBe(400);
     expect(await readCity()).toBe(OWNER_A);
     expect(await countReceipts()).toBe(0);
   });
 
-  it('T6 — no bearer token performs no work', async () => {
-    const response = await postStep('none', {}, null);
+  // ── Part 4: the ORM escape, pinned ────────────────────────────────────────
 
-    expect([401, 403]).toContain(response.status);
-    expect(await readCity()).toBe(OWNER_A);
+  // CHARACTERIZATION of current, WRONG behaviour, so the constraint is executable
+  // rather than folklore. WorkspaceEntityManager.update passes `undefined` where
+  // every read path passes `this.queryRunner`, so the write runs on a pooled
+  // connection and survives a rollback. Verified by mutation: passing
+  // `this.queryRunner` there turns this test red and is the real fix, whenever
+  // the engine owners choose to review it.
+  it('A14 (characterization) — the ORM write path COMMITS THROUGH a rollback', async () => {
+    const response = await postStep({
+      failAfter: 'domain',
+      useOrmWritePath: true,
+    });
+
+    expect(response.status).toBeGreaterThanOrEqual(500);
+    expect(await readCity()).toBe(OWNER_B);
     expect(await countReceipts()).toBe(0);
+    expect(await readVersion()).toBeNull();
   });
 });

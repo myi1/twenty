@@ -6,39 +6,58 @@ import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system
 import { getWorkspaceSchemaName } from 'src/engine/workspace-datasource/utils/get-workspace-schema-name.util';
 
 /**
- * C0 SPIKE — the one question: can this engine commit a domain change and proof
- * of that change in a single transaction that either fully happens or fully
- * does not?
+ * C0 SPIKE — the narrow assignment step.
  *
- * Scoping, so this is not read as more than it is:
- *  - `person.city` stands in for the ownership field. Propel's real field is
- *    `assignedAgentId`, which is not installed in the integration workspace. The
- *    subject under test is the TRANSACTION, not the field.
- *  - The workspace id comes from the caller's verified token, never from the body.
- *  - The ORM call still runs under a SYSTEM auth context. Proving that a forged
- *    member, a revoked user or a wrong workspace is rejected is the NEXT step and
- *    is not established by anything here.
- *  - The receipt table is created by the test, not by a migration. How such a
- *    table reaches a real environment is a separate, already-identified problem.
+ * Step 1 established that a workspace transaction spans the workspace schema and
+ * core.* together, so the domain change and its step receipt commit or roll back
+ * as one. This adds the parts that decide whether the boundary can be TRUSTED:
+ * a locked compare-and-set on the assignment version, a fencing token, and
+ * idempotent replay keyed on (workspace, operation, step).
+ *
+ * Scoping, unchanged: `person.city` stands in for the ownership field, the
+ * receipt/version tables are created by the test rather than a migration, and the
+ * ORM's own update path is NOT used because it escapes the transaction (see
+ * 01-transaction-boundary-finding.md).
  */
 
-export type SpikeFailurePoint = 'none' | 'domain' | 'receipt';
-
-/**
- * 'runner' — the CHOSEN implementation: parameterised SQL on the transaction's
- *   own query runner. Proven atomic with the receipt (T0/T0b/T1/T2/T3).
- * 'orm'    — WorkspaceRepository.update, handed the transaction's manager.
- *   Retained only as a characterization case: this fork's
- *   WorkspaceEntityManager.update passes `undefined` where every read path
- *   passes `this.queryRunner`, so the write runs on a pooled connection and
- *   COMMITS THROUGH A ROLLBACK. See T7/T8.
- */
-export type SpikeWriteMode = 'orm' | 'runner';
+export type SpikeFailurePoint = 'none' | 'domain' | 'receipt' | 'commit';
 
 export class InjectedSpikeFailure extends Error {
   constructor(readonly at: SpikeFailurePoint) {
-    super(`C0 spike: injected failure after the ${at} write`);
+    super(`C0 spike: injected failure at the ${at} boundary`);
     this.name = 'InjectedSpikeFailure';
+  }
+}
+
+/** Maps to 409 STALE_VERSION. */
+export class StaleVersionError extends Error {
+  constructor(readonly expected: string, readonly actual: string) {
+    super(`Expected assignment version ${expected}, found ${actual}`);
+    this.name = 'StaleVersionError';
+  }
+}
+
+/** Maps to 409 IDEMPOTENCY_CONFLICT. */
+export class IdempotencyConflictError extends Error {
+  constructor() {
+    super('This command id was already used with a different payload');
+    this.name = 'IdempotencyConflictError';
+  }
+}
+
+/** Maps to 409 — a fencing token older than one already seen. */
+export class StaleFenceError extends Error {
+  constructor(readonly presented: number, readonly seen: number) {
+    super(`Fence ${presented} is older than ${seen}`);
+    this.name = 'StaleFenceError';
+  }
+}
+
+/** Maps to 422 — the aggregate is not in this workspace. */
+export class UnknownAggregateError extends Error {
+  constructor(readonly personId: string) {
+    super(`No such person in this workspace: ${personId}`);
+    this.name = 'UnknownAggregateError';
   }
 }
 
@@ -49,19 +68,22 @@ export interface AssignmentStepInput {
   operationId: string;
   stepKey: string;
   payloadHash: string;
-  assignmentVersion: number;
+  expectedVersion: string;
+  fence: number;
   failAfter: SpikeFailurePoint;
-  writeMode: SpikeWriteMode;
+  useOrmWritePath: boolean;
 }
 
 export interface CommittedSpikeStep {
   personId: string;
   ownerValue: string;
-  assignmentVersion: number;
+  assignmentVersion: string;
   stepKey: string;
+  replay: boolean;
 }
 
-const RECEIPT_TABLE = 'core."_c0SpikeStepReceipt"';
+const RECEIPTS = 'core."_c0SpikeStepReceipt"';
+const VERSIONS = 'core."_c0SpikeAssignmentVersion"';
 
 @Injectable()
 export class AtomicCommandService {
@@ -73,35 +95,109 @@ export class AtomicCommandService {
     input: AssignmentStepInput,
   ): Promise<CommittedSpikeStep> {
     const authContext = buildSystemAuthContext(input.workspaceId);
+    const schemaName = getWorkspaceSchemaName(input.workspaceId);
 
-    return this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+    const committed = await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
       async () => {
         const dataSource =
           await this.globalWorkspaceOrmManager.getGlobalWorkspaceDataSource();
 
-        const schemaName = getWorkspaceSchemaName(input.workspaceId);
-
-        const personRepository = await this.globalWorkspaceOrmManager.getRepository(
-          input.workspaceId,
-          'person',
-          { shouldBypassPermissionChecks: true },
-        );
+        const personRepository =
+          await this.globalWorkspaceOrmManager.getRepository(
+            input.workspaceId,
+            'person',
+            { shouldBypassPermissionChecks: true },
+          );
 
         return dataSource.transaction(async (manager) => {
           const transactionManager = manager as WorkspaceEntityManager;
-
-          // WorkspaceEntityManager.query() is deliberately overridden to throw
-          // RAW_SQL_NOT_ALLOWED, so the receipt cannot be written through the
-          // manager. Its underlying queryRunner IS the transactional connection
-          // and is the sanctioned route for a non-domain, engine-owned table.
+          // WorkspaceEntityManager.query() throws RAW_SQL_NOT_ALLOWED by design;
+          // its queryRunner IS the transactional connection.
           const runner = transactionManager.queryRunner;
 
           if (!runner) {
             throw new Error('C0 spike: no transactional query runner');
           }
 
-          // (1) the domain change
-          if (input.writeMode === 'orm') {
+          // ── idempotent replay ────────────────────────────────────────────
+          // Look up a prior matching step BEFORE treating its old expected
+          // version as a conflict: a retry after a lost response must return the
+          // canonical result, not a 409.
+          const prior: { payloadHash: string; assignmentVersion: string }[] =
+            await runner.query(
+              `SELECT "payloadHash", "assignmentVersion"::text AS "assignmentVersion"
+                 FROM ${RECEIPTS}
+                WHERE "workspaceId" = $1 AND "operationId" = $2 AND "stepKey" = $3`,
+              [input.workspaceId, input.operationId, input.stepKey],
+            );
+
+          if (prior.length > 0) {
+            if (prior[0].payloadHash !== input.payloadHash) {
+              throw new IdempotencyConflictError();
+            }
+
+            return {
+              personId: input.personId,
+              ownerValue: input.nextOwner,
+              assignmentVersion: prior[0].assignmentVersion,
+              stepKey: input.stepKey,
+              replay: true,
+            };
+          }
+
+          // ── the aggregate must exist IN THIS WORKSPACE ───────────────────
+          // FOR UPDATE on the PERSON row, not the version row: the version row
+          // may not exist yet on a first assignment, and a lock on a row that is
+          // not there serialises nothing — two first-writers would both proceed.
+          // The person row always exists, so it is the honest lock target.
+          // The characterization path deliberately skips the lock. The ORM write
+          // runs on a POOLED connection, so it would block on a row this very
+          // transaction holds — a self-deadlock that resolves only when the
+          // client read timeout fires (~10 s), after which Postgres runs the
+          // queued UPDATE anyway once the rollback releases the lock. That is a
+          // real finding in its own right (row locking and the ORM write path
+          // cannot be combined in one command) but it is a COMPOUND of three
+          // effects, and a characterization test must isolate the one it names.
+          const lockClause = input.useOrmWritePath ? '' : 'FOR UPDATE';
+
+          const person: { id: string }[] = await runner.query(
+            `SELECT id FROM "${schemaName}".person
+              WHERE id = $1 AND "deletedAt" IS NULL
+                ${lockClause}`,
+            [input.personId],
+          );
+
+          if (person.length === 0) {
+            throw new UnknownAggregateError(input.personId);
+          }
+
+          // ── lock the assignment row, then compare-and-set ────────────────
+          // SELECT ... FOR UPDATE serialises two competing commands on the same
+          // aggregate: the second blocks here until the first commits, then reads
+          // the NEW version and loses its compare-and-set.
+          const locked: { version: string; lastFence: string }[] =
+            await runner.query(
+              `SELECT version::text AS version, "lastFence"::text AS "lastFence"
+                 FROM ${VERSIONS}
+                WHERE "workspaceId" = $1 AND "personId" = $2`,
+              [input.workspaceId, input.personId],
+            );
+
+          const currentVersion = locked.length > 0 ? locked[0].version : '0';
+          const lastFence = locked.length > 0 ? Number(locked[0].lastFence) : -1;
+
+          if (input.fence < lastFence) {
+            throw new StaleFenceError(input.fence, lastFence);
+          }
+
+          if (currentVersion !== input.expectedVersion) {
+            throw new StaleVersionError(input.expectedVersion, currentVersion);
+          }
+
+          const nextVersion = (BigInt(currentVersion) + 1n).toString();
+
+          // ── the domain change ────────────────────────────────────────────
+          if (input.useOrmWritePath) {
             await personRepository.update(
               input.personId,
               { city: input.nextOwner },
@@ -118,11 +214,18 @@ export class AtomicCommandService {
             throw new InjectedSpikeFailure('domain');
           }
 
-          // (2) the step receipt, in core.* — a DIFFERENT schema, same database,
-          //     written through the SAME transaction's manager. Whether that is
-          //     genuinely one transaction is exactly what this spike measures.
+          // ── the new assignment version ───────────────────────────────────
           await runner.query(
-            `INSERT INTO ${RECEIPT_TABLE}
+            `INSERT INTO ${VERSIONS} ("workspaceId","personId",version,"lastFence")
+             VALUES ($1,$2,$3,$4)
+             ON CONFLICT ("workspaceId","personId")
+             DO UPDATE SET version = EXCLUDED.version, "lastFence" = EXCLUDED."lastFence"`,
+            [input.workspaceId, input.personId, nextVersion, input.fence],
+          );
+
+          // ── the step receipt ─────────────────────────────────────────────
+          await runner.query(
+            `INSERT INTO ${RECEIPTS}
                ("workspaceId","operationId","stepKey","payloadHash","assignmentVersion")
              VALUES ($1,$2,$3,$4,$5)`,
             [
@@ -130,7 +233,7 @@ export class AtomicCommandService {
               input.operationId,
               input.stepKey,
               input.payloadHash,
-              input.assignmentVersion,
+              nextVersion,
             ],
           );
 
@@ -141,12 +244,22 @@ export class AtomicCommandService {
           return {
             personId: input.personId,
             ownerValue: input.nextOwner,
-            assignmentVersion: input.assignmentVersion,
+            assignmentVersion: nextVersion,
             stepKey: input.stepKey,
+            replay: false,
           };
         });
       },
       authContext,
     );
+
+    // Crash AFTER the transaction committed but BEFORE the caller is answered.
+    // The work is durable; the caller cannot know that. Recovery is a retry with
+    // the same command id, which must replay rather than re-apply.
+    if (input.failAfter === 'commit') {
+      throw new InjectedSpikeFailure('commit');
+    }
+
+    return committed;
   }
 }
