@@ -34,7 +34,8 @@ import {
   type LeadDrafts,
 } from './leadDrafts';
 import {
-  CALL_POLL_INTERVAL_MS,
+  callPollIntervalMs,
+  canDismissCall,
   CALL_STATUS_TEXT,
   CALL_STATUS_TONE,
   callRefused,
@@ -298,6 +299,9 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
   // component unmounts, or the session expires. It used to have no session term
   // at all: once the session lapsed every request failed, the effect returned,
   // and it tried again ten seconds later for thirty minutes.
+  // The pace follows the state (task 57): every 10s while "Calling…", every 30s
+  // after. A PBX call's row only lands at hang-up, so the slow part lasts the whole
+  // call, and every tick reloads the entire lead page.
   useEffect(() => {
     if (sheet.open) return;
     if (!shouldPollCall(call.status, sessionActive)) return;
@@ -322,7 +326,7 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
       }
       setData(r);
       setCall((c) => nextCallState(c, r.latestCall, Date.now()));
-    }, CALL_POLL_INTERVAL_MS);
+    }, callPollIntervalMs(call.status));
     return () => window.clearInterval(t);
   }, [host, personId, sheet.open, call.status, sessionActive]);
 
@@ -397,7 +401,7 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
                     and a plain sentence when we asked and nothing came back —
                     rather than a silent thirty-minute poll for a call that may
                     never have been placed. A toast cannot do this job: it is
-                    gone in seconds, and this state can last a minute. */}
+                    gone in seconds, and these states can last as long as the call does. */}
                 {callStatusText !== null && (
                   <div
                     role="status"
@@ -428,7 +432,7 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
                   >
                     <span aria-hidden="true">{callTone.icon}</span>
                     <span style={{ flex: 1 }}>{callStatusText}</span>
-                    {(call.status === 'UNCONFIRMED' || call.status === 'REFUSED') && (
+                    {canDismissCall(call.status) && (
                       <Btn variant="secondary" style={{ minHeight: 32 }} onClick={() => setCall(IDLE_CALL)}>Dismiss</Btn>
                     )}
                   </div>
