@@ -26,6 +26,7 @@ import {
   clearAllDrafts,
   draftKey,
   EMPTY_DRAFTS,
+  purgeForeignDrafts,
   purgeLegacyDrafts,
   readDrafts,
   writeDrafts,
@@ -223,8 +224,14 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
   useEffect(() => {
     if (!draftId || loadedDraftsFor.current === draftId) return;
     loadedDraftsFor.current = draftId;
+    // Anything in this tab belonging to a DIFFERENT member goes first. The
+    // session-expiry branch below cannot be relied on to have run: Twenty's shell
+    // redirects to sign-in before this hero mounts, so a lapsed session usually
+    // skips it entirely. Whoever uses the tab next clears up after whoever used
+    // it last, regardless of how the previous session ended.
+    if (viewerId) purgeForeignDrafts(draftStore(), viewerId);
     setDrafts(readDrafts(draftStore(), draftId));
-  }, [draftId]);
+  }, [draftId, viewerId]);
 
   // Mirror them, so a refresh mid-sentence is not punished. The parent's own
   // state is what the agent is typing into; this is only the safety net.
