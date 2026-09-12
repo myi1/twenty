@@ -119,9 +119,11 @@ export const A2AStudioPage = () => {
                     Review the agreement, fill any remaining fields, and sign.
                     When you finish, you&rsquo;ll send it to the counterparty.
                   </Text>
+                  {/* Task 38: the embed signs OUR side. It used to receive the
+                      BUYER's name as the locked signer name — wrong person on our
+                      signature block. Documenso now shows the recipient's own name. */}
                   <DocumensoEmbed
                     token={studio.draft.ourRecipientToken}
-                    signerName={studio.prefill.buyerName}
                     onCompleted={() => {
                       notify(
                         'Signed — now send it to the counterparty.',
@@ -156,16 +158,15 @@ export const A2AStudioPage = () => {
                   counterparty={studio.counterparty}
                   signingUrl={studio.draft?.counterpartySigningUrl ?? null}
                   sending={studio.sending}
-                  alreadySent={studio.status === 'OUT_FOR_SIGNATURE'}
+                  sent={studio.status === 'OUT_FOR_SIGNATURE'}
+                  outcomeMessage={studio.sendMessage}
                   onOpenContact={() => setContactOpen(true)}
                   onSend={async (channels) => {
-                    const ok = await studio.send(channels);
-                    if (ok) {
-                      notify('Sent to the counterparty.', 'success');
-                    } else {
-                      notify(studio.errorMessage ?? 'Could not send.', 'error');
-                    }
-                    return ok;
+                    // Task 38: the toast says what the service reported, not
+                    // "Sent" — at launch nothing is delivered automatically.
+                    const result = await studio.send(channels);
+                    notify(result.message, result.ok ? 'success' : 'error');
+                    return result.ok;
                   }}
                 />
               ) : null}

@@ -19,20 +19,30 @@ import {
 } from 'twenty-ui/display';
 import { type CounterpartyPerson, type SendChannel } from '@/propel/types/a2a';
 
-// The "send" step (design §5 SendPanel / D4): contextual WhatsApp / email /
-// copy-link buttons that light up based on the counterparty channels we hold.
-// WhatsApp is the DEFAULT when a phone exists (the WhatsApp-first delivery wired
-// in doc-service). Each action calls /a2a/send with the chosen channel; copy-link
-// is always available and copies the live counterparty signing URL.
-
-const waText = (name: string | null): string =>
-  `Hi${name != null && name !== '' ? ` ${name}` : ''}, please review and sign the agreement-to-act here:`;
+// The "send" step (design §5 SendPanel / D4).
+//
+// TASK 38 — LAUNCH MODE (founder decision 3, 2026-09-12: delivery at launch is
+// email only; WhatsApp legs are a later, separate step). At launch doc-service has
+// no WhatsApp line (`WA_SERVICE_*` unset) and cannot email the signing link at send
+// time (only the signed PDF on completion). The only leg that works is copy-link,
+// so the panel offers ONE primary action: "Get signing link" → /a2a/send with
+// `copyLink`, which activates the envelope, marks the agreement Out for signature,
+// stores the counterparty (whose email later receives the signed PDF), and hands
+// the agent the link to send themselves. The WhatsApp / email buttons stay in code
+// behind AUTO_SEND_CHANNELS_ENABLED: flipping it (+ the service's WhatsApp
+// settings) brings them back with the honest per-leg outcome text.
+//
+// Whatever the mode, the sentence under the buttons comes from the service's own
+// per-leg report (a2aSendOutcome.ts) — never from `ok`, which is true even when
+// nothing was delivered.
+const AUTO_SEND_CHANNELS_ENABLED = false;
 
 export const SendPanel = ({
   counterparty,
   signingUrl,
   sending,
-  alreadySent,
+  sent,
+  outcomeMessage,
   onOpenContact,
   onSend,
 }: {
@@ -40,16 +50,21 @@ export const SendPanel = ({
   /** Live counterparty link — only valid after send activates the envelope. */
   signingUrl: string | null;
   sending: boolean;
-  alreadySent: boolean;
+  /** The agreement is Out for signature (the envelope was activated). */
+  sent: boolean;
+  /** What the last send really did, in one sentence (from the hook). */
+  outcomeMessage: string | null;
   onOpenContact: () => void;
-  onSend: (channels: SendChannel[]) => Promise<boolean>;
+  onSend: (channels: SendChannel[]) => Promise<unknown>;
 }) => {
   const hasPhone =
     counterparty?.phone != null && counterparty.phone.trim() !== '';
   const hasEmail =
     counterparty?.email != null && counterparty.email.trim() !== '';
+  const linkLive = signingUrl != null && signingUrl !== '';
 
-  // No counterparty at all → must capture one before any channel makes sense.
+  // No counterparty at all → must capture one before any channel makes sense:
+  // their email is where the signed PDF goes once both sides have signed.
   if (counterparty === null) {
     return (
       <Stack gap="md" maw={560}>
@@ -57,10 +72,10 @@ export const SendPanel = ({
           color="blue"
           variant="light"
           icon={<IconAlertTriangle size={16} />}
-          title="Add the counterparty first"
+          title="Add the other broker first"
         >
-          We need the other broker&rsquo;s contact to send the agreement and
-          deliver the signed copy.
+          We need the other broker&rsquo;s contact (their email) to deliver the
+          signed copy once both sides have signed.
         </Alert>
         <Group>
           <Button
@@ -68,7 +83,7 @@ export const SendPanel = ({
             leftSection={<IconUserPlus size={14} />}
             onClick={onOpenContact}
           >
-            Add counterparty
+            Add the other broker
           </Button>
         </Group>
       </Stack>
@@ -106,54 +121,72 @@ export const SendPanel = ({
         </Group>
       </Paper>
 
+      {!hasEmail ? (
+        <Alert
+          color="yellow"
+          variant="light"
+          icon={<IconAlertTriangle size={16} />}
+        >
+          This broker has no email on file, so they will not receive the signed
+          PDF automatically. Add one under &ldquo;Change&rdquo;.
+        </Alert>
+      ) : null}
+
       <Box>
         <Text size="xs" c="dimmed" fw={600} tt="uppercase" mb="xs">
-          Send the agreement
+          {AUTO_SEND_CHANNELS_ENABLED
+            ? 'Send the agreement'
+            : 'Share the signing link'}
         </Text>
         <Stack gap="sm">
-          {/* WhatsApp — the default when a phone exists. */}
-          <Button
-            color="green"
-            variant={hasPhone ? 'filled' : 'default'}
-            justify="space-between"
-            fullWidth
-            leftSection={<IconSend size={16} />}
-            rightSection={hasPhone ? <Text size="xs">Recommended</Text> : null}
-            disabled={!hasPhone}
-            loading={sending}
-            onClick={() => void onSend(['whatsapp'])}
-          >
-            {hasPhone
-              ? `WhatsApp ${counterparty.phone}`
-              : 'WhatsApp (no phone on file)'}
-          </Button>
+          {AUTO_SEND_CHANNELS_ENABLED ? (
+            <>
+              {/* WhatsApp — the default when a phone exists (needs the
+                  service's WhatsApp line; off at launch). */}
+              <Button
+                color="green"
+                variant={hasPhone ? 'filled' : 'default'}
+                justify="space-between"
+                fullWidth
+                leftSection={<IconSend size={16} />}
+                rightSection={
+                  hasPhone ? <Text size="xs">Recommended</Text> : null
+                }
+                disabled={!hasPhone}
+                loading={sending}
+                onClick={() => void onSend(['whatsapp'])}
+              >
+                {hasPhone
+                  ? `WhatsApp ${counterparty.phone}`
+                  : 'WhatsApp (no phone on file)'}
+              </Button>
+              <Button
+                variant="default"
+                justify="flex-start"
+                fullWidth
+                leftSection={<IconMail size={16} />}
+                disabled={!hasEmail}
+                loading={sending}
+                onClick={() => void onSend(['email'])}
+              >
+                {hasEmail
+                  ? `Email ${counterparty.email}`
+                  : 'Email (no email on file)'}
+              </Button>
+            </>
+          ) : null}
 
-          {/* Email. */}
-          <Button
-            variant="default"
-            justify="flex-start"
-            fullWidth
-            leftSection={<IconMail size={16} />}
-            disabled={!hasEmail}
-            loading={sending}
-            onClick={() => void onSend(['email'])}
-          >
-            {hasEmail
-              ? `Email ${counterparty.email}`
-              : 'Email (no email on file)'}
-          </Button>
-
-          {/* Copy link — always available, but the link is only live after send
-              activates the envelope. We send (copyLink channel) first if needed,
-              then expose the URL to copy. */}
-          {signingUrl != null && signingUrl !== '' ? (
+          {/* Copy link — the one leg that always works. The link is only live
+              after send activates the envelope, so the first click sends with
+              the copyLink channel, then the URL is exposed to copy. */}
+          {linkLive ? (
             <CopyButton value={signingUrl}>
               {({ copied, copy }) => (
                 <Button
-                  variant="default"
+                  color="red"
+                  variant={copied ? 'light' : 'filled'}
                   justify="flex-start"
                   fullWidth
-                  color={copied ? 'green' : undefined}
                   leftSection={
                     copied ? <IconCheck size={16} /> : <IconCopy size={16} />
                   }
@@ -165,30 +198,36 @@ export const SendPanel = ({
             </CopyButton>
           ) : (
             <Button
-              variant="default"
+              color="red"
               justify="flex-start"
               fullWidth
               leftSection={<IconLink size={16} />}
               loading={sending}
               onClick={() => void onSend(['copyLink'])}
             >
-              Generate &amp; copy link
+              Get signing link
             </Button>
           )}
         </Stack>
       </Box>
 
-      {(hasPhone || hasEmail) && !alreadySent ? (
+      {!sent ? (
         <Text size="xs" c="dimmed">
-          {waText(counterparty.name)} the signing link is attached
-          automatically.
+          This marks the agreement as out for signature and gives you the link
+          to send to {counterparty.name}. Once both sides have signed, the
+          signed PDF is emailed to them and to you automatically.
         </Text>
       ) : null}
 
-      {alreadySent ? (
-        <Alert color="green" variant="light" icon={<IconCheck size={16} />}>
-          Sent to the counterparty. We&rsquo;ll track their signature and
-          deliver the signed PDF to both of you on completion.
+      {sent && outcomeMessage !== null ? (
+        <Alert
+          color={linkLive ? 'green' : 'yellow'}
+          variant="light"
+          icon={
+            linkLive ? <IconCheck size={16} /> : <IconAlertTriangle size={16} />
+          }
+        >
+          {outcomeMessage}
         </Alert>
       ) : null}
     </Stack>
