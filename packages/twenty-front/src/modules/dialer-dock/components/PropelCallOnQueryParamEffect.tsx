@@ -1,6 +1,7 @@
 import { useReadableObjectMetadataItems } from '@/object-metadata/hooks/useReadableObjectMetadataItems';
 import { useFindOneRecord } from '@/object-record/hooks/useFindOneRecord';
 import { useSnackBar } from '@/ui/feedback/snack-bar-manager/hooks/useSnackBar';
+import { deriveE164 } from '@/dialer-dock/utils/deriveE164';
 import { startPropelCall } from '@/dialer-dock/utils/startPropelCall';
 import { type MutableRefObject, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -114,10 +115,18 @@ const PropelCallEffect = ({
       return;
     }
 
-    const callingCode = record.phones?.primaryPhoneCallingCode ?? '';
-    const number = `${callingCode}${record.phones?.primaryPhoneNumber ?? ''}`;
+    // DERIVED, never concatenated. Twenty stores the calling code and the
+    // national part separately, and the national part is not clean — imports and
+    // typing leave spaces and dashes in it, and it can still carry the national
+    // trunk zero. Gluing the two together produced "+97150 346 9348" (refused,
+    // and the agent told his own valid number was not international) and, far
+    // worse, "+9710503469348" from "0503469348" — a well-formed E.164 number
+    // belonging to somebody else. See deriveE164 for the full account.
+    const stored = record.phones?.primaryPhoneNumber ?? '';
+    const number = deriveE164(record.phones?.primaryPhoneCallingCode, stored);
 
     if (
+      number !== null &&
       startPropelCall({
         number,
         name: fullName(record.name),
@@ -128,13 +137,17 @@ const PropelCallEffect = ({
       return;
     }
 
-    // Either no dock in this environment, or the stored number is not dialable.
-    // Say which — an agent staring at a silent dock has no way to tell them apart.
+    // Either no dock in this environment, or the stored number is genuinely not
+    // something we can dial. Say which — an agent staring at a silent dock has no
+    // way to tell them apart — and quote what is actually on the record, so they
+    // can see the problem rather than be told a rule.
     enqueueErrorSnackBar({
       message:
-        number === ''
+        stored === ''
           ? 'This contact has no phone number on file.'
-          : `Could not call ${number} — the number needs to be in international format, like +971 50 123 4567.`,
+          : number === null
+            ? `Could not call this contact — the number on file (${stored}) is not a number we can dial.`
+            : `Could not call ${number} — the dialer is not available in this window.`,
     });
   }, [
     loading,
