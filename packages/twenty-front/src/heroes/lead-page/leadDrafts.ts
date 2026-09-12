@@ -148,6 +148,43 @@ export const clearAllDrafts = (store: DraftStore | null): number => {
 };
 
 /**
+ * Remove every draft belonging to SOMEBODY ELSE.
+ *
+ * Added 2026-09-12 after running the session-expiry check on staging and watching
+ * it half-fail. The lead left the screen correctly — Twenty's shell redirects to
+ * sign-in the moment the token is gone — but that redirect happens BEFORE this
+ * hero mounts, so the NOT_AUTHENTICATED branch that was supposed to clear the
+ * drafts never runs. It is not dead code (the call poll and a visibility refresh
+ * still reach it) but the common path, a click or a reload, goes around it. The
+ * draft text was still sitting in sessionStorage afterwards.
+ *
+ * So this is the belt: on mount, once the viewer is known, drop any draft whose
+ * key names a DIFFERENT member. It does not depend on catching the expiry at all
+ * — the next person to use the tab cleans up after the last one, whether the
+ * session lapsed, was handed over, or the tab was simply left open.
+ *
+ * The member id sits at index 1 of the key (see draftKey). A key that will not
+ * parse is ours by prefix but not by shape, so it goes too.
+ */
+export const purgeForeignDrafts = (store: DraftStore | null, memberId: string): number => {
+  if (!store || !memberId) return 0;
+  try {
+    const doomed = ourKeys(store, [DRAFT_PREFIX]).filter((k) => {
+      try {
+        const parts: unknown = JSON.parse(k.slice(DRAFT_PREFIX.length));
+        return !(Array.isArray(parts) && parts[1] === memberId);
+      } catch {
+        return true;
+      }
+    });
+    for (const k of doomed) store.removeItem(k);
+    return doomed.length;
+  } catch {
+    return 0;
+  }
+};
+
+/**
  * Delete the drafts the OLD scheme left behind.
  *
  * Not housekeeping. Those entries are real message text about named leads,

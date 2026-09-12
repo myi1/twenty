@@ -9,6 +9,7 @@ import {
   EMPTY_DRAFTS,
   hasDraftContent,
   LEGACY_DRAFT_PREFIX,
+  purgeForeignDrafts,
   purgeLegacyDrafts,
   readDrafts,
   writeDrafts,
@@ -173,5 +174,53 @@ describe('hasDraftContent', () => {
     assert.equal(hasDraftContent({ message: '', note: '', mode: 'note' }), false);
     assert.equal(hasDraftContent({ message: 'x', note: '', mode: 'message' }), true);
     assert.equal(hasDraftContent({ message: '', note: 'x', mode: 'message' }), true);
+  });
+});
+
+describe('purgeForeignDrafts — the tab cleans up after the last person in it', () => {
+  // Added after the session-expiry check half-failed on staging: the lead left the
+  // screen (the shell redirects to sign-in) but the draft text was STILL in
+  // sessionStorage, because that redirect happens before the hero mounts and the
+  // NOT_AUTHENTICATED branch never ran. This does not depend on catching expiry.
+  const ME = 'member-me';
+  const THEM = 'member-other';
+  const WS = 'https://crm.example';
+
+  it("removes another member's drafts and keeps mine", () => {
+    const s = store({
+      [DRAFT_PREFIX + draftKey(WS, THEM, 'p1')]: '{"message":"","note":"their private note","mode":"note"}',
+      [DRAFT_PREFIX + draftKey(WS, THEM, 'p2')]: '{"message":"more of theirs","note":"","mode":"message"}',
+      [DRAFT_PREFIX + draftKey(WS, ME, 'p1')]: '{"message":"mine","note":"","mode":"message"}',
+      'unrelated-key': 'must survive',
+    });
+    assert.equal(purgeForeignDrafts(s, ME), 2);
+    assert.deepEqual([...s.map.keys()].sort(), [DRAFT_PREFIX + draftKey(WS, ME, 'p1'), 'unrelated-key'].sort());
+  });
+
+  it('a draft key that will not parse is removed too', () => {
+    // Ours by prefix, not by shape. Leaving it means leaving text we cannot attribute.
+    const s = store({ [`${DRAFT_PREFIX}not-json-at-all`]: 'text of unknown ownership' });
+    assert.equal(purgeForeignDrafts(s, ME), 1);
+    assert.equal(s.map.size, 0);
+  });
+
+  it('does nothing without a member, rather than deleting everything', () => {
+    // Called before the viewer resolves, an empty member must NOT match-none-and-purge-all.
+    const s = store({ [DRAFT_PREFIX + draftKey(WS, ME, 'p1')]: '{"message":"mine","note":"","mode":"message"}' });
+    assert.equal(purgeForeignDrafts(s, ''), 0);
+    assert.equal(s.map.size, 1);
+  });
+
+  it('survives a hostile store', () => {
+    assert.equal(purgeForeignDrafts(hostileStore(), ME), 0);
+    assert.equal(purgeForeignDrafts(null, ME), 0);
+  });
+
+  it('removes ALL foreign drafts when there are many — no index renumbering', () => {
+    const seed: Record<string, string> = {};
+    for (let i = 0; i < 5; i += 1) seed[DRAFT_PREFIX + draftKey(WS, THEM, `p${i}`)] = '{"message":"x","note":"","mode":"message"}';
+    const s = store(seed);
+    assert.equal(purgeForeignDrafts(s, ME), 5);
+    assert.equal(s.map.size, 0);
   });
 });
