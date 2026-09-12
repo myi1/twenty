@@ -4,6 +4,11 @@ import { randomUUID } from 'node:crypto';
 import { SEED_APPLE_WORKSPACE_ID } from 'src/engine/workspace-manager/dev-seeder/core/constants/seeder-workspaces.constant';
 import { getWorkspaceSchemaName } from 'src/engine/workspace-datasource/utils/get-workspace-schema-name.util';
 import { WORKSPACE_MEMBER_DATA_SEED_IDS } from 'src/engine/workspace-manager/dev-seeder/data/constants/workspace-member-data-seeds.constant';
+import {
+  commandRecordTables,
+  installCommandRecordObjects,
+  uninstallCommandRecordObjects,
+} from 'test/integration/propel/utils/command-record-objects.util';
 
 /**
  * C1 end to end: the real worker client (myi1/propel-crm workspace/server), in its
@@ -18,8 +23,8 @@ import { WORKSPACE_MEMBER_DATA_SEED_IDS } from 'src/engine/workspace-manager/dev
 
 const WORKSPACE_ID = SEED_APPLE_WORKSPACE_ID;
 const SCHEMA = getWorkspaceSchemaName(WORKSPACE_ID);
-const RECEIPTS = 'core."_c0SpikeStepReceipt"';
-const VERSIONS = 'core."_c0SpikeAssignmentVersion"';
+// The app's command-record objects, installed as a genuine app in beforeAll (decision B).
+const { receipts: RECEIPTS, versions: VERSIONS } = commandRecordTables(WORKSPACE_ID);
 
 const raw = <T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]> =>
   global.testDataSource.query(sql, params);
@@ -28,31 +33,34 @@ describe('C1 — real worker client against the real engine (e2e)', () => {
   const people = [randomUUID(), randomUUID(), randomUUID()];
 
   beforeAll(async () => {
+    await installCommandRecordObjects();
+
     for (const id of people) {
       await raw(`INSERT INTO "${SCHEMA}".person (id, city, "position") VALUES ($1, 'E2E-OWNER-A', 1)`, [id]);
     }
-  });
+  }, 180000);
 
   afterAll(async () => {
-    await raw(`DELETE FROM ${RECEIPTS} WHERE "workspaceId" = $1 AND "payloadHash" = 'e2e-hash'`, [WORKSPACE_ID]);
+    await raw(`DELETE FROM ${RECEIPTS} WHERE "payloadHash" = 'e2e-hash'`);
     await raw(`DELETE FROM ${VERSIONS} WHERE "personId" = ANY($1::uuid[])`, [people]);
     await raw(`DELETE FROM "${SCHEMA}".person WHERE id = ANY($1::uuid[])`, [people]);
-  });
+    await uninstallCommandRecordObjects();
+  }, 180000);
 
   const city = async (id: string) =>
     (await raw<{ city: string }>(`SELECT city FROM "${SCHEMA}".person WHERE id = $1`, [id]))[0]?.city;
 
   const version = async (id: string) =>
     (await raw<{ version: string }>(
-      `SELECT version::text AS version FROM ${VERSIONS} WHERE "workspaceId" = $1 AND "personId" = $2`,
-      [WORKSPACE_ID, id],
+      `SELECT version::bigint::text AS version FROM ${VERSIONS} WHERE "personId" = $1`,
+      [id],
     ))[0]?.version ?? null;
 
   const receiptsFor = async (operationId: string) =>
     Number(
       (await raw<{ n: string }>(
-        `SELECT count(*)::text AS n FROM ${RECEIPTS} WHERE "workspaceId" = $1 AND "operationId" = $2`,
-        [WORKSPACE_ID, operationId],
+        `SELECT count(*)::text AS n FROM ${RECEIPTS} WHERE "operationId" = $1`,
+        [operationId],
       ))[0]?.n,
     );
 

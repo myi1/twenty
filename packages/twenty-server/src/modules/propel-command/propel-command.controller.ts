@@ -10,6 +10,7 @@ import {
   Post,
   Query,
   Req,
+  ServiceUnavailableException,
   UnprocessableEntityException,
   UseGuards,
 } from '@nestjs/common';
@@ -23,10 +24,12 @@ import { NoPermissionGuard } from 'src/engine/guards/no-permission.guard';
 import { WorkspaceAuthGuard } from 'src/engine/guards/workspace-auth.guard';
 import {
   AtomicCommandService,
+  CommandRecordsUnavailableError,
   IdempotencyConflictError,
   StaleFenceError,
   StaleVersionError,
   UnknownAggregateError,
+  VersionLimitError,
   type SpikeFailurePoint,
 } from 'src/modules/propel-command/atomic-command.service';
 import { PropelCommandActorService } from 'src/modules/propel-command/propel-command-actor.service';
@@ -216,19 +219,24 @@ export class PropelCommandController {
 
     const expectedVersion = String(body.expectedVersion ?? '0');
 
-    if (!/^\d+$/.test(expectedVersion)) {
+    // Canonical, and within the exact range of a version column: a Twenty NUMBER is a double
+    // (engine spec c1-app-object-shape, T5). This is the contract's MAX_VERSION.
+    if (
+      !/^(0|[1-9]\d*)$/.test(expectedVersion) ||
+      BigInt(expectedVersion) > BigInt(Number.MAX_SAFE_INTEGER)
+    ) {
       throw new UnprocessableEntityException({
         code: 'VALIDATION_FAILED',
-        message: 'expectedVersion must be a non-negative decimal integer',
+        message: `expectedVersion must be a non-negative decimal integer with no leading zeros, at most ${Number.MAX_SAFE_INTEGER}`,
       });
     }
 
     const fence = Number(body.fence ?? 0);
 
-    if (!Number.isInteger(fence) || fence < 0) {
+    if (!Number.isSafeInteger(fence) || fence < 0) {
       throw new UnprocessableEntityException({
         code: 'VALIDATION_FAILED',
-        message: 'fence must be a non-negative integer',
+        message: `fence must be a non-negative integer, at most ${Number.MAX_SAFE_INTEGER}`,
       });
     }
 
@@ -257,8 +265,13 @@ export class PropelCommandController {
         throw new ConflictException({ code: 'IDEMPOTENCY_CONFLICT', message: error.message });
       }
 
-      if (error instanceof UnknownAggregateError) {
+      if (error instanceof UnknownAggregateError || error instanceof VersionLimitError) {
         throw new UnprocessableEntityException({ code: 'VALIDATION_FAILED', message: error.message });
+      }
+
+      // Refused before any write: the worker may record a DEFINITE failure.
+      if (error instanceof CommandRecordsUnavailableError) {
+        throw new ServiceUnavailableException({ code: 'DEPENDENCY_UNAVAILABLE', message: error.message });
       }
 
       throw error;
@@ -285,7 +298,17 @@ export class PropelCommandController {
       });
     }
 
-    const found = await this.atomicCommandService.getStep(workspaceId, operationId, stepKey);
+    let found: Awaited<ReturnType<AtomicCommandService['getStep']>>;
+
+    try {
+      found = await this.atomicCommandService.getStep(workspaceId, operationId, stepKey);
+    } catch (error) {
+      if (error instanceof CommandRecordsUnavailableError) {
+        throw new ServiceUnavailableException({ code: 'DEPENDENCY_UNAVAILABLE', message: error.message });
+      }
+
+      throw error;
+    }
 
     if (!found) {
       throw new NotFoundException('No committed step with that key in this workspace.');

@@ -1,22 +1,38 @@
 import { Injectable } from '@nestjs/common';
 
+import { type QueryRunner } from 'typeorm';
+
 import { type WorkspaceEntityManager } from 'src/engine/twenty-orm/entity-manager/workspace-entity-manager';
 import { GlobalWorkspaceOrmManager } from 'src/engine/twenty-orm/global-workspace-datasource/global-workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 import { getWorkspaceSchemaName } from 'src/engine/workspace-datasource/utils/get-workspace-schema-name.util';
+import { PROPEL_COMMAND_RECORD_OBJECTS } from 'src/modules/propel-rls/propel-command-records-fence.pre-query.hooks';
 
 /**
- * C0 SPIKE — the narrow assignment step.
+ * C1 — the narrow assignment step, writing the app's command-record objects.
  *
- * Step 1 established that a workspace transaction spans the workspace schema and
- * core.* together, so the domain change and its step receipt commit or roll back
- * as one. This adds the parts that decide whether the boundary can be TRUSTED:
- * a locked compare-and-set on the assignment version, a fencing token, and
- * idempotent replay keyed on (workspace, operation, step).
+ * C0 established that a workspace transaction spans the workspace schema, so the domain
+ * change and its step receipt commit or roll back as one, and added what decides whether
+ * the boundary can be TRUSTED: a locked compare-and-set on the assignment version, a
+ * fencing token, and idempotent replay keyed on (operation, step).
  *
- * Scoping, unchanged: `person.city` stands in for the ownership field, the
- * receipt/version tables are created by the test rather than a migration, and the
- * ORM's own update path is NOT used because it escapes the transaction (see
+ * C1 (decision B): the receipt and the version are no longer hand-made tables. They are
+ * the app's objects `propelStepReceipt` / `propelAssignmentVersion`, stored as
+ * `_propelStepReceipt` / `_propelAssignmentVersion` in the workspace's OWN schema, so
+ * workspace isolation is structural. Every fact this code depends on is pinned in the
+ * engine spec c1-app-object-shape:
+ *   · NUMBER columns are doubles, exact only to 2^53 - 1: versions are bounded at
+ *     Number.MAX_SAFE_INTEGER and read as ::bigint::text, never ::text (exponential).
+ *   · id, createdAt and updatedAt have no default, so they are set here.
+ *   · the unique indexes are plain, not partial, so a soft-deleted receipt still holds its
+ *     key; lookups therefore ignore deletedAt, and ON CONFLICT ("personId") targets the
+ *     version's index.
+ * The data API cannot write these objects at all (the propel-rls fence). The metadata API
+ * CAN switch them off or delete them (c1-fence F10), so the step checks they are usable
+ * FIRST and refuses before any write if not.
+ *
+ * Scoping, unchanged: `person.city` stands in for the ownership field, and the ORM's own
+ * update path is NOT used because it escapes the transaction (see
  * 01-transaction-boundary-finding.md).
  */
 
@@ -61,6 +77,27 @@ export class UnknownAggregateError extends Error {
   }
 }
 
+/** Maps to 422 VALIDATION_FAILED — the next version would leave the column's exact range. */
+export class VersionLimitError extends Error {
+  constructor(readonly next: string) {
+    super(
+      `Assignment version ${next} is above ${Number.MAX_SAFE_INTEGER}, the largest a version column stores exactly`,
+    );
+    this.name = 'VersionLimitError';
+  }
+}
+
+/**
+ * Maps to 503 DEPENDENCY_UNAVAILABLE. Raised BEFORE any write, so the caller knows
+ * nothing committed.
+ */
+export class CommandRecordsUnavailableError extends Error {
+  constructor(readonly problems: string[]) {
+    super(`Command records are unavailable: ${problems.join(', ')}`);
+    this.name = 'CommandRecordsUnavailableError';
+  }
+}
+
 export interface AssignmentStepInput {
   workspaceId: string;
   personId: string;
@@ -82,8 +119,89 @@ export interface CommittedSpikeStep {
   replay: boolean;
 }
 
-const RECEIPTS = 'core."_c0SpikeStepReceipt"';
-const VERSIONS = 'core."_c0SpikeAssignmentVersion"';
+const RECEIPT_OBJECT = 'propelStepReceipt';
+const VERSION_OBJECT = 'propelAssignmentVersion';
+
+// The step writes exactly what the fence protects. If either name ever drops out of the
+// fence, the engine refuses to boot rather than write an unprotected table.
+for (const objectName of [RECEIPT_OBJECT, VERSION_OBJECT]) {
+  if (!PROPEL_COMMAND_RECORD_OBJECTS.has(objectName)) {
+    throw new Error(`${objectName} is written by the assignment step but is not fenced`);
+  }
+}
+
+const MAX_SAFE_VERSION = BigInt(Number.MAX_SAFE_INTEGER);
+
+const tableOf = (objectName: string) => `_${objectName}`;
+
+// The unique index each table must carry, as Postgres prints it (c1-app-object-shape T2).
+// A plain index ENDS at its column list; a partial one would carry a WHERE clause and fail.
+const REQUIRED_UNIQUE_INDEX: Record<string, string> = {
+  [RECEIPT_OBJECT]: 'USING btree ("operationId", "stepKey")',
+  [VERSION_OBJECT]: 'USING btree ("personId")',
+};
+
+/**
+ * Fail closed. The step's guarantees live in these two tables: exactly-once needs the
+ * receipt's unique key, and "a stale command cannot reverse a newer one" needs the
+ * version row. If either object is missing or switched off, its table is gone, or its
+ * unique index is lost, the step refuses — before touching anything.
+ */
+const assertCommandRecordsUsable = async (
+  runner: QueryRunner,
+  workspaceId: string,
+  schemaName: string,
+): Promise<void> => {
+  const objects: { nameSingular: string; isActive: boolean; tableExists: boolean }[] =
+    await runner.query(
+      `SELECT o."nameSingular", o."isActive",
+              to_regclass(format('%I.%I', $2::text, '_' || o."nameSingular")) IS NOT NULL AS "tableExists"
+         FROM core."objectMetadata" o
+        WHERE o."workspaceId" = $1 AND o."nameSingular" = ANY($3::text[])`,
+      [workspaceId, schemaName, [RECEIPT_OBJECT, VERSION_OBJECT]],
+    );
+
+  const uniqueIndexes: { tablename: string; indexdef: string }[] = await runner.query(
+    `SELECT tablename, indexdef FROM pg_indexes
+      WHERE schemaname = $1 AND tablename = ANY($2::text[])
+        AND indexdef LIKE 'CREATE UNIQUE INDEX %'`,
+    [schemaName, [tableOf(RECEIPT_OBJECT), tableOf(VERSION_OBJECT)]],
+  );
+
+  const problems: string[] = [];
+
+  for (const objectName of [RECEIPT_OBJECT, VERSION_OBJECT]) {
+    const object = objects.find((row) => row.nameSingular === objectName);
+
+    if (!object) {
+      problems.push(`OBJECT_MISSING:${objectName}`);
+      continue;
+    }
+
+    if (!object.isActive) {
+      problems.push(`OBJECT_INACTIVE:${objectName}`);
+    }
+
+    if (!object.tableExists) {
+      problems.push(`TABLE_MISSING:${objectName}`);
+      continue;
+    }
+
+    const hasUniqueIndex = uniqueIndexes.some(
+      (index) =>
+        index.tablename === tableOf(objectName) &&
+        index.indexdef.endsWith(REQUIRED_UNIQUE_INDEX[objectName]),
+    );
+
+    if (!hasUniqueIndex) {
+      problems.push(`UNIQUE_INDEX_MISSING:${objectName}`);
+    }
+  }
+
+  if (problems.length > 0) {
+    throw new CommandRecordsUnavailableError(problems);
+  }
+};
 
 @Injectable()
 export class AtomicCommandService {
@@ -96,6 +214,8 @@ export class AtomicCommandService {
   ): Promise<CommittedSpikeStep> {
     const authContext = buildSystemAuthContext(input.workspaceId);
     const schemaName = getWorkspaceSchemaName(input.workspaceId);
+    const receipts = `"${schemaName}"."${tableOf(RECEIPT_OBJECT)}"`;
+    const versions = `"${schemaName}"."${tableOf(VERSION_OBJECT)}"`;
 
     const committed = await this.globalWorkspaceOrmManager.executeInWorkspaceContext(
       async () => {
@@ -118,6 +238,9 @@ export class AtomicCommandService {
           if (!runner) {
             throw new Error('C0 spike: no transactional query runner');
           }
+
+          // ── the command records must be usable, or nothing happens ─────────
+          await assertCommandRecordsUsable(runner, input.workspaceId, schemaName);
 
           // ── the aggregate must exist IN THIS WORKSPACE ───────────────────
           // FOR UPDATE on the PERSON row, not the version row: the version row
@@ -152,12 +275,13 @@ export class AtomicCommandService {
           // advanced version and reported a 409 for work that had just committed
           // (A19, watched red first). It still runs before the version compare, so
           // a retry after a lost response returns the canonical result, not a 409.
+          // deletedAt is ignored on purpose: the unique key is held either way.
           const prior: { payloadHash: string; assignmentVersion: string }[] =
             await runner.query(
-              `SELECT "payloadHash", "assignmentVersion"::text AS "assignmentVersion"
-                 FROM ${RECEIPTS}
-                WHERE "workspaceId" = $1 AND "operationId" = $2 AND "stepKey" = $3`,
-              [input.workspaceId, input.operationId, input.stepKey],
+              `SELECT "payloadHash", "assignmentVersion"::bigint::text AS "assignmentVersion"
+                 FROM ${receipts}
+                WHERE "operationId" = $1 AND "stepKey" = $2`,
+              [input.operationId, input.stepKey],
             );
 
           if (prior.length > 0) {
@@ -174,16 +298,16 @@ export class AtomicCommandService {
             };
           }
 
-          // ── lock the assignment row, then compare-and-set ────────────────
-          // SELECT ... FOR UPDATE serialises two competing commands on the same
-          // aggregate: the second blocks here until the first commits, then reads
-          // the NEW version and loses its compare-and-set.
+          // ── read the assignment version, then compare-and-set ────────────
+          // The person row lock above serialises two competing commands on the same
+          // aggregate: the second blocks there until the first commits, then reads
+          // the NEW version here and loses its compare-and-set.
           const locked: { version: string; lastFence: string }[] =
             await runner.query(
-              `SELECT version::text AS version, "lastFence"::text AS "lastFence"
-                 FROM ${VERSIONS}
-                WHERE "workspaceId" = $1 AND "personId" = $2`,
-              [input.workspaceId, input.personId],
+              `SELECT version::bigint::text AS version, "lastFence"::bigint::text AS "lastFence"
+                 FROM ${versions}
+                WHERE "personId" = $1`,
+              [input.personId],
             );
 
           const currentVersion = locked.length > 0 ? locked[0].version : '0';
@@ -200,7 +324,14 @@ export class AtomicCommandService {
           // BigInt(1), not the 1n literal: the engine's tsconfig targets below ES2020, where
           // bigint literals are a type error (TS2737). swc accepts it, so neither the build
           // nor the tests caught it — only the typecheck did.
-          const nextVersion = (BigInt(currentVersion) + BigInt(1)).toString();
+          const next = BigInt(currentVersion) + BigInt(1);
+
+          // Refused before the domain change: nothing has been written yet.
+          if (next > MAX_SAFE_VERSION) {
+            throw new VersionLimitError(next.toString());
+          }
+
+          const nextVersion = next.toString();
 
           // ── the domain change ────────────────────────────────────────────
           if (input.useOrmWritePath) {
@@ -221,25 +352,27 @@ export class AtomicCommandService {
           }
 
           // ── the new assignment version ───────────────────────────────────
+          // The command owns this row outright: an update also clears any soft delete.
           await runner.query(
-            `INSERT INTO ${VERSIONS} ("workspaceId","personId",version,"lastFence")
-             VALUES ($1,$2,$3,$4)
-             ON CONFLICT ("workspaceId","personId")
-             DO UPDATE SET version = EXCLUDED.version, "lastFence" = EXCLUDED."lastFence"`,
-            [input.workspaceId, input.personId, nextVersion, input.fence],
+            `INSERT INTO ${versions} (id, "personId", version, "lastFence", "createdAt", "updatedAt")
+             VALUES (gen_random_uuid(), $1, $2, $3, now(), now())
+             ON CONFLICT ("personId")
+             DO UPDATE SET version = EXCLUDED.version, "lastFence" = EXCLUDED."lastFence",
+                           "updatedAt" = now(), "deletedAt" = NULL`,
+            [input.personId, nextVersion, input.fence],
           );
 
           // ── the step receipt ─────────────────────────────────────────────
           await runner.query(
-            `INSERT INTO ${RECEIPTS}
-               ("workspaceId","operationId","stepKey","payloadHash","assignmentVersion")
-             VALUES ($1,$2,$3,$4,$5)`,
+            `INSERT INTO ${receipts}
+               (id, "operationId", "stepKey", "payloadHash", "assignmentVersion", "personId", "createdAt", "updatedAt")
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, now(), now())`,
             [
-              input.workspaceId,
               input.operationId,
               input.stepKey,
               input.payloadHash,
               nextVersion,
+              input.personId,
             ],
           );
 
@@ -269,7 +402,7 @@ export class AtomicCommandService {
     return committed;
   }
 
-  /** The committed receipt for (workspace, operation, step), or null. Read-only. */
+  /** The committed receipt for (operation, step) in this workspace, or null. Read-only. */
   async getStep(
     workspaceId: string,
     operationId: string,
@@ -280,6 +413,8 @@ export class AtomicCommandService {
     payloadHash: string;
     assignmentVersion: string;
   } | null> {
+    const schemaName = getWorkspaceSchemaName(workspaceId);
+
     return this.globalWorkspaceOrmManager.executeInWorkspaceContext(
       async () => {
         const dataSource =
@@ -287,6 +422,10 @@ export class AtomicCommandService {
         const runner = dataSource.createQueryRunner();
 
         try {
+          // A lookup against unusable records could answer "never committed" for work
+          // that did commit. Refuse instead; the worker keeps the outcome UNKNOWN.
+          await assertCommandRecordsUsable(runner, workspaceId, schemaName);
+
           const rows: {
             operationId: string;
             stepKey: string;
@@ -294,10 +433,10 @@ export class AtomicCommandService {
             assignmentVersion: string;
           }[] = await runner.query(
             `SELECT "operationId"::text AS "operationId", "stepKey", "payloadHash",
-                    "assignmentVersion"::text AS "assignmentVersion"
-               FROM ${RECEIPTS}
-              WHERE "workspaceId" = $1 AND "operationId" = $2 AND "stepKey" = $3`,
-            [workspaceId, operationId, stepKey],
+                    "assignmentVersion"::bigint::text AS "assignmentVersion"
+               FROM "${schemaName}"."${tableOf(RECEIPT_OBJECT)}"
+              WHERE "operationId" = $1 AND "stepKey" = $2`,
+            [operationId, stepKey],
           );
 
           return rows[0] ?? null;
