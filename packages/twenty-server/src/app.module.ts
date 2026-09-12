@@ -32,6 +32,7 @@ import { GlobalWorkspaceDataSourceModule } from 'src/engine/twenty-orm/global-wo
 import { TwentyORMModule } from 'src/engine/twenty-orm/twenty-orm.module';
 import { WorkspaceCacheStorageModule } from 'src/engine/workspace-cache-storage/workspace-cache-storage.module';
 import { ModulesModule } from 'src/modules/modules.module';
+import { PropelCommandModule } from 'src/modules/propel-command/propel-command.module';
 
 import { ClickHouseModule } from './database/clickHouse/clickHouse.module';
 import { CoreEngineModule } from './engine/core-modules/core-engine.module';
@@ -71,6 +72,9 @@ const MIGRATED_REST_METHODS = [
     McpModule,
     MiddlewareModule,
     WorkspaceMetadataVersionModule,
+    // C0 SPIKE — narrow transaction-boundary probe; its only route is 404
+    // unless PROPEL_C0_SPIKE_ENABLED=true. No ORM behaviour change.
+    PropelCommandModule,
     // I18n module for translations
     I18nModule,
     // Conditional modules
