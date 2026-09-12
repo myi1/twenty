@@ -49,6 +49,6 @@
     "vitest.config.ts",
     "setupTests.ts"
   ],
-  "exclude": ["src/heroes/**/*.test.ts"],
+  "exclude": ["src/heroes/lead-page/*.test.ts"],
   "extends": "../../tsconfig.base.json"
 }
