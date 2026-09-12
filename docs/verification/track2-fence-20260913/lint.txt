@@ -1,0 +1,5 @@
+Failed to parse oxlint configuration file.
+
+  x Failed to load JS plugin: ../twenty-oxlint-rules/dist/oxlint-plugin.mjs
+  |   Cannot find module '../twenty-oxlint-rules/dist/oxlint-plugin.mjs'
+

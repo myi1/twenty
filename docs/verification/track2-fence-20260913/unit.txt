@@ -1,0 +1,6 @@
+PASS twenty-server src/modules/propel-rls/__tests__/propel-command-records-fence.spec.ts
+
+Test Suites: 1 passed, 1 total
+Tests:       96 passed, 96 total
+Snapshots:   0 total
+Time:        0.658 s

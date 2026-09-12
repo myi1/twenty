@@ -1,0 +1,789 @@
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39m[31mError inserting data into ClickHouse[39m
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39mAggregateError
+[90m    at internalConnectMultiple (node:net:1193:18)[39m
+[90m    at afterConnectMultiple (node:net:1783:7)[39m {
+  code: [32m'ECONNREFUSED'[39m,
+  [errors]: [
+    Error: connect ECONNREFUSED ::1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'::1'[39m,
+      port: [33m8123[39m
+    },
+    Error: connect ECONNREFUSED 127.0.0.1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'127.0.0.1'[39m,
+      port: [33m8123[39m
+    }
+  ]
+}
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[Event] [39m[31mField metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity[39m
+Error: Field metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity
+    at formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/utils/format-data.util.ts:42:19)
+    at WorkspaceRepository.formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:428:47)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async WorkspaceRepository.transformOptions (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:420:36)
+    at async WorkspaceRepository.find (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:43:33)
+    at async TimelineActivityRepository.findRecentTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:84:16)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:35:46
+    at async TimelineActivityRepository.upsertTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:34:9)
+    at async TimelineActivityService.upsertEvents (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/services/timeline-activity.service.ts:76:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:60:13
+    at async UpsertTimelineActivityFromInternalEvent.handle (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:46:9)
+    at async MessageQueueExplorer.invokeProcessMethods (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:128:17)
+    at async MessageQueueExplorer.handleProcessor (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:121:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:94:17
+    at async SyncDriver.processJob (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:43:13)
+    at async SyncDriver.add (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:17:9)
+    at async Promise.all (index 4)
+    at async EntityEventsToDbListener.handleEvent (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/api/graphql/workspace-query-runner/listeners/entity-events-to-db.listener.ts:87:9)
+    at async EventSubscribersLoader.wrapFunctionInTryCatchBlocks (/Users/yahyaismail/dev/twenty/node_modules/@nestjs/event-emitter/lib/event-subscribers.loader.ts:196:14)
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[Event] [39m[31mField metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity[39m
+Error: Field metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity
+    at formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/utils/format-data.util.ts:42:19)
+    at WorkspaceRepository.formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:428:47)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async WorkspaceRepository.transformOptions (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:420:36)
+    at async WorkspaceRepository.find (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:43:33)
+    at async TimelineActivityRepository.findRecentTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:84:16)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:35:46
+    at async TimelineActivityRepository.upsertTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:34:9)
+    at async TimelineActivityService.upsertEvents (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/services/timeline-activity.service.ts:76:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:60:13
+    at async UpsertTimelineActivityFromInternalEvent.handle (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:46:9)
+    at async MessageQueueExplorer.invokeProcessMethods (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:128:17)
+    at async MessageQueueExplorer.handleProcessor (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:121:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:94:17
+    at async SyncDriver.processJob (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:43:13)
+    at async SyncDriver.add (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:17:9)
+    at async Promise.all (index 4)
+    at async EntityEventsToDbListener.handleEvent (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/api/graphql/workspace-query-runner/listeners/entity-events-to-db.listener.ts:87:9)
+    at async EventSubscribersLoader.wrapFunctionInTryCatchBlocks (/Users/yahyaismail/dev/twenty/node_modules/@nestjs/event-emitter/lib/event-subscribers.loader.ts:196:14)
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39m[31mError inserting data into ClickHouse[39m
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39mAggregateError
+[90m    at internalConnectMultiple (node:net:1193:18)[39m
+[90m    at afterConnectMultiple (node:net:1783:7)[39m {
+  code: [32m'ECONNREFUSED'[39m,
+  [errors]: [
+    Error: connect ECONNREFUSED ::1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'::1'[39m,
+      port: [33m8123[39m
+    },
+    Error: connect ECONNREFUSED 127.0.0.1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'127.0.0.1'[39m,
+      port: [33m8123[39m
+    }
+  ]
+}
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[Event] [39m[31mField metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity[39m
+Error: Field metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity
+    at formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/utils/format-data.util.ts:42:19)
+    at WorkspaceRepository.formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:428:47)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async WorkspaceRepository.transformOptions (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:420:36)
+    at async WorkspaceRepository.find (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:43:33)
+    at async TimelineActivityRepository.findRecentTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:84:16)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:35:46
+    at async TimelineActivityRepository.upsertTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:34:9)
+    at async TimelineActivityService.upsertEvents (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/services/timeline-activity.service.ts:76:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:60:13
+    at async UpsertTimelineActivityFromInternalEvent.handle (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:46:9)
+    at async MessageQueueExplorer.invokeProcessMethods (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:128:17)
+    at async MessageQueueExplorer.handleProcessor (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:121:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:94:17
+    at async SyncDriver.processJob (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:43:13)
+    at async SyncDriver.add (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:17:9)
+    at async Promise.all (index 4)
+    at async EntityEventsToDbListener.handleEvent (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/api/graphql/workspace-query-runner/listeners/entity-events-to-db.listener.ts:87:9)
+    at async EventSubscribersLoader.wrapFunctionInTryCatchBlocks (/Users/yahyaismail/dev/twenty/node_modules/@nestjs/event-emitter/lib/event-subscribers.loader.ts:196:14)
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39m[31mError inserting data into ClickHouse[39m
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39mAggregateError
+[90m    at internalConnectMultiple (node:net:1193:18)[39m
+[90m    at afterConnectMultiple (node:net:1783:7)[39m {
+  code: [32m'ECONNREFUSED'[39m,
+  [errors]: [
+    Error: connect ECONNREFUSED ::1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'::1'[39m,
+      port: [33m8123[39m
+    },
+    Error: connect ECONNREFUSED 127.0.0.1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'127.0.0.1'[39m,
+      port: [33m8123[39m
+    }
+  ]
+}
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[Event] [39m[31mField metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity[39m
+Error: Field metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity
+    at formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/utils/format-data.util.ts:42:19)
+    at WorkspaceRepository.formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:428:47)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async WorkspaceRepository.transformOptions (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:420:36)
+    at async WorkspaceRepository.find (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:43:33)
+    at async TimelineActivityRepository.findRecentTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:84:16)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:35:46
+    at async TimelineActivityRepository.upsertTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:34:9)
+    at async TimelineActivityService.upsertEvents (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/services/timeline-activity.service.ts:76:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:60:13
+    at async UpsertTimelineActivityFromInternalEvent.handle (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:46:9)
+    at async MessageQueueExplorer.invokeProcessMethods (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:128:17)
+    at async MessageQueueExplorer.handleProcessor (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:121:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:94:17
+    at async SyncDriver.processJob (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:43:13)
+    at async SyncDriver.add (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:17:9)
+    at async Promise.all (index 4)
+    at async EntityEventsToDbListener.handleEvent (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/api/graphql/workspace-query-runner/listeners/entity-events-to-db.listener.ts:87:9)
+    at async EventSubscribersLoader.wrapFunctionInTryCatchBlocks (/Users/yahyaismail/dev/twenty/node_modules/@nestjs/event-emitter/lib/event-subscribers.loader.ts:196:14)
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39m[31mError inserting data into ClickHouse[39m
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39mAggregateError
+[90m    at internalConnectMultiple (node:net:1193:18)[39m
+[90m    at afterConnectMultiple (node:net:1783:7)[39m {
+  code: [32m'ECONNREFUSED'[39m,
+  [errors]: [
+    Error: connect ECONNREFUSED ::1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'::1'[39m,
+      port: [33m8123[39m
+    },
+    Error: connect ECONNREFUSED 127.0.0.1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'127.0.0.1'[39m,
+      port: [33m8123[39m
+    }
+  ]
+}
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[Event] [39m[31mField metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity[39m
+Error: Field metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity
+    at formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/utils/format-data.util.ts:42:19)
+    at WorkspaceRepository.formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:428:47)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async WorkspaceRepository.transformOptions (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:420:36)
+    at async WorkspaceRepository.find (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:43:33)
+    at async TimelineActivityRepository.findRecentTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:84:16)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:35:46
+    at async TimelineActivityRepository.upsertTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:34:9)
+    at async TimelineActivityService.upsertEvents (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/services/timeline-activity.service.ts:76:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:60:13
+    at async UpsertTimelineActivityFromInternalEvent.handle (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:46:9)
+    at async MessageQueueExplorer.invokeProcessMethods (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:128:17)
+    at async MessageQueueExplorer.handleProcessor (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:121:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:94:17
+    at async SyncDriver.processJob (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:43:13)
+    at async SyncDriver.add (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:17:9)
+    at async Promise.all (index 4)
+    at async EntityEventsToDbListener.handleEvent (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/api/graphql/workspace-query-runner/listeners/entity-events-to-db.listener.ts:87:9)
+    at async EventSubscribersLoader.wrapFunctionInTryCatchBlocks (/Users/yahyaismail/dev/twenty/node_modules/@nestjs/event-emitter/lib/event-subscribers.loader.ts:196:14)
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39m[31mError inserting data into ClickHouse[39m
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39mAggregateError
+[90m    at internalConnectMultiple (node:net:1193:18)[39m
+[90m    at afterConnectMultiple (node:net:1783:7)[39m {
+  code: [32m'ECONNREFUSED'[39m,
+  [errors]: [
+    Error: connect ECONNREFUSED ::1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'::1'[39m,
+      port: [33m8123[39m
+    },
+    Error: connect ECONNREFUSED 127.0.0.1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'127.0.0.1'[39m,
+      port: [33m8123[39m
+    }
+  ]
+}
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[Event] [39m[31mField metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity[39m
+Error: Field metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity
+    at formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/utils/format-data.util.ts:42:19)
+    at WorkspaceRepository.formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:428:47)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async WorkspaceRepository.transformOptions (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:420:36)
+    at async WorkspaceRepository.find (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:43:33)
+    at async TimelineActivityRepository.findRecentTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:84:16)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:35:46
+    at async TimelineActivityRepository.upsertTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:34:9)
+    at async TimelineActivityService.upsertEvents (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/services/timeline-activity.service.ts:76:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:60:13
+    at async UpsertTimelineActivityFromInternalEvent.handle (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:46:9)
+    at async MessageQueueExplorer.invokeProcessMethods (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:128:17)
+    at async MessageQueueExplorer.handleProcessor (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:121:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:94:17
+    at async SyncDriver.processJob (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:43:13)
+    at async SyncDriver.add (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:17:9)
+    at async Promise.all (index 4)
+    at async EntityEventsToDbListener.handleEvent (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/api/graphql/workspace-query-runner/listeners/entity-events-to-db.listener.ts:87:9)
+    at async EventSubscribersLoader.wrapFunctionInTryCatchBlocks (/Users/yahyaismail/dev/twenty/node_modules/@nestjs/event-emitter/lib/event-subscribers.loader.ts:196:14)
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39m[31mError inserting data into ClickHouse[39m
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39mAggregateError
+[90m    at internalConnectMultiple (node:net:1193:18)[39m
+[90m    at afterConnectMultiple (node:net:1783:7)[39m {
+  code: [32m'ECONNREFUSED'[39m,
+  [errors]: [
+    Error: connect ECONNREFUSED ::1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'::1'[39m,
+      port: [33m8123[39m
+    },
+    Error: connect ECONNREFUSED 127.0.0.1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'127.0.0.1'[39m,
+      port: [33m8123[39m
+    }
+  ]
+}
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[Event] [39m[31mField metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity[39m
+Error: Field metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity
+    at formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/utils/format-data.util.ts:42:19)
+    at WorkspaceRepository.formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:428:47)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async WorkspaceRepository.transformOptions (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:420:36)
+    at async WorkspaceRepository.find (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:43:33)
+    at async TimelineActivityRepository.findRecentTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:84:16)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:35:46
+    at async TimelineActivityRepository.upsertTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:34:9)
+    at async TimelineActivityService.upsertEvents (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/services/timeline-activity.service.ts:76:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:60:13
+    at async UpsertTimelineActivityFromInternalEvent.handle (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:46:9)
+    at async MessageQueueExplorer.invokeProcessMethods (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:128:17)
+    at async MessageQueueExplorer.handleProcessor (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:121:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:94:17
+    at async SyncDriver.processJob (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:43:13)
+    at async SyncDriver.add (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:17:9)
+    at async Promise.all (index 4)
+    at async EntityEventsToDbListener.handleEvent (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/api/graphql/workspace-query-runner/listeners/entity-events-to-db.listener.ts:87:9)
+    at async EventSubscribersLoader.wrapFunctionInTryCatchBlocks (/Users/yahyaismail/dev/twenty/node_modules/@nestjs/event-emitter/lib/event-subscribers.loader.ts:196:14)
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39m[31mError inserting data into ClickHouse[39m
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39mAggregateError
+[90m    at internalConnectMultiple (node:net:1193:18)[39m
+[90m    at afterConnectMultiple (node:net:1783:7)[39m {
+  code: [32m'ECONNREFUSED'[39m,
+  [errors]: [
+    Error: connect ECONNREFUSED ::1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'::1'[39m,
+      port: [33m8123[39m
+    },
+    Error: connect ECONNREFUSED 127.0.0.1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'127.0.0.1'[39m,
+      port: [33m8123[39m
+    }
+  ]
+}
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[Event] [39m[31mField metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity[39m
+Error: Field metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity
+    at formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/utils/format-data.util.ts:42:19)
+    at WorkspaceRepository.formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:428:47)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async WorkspaceRepository.transformOptions (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:420:36)
+    at async WorkspaceRepository.find (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:43:33)
+    at async TimelineActivityRepository.findRecentTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:84:16)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:35:46
+    at async TimelineActivityRepository.upsertTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:34:9)
+    at async TimelineActivityService.upsertEvents (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/services/timeline-activity.service.ts:76:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:60:13
+    at async UpsertTimelineActivityFromInternalEvent.handle (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:46:9)
+    at async MessageQueueExplorer.invokeProcessMethods (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:128:17)
+    at async MessageQueueExplorer.handleProcessor (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:121:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:94:17
+    at async SyncDriver.processJob (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:43:13)
+    at async SyncDriver.add (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:17:9)
+    at async Promise.all (index 4)
+    at async EntityEventsToDbListener.handleEvent (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/api/graphql/workspace-query-runner/listeners/entity-events-to-db.listener.ts:87:9)
+    at async EventSubscribersLoader.wrapFunctionInTryCatchBlocks (/Users/yahyaismail/dev/twenty/node_modules/@nestjs/event-emitter/lib/event-subscribers.loader.ts:196:14)
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[Event] [39m[31mField metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity[39m
+Error: Field metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity
+    at formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/utils/format-data.util.ts:42:19)
+    at WorkspaceRepository.formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:428:47)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async WorkspaceRepository.transformOptions (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:420:36)
+    at async WorkspaceRepository.find (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:43:33)
+    at async TimelineActivityRepository.findRecentTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:84:16)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:35:46
+    at async TimelineActivityRepository.upsertTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:34:9)
+    at async TimelineActivityService.upsertEvents (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/services/timeline-activity.service.ts:76:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:60:13
+    at async UpsertTimelineActivityFromInternalEvent.handle (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:46:9)
+    at async MessageQueueExplorer.invokeProcessMethods (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:128:17)
+    at async MessageQueueExplorer.handleProcessor (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:121:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:94:17
+    at async SyncDriver.processJob (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:43:13)
+    at async SyncDriver.add (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:17:9)
+    at async Promise.all (index 4)
+    at async EntityEventsToDbListener.handleEvent (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/api/graphql/workspace-query-runner/listeners/entity-events-to-db.listener.ts:87:9)
+    at async EventSubscribersLoader.wrapFunctionInTryCatchBlocks (/Users/yahyaismail/dev/twenty/node_modules/@nestjs/event-emitter/lib/event-subscribers.loader.ts:196:14)
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[Event] [39m[31mField metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity[39m
+Error: Field metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity
+    at formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/utils/format-data.util.ts:42:19)
+    at WorkspaceRepository.formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:428:47)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async WorkspaceRepository.transformOptions (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:420:36)
+    at async WorkspaceRepository.find (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:43:33)
+    at async TimelineActivityRepository.findRecentTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:84:16)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:35:46
+    at async TimelineActivityRepository.upsertTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:34:9)
+    at async TimelineActivityService.upsertEvents (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/services/timeline-activity.service.ts:76:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:60:13
+    at async UpsertTimelineActivityFromInternalEvent.handle (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:46:9)
+    at async MessageQueueExplorer.invokeProcessMethods (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:128:17)
+    at async MessageQueueExplorer.handleProcessor (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:121:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:94:17
+    at async SyncDriver.processJob (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:43:13)
+    at async SyncDriver.add (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:17:9)
+    at async Promise.all (index 4)
+    at async EntityEventsToDbListener.handleEvent (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/api/graphql/workspace-query-runner/listeners/entity-events-to-db.listener.ts:87:9)
+    at async EventSubscribersLoader.wrapFunctionInTryCatchBlocks (/Users/yahyaismail/dev/twenty/node_modules/@nestjs/event-emitter/lib/event-subscribers.loader.ts:196:14)
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39m[31mError inserting data into ClickHouse[39m
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39mAggregateError
+[90m    at internalConnectMultiple (node:net:1193:18)[39m
+[90m    at afterConnectMultiple (node:net:1783:7)[39m {
+  code: [32m'ECONNREFUSED'[39m,
+  [errors]: [
+    Error: connect ECONNREFUSED ::1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'::1'[39m,
+      port: [33m8123[39m
+    },
+    Error: connect ECONNREFUSED 127.0.0.1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'127.0.0.1'[39m,
+      port: [33m8123[39m
+    }
+  ]
+}
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[Event] [39m[31mField metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity[39m
+Error: Field metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity
+    at formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/utils/format-data.util.ts:42:19)
+    at WorkspaceRepository.formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:428:47)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async WorkspaceRepository.transformOptions (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:420:36)
+    at async WorkspaceRepository.find (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:43:33)
+    at async TimelineActivityRepository.findRecentTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:84:16)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:35:46
+    at async TimelineActivityRepository.upsertTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:34:9)
+    at async TimelineActivityService.upsertEvents (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/services/timeline-activity.service.ts:76:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:60:13
+    at async UpsertTimelineActivityFromInternalEvent.handle (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:46:9)
+    at async MessageQueueExplorer.invokeProcessMethods (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:128:17)
+    at async MessageQueueExplorer.handleProcessor (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:121:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:94:17
+    at async SyncDriver.processJob (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:43:13)
+    at async SyncDriver.add (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:17:9)
+    at async Promise.all (index 4)
+    at async EntityEventsToDbListener.handleEvent (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/api/graphql/workspace-query-runner/listeners/entity-events-to-db.listener.ts:87:9)
+    at async EventSubscribersLoader.wrapFunctionInTryCatchBlocks (/Users/yahyaismail/dev/twenty/node_modules/@nestjs/event-emitter/lib/event-subscribers.loader.ts:196:14)
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39m[31mError inserting data into ClickHouse[39m
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39mAggregateError
+[90m    at internalConnectMultiple (node:net:1193:18)[39m
+[90m    at afterConnectMultiple (node:net:1783:7)[39m {
+  code: [32m'ECONNREFUSED'[39m,
+  [errors]: [
+    Error: connect ECONNREFUSED ::1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'::1'[39m,
+      port: [33m8123[39m
+    },
+    Error: connect ECONNREFUSED 127.0.0.1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'127.0.0.1'[39m,
+      port: [33m8123[39m
+    }
+  ]
+}
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[Event] [39m[31mField metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity[39m
+Error: Field metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity
+    at formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/utils/format-data.util.ts:42:19)
+    at WorkspaceRepository.formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:428:47)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async WorkspaceRepository.transformOptions (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:420:36)
+    at async WorkspaceRepository.find (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:43:33)
+    at async TimelineActivityRepository.findRecentTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:84:16)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:35:46
+    at async TimelineActivityRepository.upsertTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:34:9)
+    at async TimelineActivityService.upsertEvents (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/services/timeline-activity.service.ts:76:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:60:13
+    at async UpsertTimelineActivityFromInternalEvent.handle (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:46:9)
+    at async MessageQueueExplorer.invokeProcessMethods (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:128:17)
+    at async MessageQueueExplorer.handleProcessor (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:121:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:94:17
+    at async SyncDriver.processJob (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:43:13)
+    at async SyncDriver.add (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:17:9)
+    at async Promise.all (index 4)
+    at async EntityEventsToDbListener.handleEvent (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/api/graphql/workspace-query-runner/listeners/entity-events-to-db.listener.ts:87:9)
+    at async EventSubscribersLoader.wrapFunctionInTryCatchBlocks (/Users/yahyaismail/dev/twenty/node_modules/@nestjs/event-emitter/lib/event-subscribers.loader.ts:196:14)
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39m[31mError inserting data into ClickHouse[39m
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39mAggregateError
+[90m    at internalConnectMultiple (node:net:1193:18)[39m
+[90m    at afterConnectMultiple (node:net:1783:7)[39m {
+  code: [32m'ECONNREFUSED'[39m,
+  [errors]: [
+    Error: connect ECONNREFUSED ::1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'::1'[39m,
+      port: [33m8123[39m
+    },
+    Error: connect ECONNREFUSED 127.0.0.1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'127.0.0.1'[39m,
+      port: [33m8123[39m
+    }
+  ]
+}
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[Event] [39m[31mField metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity[39m
+Error: Field metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity
+    at formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/utils/format-data.util.ts:42:19)
+    at WorkspaceRepository.formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:428:47)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async WorkspaceRepository.transformOptions (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:420:36)
+    at async WorkspaceRepository.find (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:43:33)
+    at async TimelineActivityRepository.findRecentTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:84:16)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:35:46
+    at async TimelineActivityRepository.upsertTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:34:9)
+    at async TimelineActivityService.upsertEvents (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/services/timeline-activity.service.ts:76:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:60:13
+    at async UpsertTimelineActivityFromInternalEvent.handle (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:46:9)
+    at async MessageQueueExplorer.invokeProcessMethods (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:128:17)
+    at async MessageQueueExplorer.handleProcessor (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:121:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:94:17
+    at async SyncDriver.processJob (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:43:13)
+    at async SyncDriver.add (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:17:9)
+    at async Promise.all (index 4)
+    at async EntityEventsToDbListener.handleEvent (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/api/graphql/workspace-query-runner/listeners/entity-events-to-db.listener.ts:87:9)
+    at async EventSubscribersLoader.wrapFunctionInTryCatchBlocks (/Users/yahyaismail/dev/twenty/node_modules/@nestjs/event-emitter/lib/event-subscribers.loader.ts:196:14)
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39m[31mError inserting data into ClickHouse[39m
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39mAggregateError
+[90m    at internalConnectMultiple (node:net:1193:18)[39m
+[90m    at afterConnectMultiple (node:net:1783:7)[39m {
+  code: [32m'ECONNREFUSED'[39m,
+  [errors]: [
+    Error: connect ECONNREFUSED ::1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'::1'[39m,
+      port: [33m8123[39m
+    },
+    Error: connect ECONNREFUSED 127.0.0.1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'127.0.0.1'[39m,
+      port: [33m8123[39m
+    }
+  ]
+}
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[Event] [39m[31mField metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity[39m
+Error: Field metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity
+    at formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/utils/format-data.util.ts:42:19)
+    at WorkspaceRepository.formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:428:47)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async WorkspaceRepository.transformOptions (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:420:36)
+    at async WorkspaceRepository.find (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:43:33)
+    at async TimelineActivityRepository.findRecentTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:84:16)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:35:46
+    at async TimelineActivityRepository.upsertTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:34:9)
+    at async TimelineActivityService.upsertEvents (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/services/timeline-activity.service.ts:76:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:60:13
+    at async UpsertTimelineActivityFromInternalEvent.handle (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:46:9)
+    at async MessageQueueExplorer.invokeProcessMethods (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:128:17)
+    at async MessageQueueExplorer.handleProcessor (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:121:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:94:17
+    at async SyncDriver.processJob (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:43:13)
+    at async SyncDriver.add (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:17:9)
+    at async Promise.all (index 4)
+    at async EntityEventsToDbListener.handleEvent (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/api/graphql/workspace-query-runner/listeners/entity-events-to-db.listener.ts:87:9)
+    at async EventSubscribersLoader.wrapFunctionInTryCatchBlocks (/Users/yahyaismail/dev/twenty/node_modules/@nestjs/event-emitter/lib/event-subscribers.loader.ts:196:14)
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39m[31mError inserting data into ClickHouse[39m
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39mAggregateError
+[90m    at internalConnectMultiple (node:net:1193:18)[39m
+[90m    at afterConnectMultiple (node:net:1783:7)[39m {
+  code: [32m'ECONNREFUSED'[39m,
+  [errors]: [
+    Error: connect ECONNREFUSED ::1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'::1'[39m,
+      port: [33m8123[39m
+    },
+    Error: connect ECONNREFUSED 127.0.0.1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'127.0.0.1'[39m,
+      port: [33m8123[39m
+    }
+  ]
+}
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[Event] [39m[31mField metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity[39m
+Error: Field metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity
+    at formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/utils/format-data.util.ts:42:19)
+    at WorkspaceRepository.formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:428:47)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async WorkspaceRepository.transformOptions (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:420:36)
+    at async WorkspaceRepository.find (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:43:33)
+    at async TimelineActivityRepository.findRecentTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:84:16)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:35:46
+    at async TimelineActivityRepository.upsertTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:34:9)
+    at async TimelineActivityService.upsertEvents (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/services/timeline-activity.service.ts:76:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:60:13
+    at async UpsertTimelineActivityFromInternalEvent.handle (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:46:9)
+    at async MessageQueueExplorer.invokeProcessMethods (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:128:17)
+    at async MessageQueueExplorer.handleProcessor (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:121:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:94:17
+    at async SyncDriver.processJob (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:43:13)
+    at async SyncDriver.add (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:17:9)
+    at async Promise.all (index 4)
+    at async EntityEventsToDbListener.handleEvent (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/api/graphql/workspace-query-runner/listeners/entity-events-to-db.listener.ts:87:9)
+    at async EventSubscribersLoader.wrapFunctionInTryCatchBlocks (/Users/yahyaismail/dev/twenty/node_modules/@nestjs/event-emitter/lib/event-subscribers.loader.ts:196:14)
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39m[31mError inserting data into ClickHouse[39m
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39mAggregateError
+[90m    at internalConnectMultiple (node:net:1193:18)[39m
+[90m    at afterConnectMultiple (node:net:1783:7)[39m {
+  code: [32m'ECONNREFUSED'[39m,
+  [errors]: [
+    Error: connect ECONNREFUSED ::1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'::1'[39m,
+      port: [33m8123[39m
+    },
+    Error: connect ECONNREFUSED 127.0.0.1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'127.0.0.1'[39m,
+      port: [33m8123[39m
+    }
+  ]
+}
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[Event] [39m[31mField metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity[39m
+Error: Field metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity
+    at formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/utils/format-data.util.ts:42:19)
+    at WorkspaceRepository.formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:428:47)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async WorkspaceRepository.transformOptions (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:420:36)
+    at async WorkspaceRepository.find (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:43:33)
+    at async TimelineActivityRepository.findRecentTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:84:16)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:35:46
+    at async TimelineActivityRepository.upsertTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:34:9)
+    at async TimelineActivityService.upsertEvents (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/services/timeline-activity.service.ts:76:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:60:13
+    at async UpsertTimelineActivityFromInternalEvent.handle (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:46:9)
+    at async MessageQueueExplorer.invokeProcessMethods (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:128:17)
+    at async MessageQueueExplorer.handleProcessor (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:121:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:94:17
+    at async SyncDriver.processJob (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:43:13)
+    at async SyncDriver.add (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:17:9)
+    at async Promise.all (index 4)
+    at async EntityEventsToDbListener.handleEvent (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/api/graphql/workspace-query-runner/listeners/entity-events-to-db.listener.ts:87:9)
+    at async EventSubscribersLoader.wrapFunctionInTryCatchBlocks (/Users/yahyaismail/dev/twenty/node_modules/@nestjs/event-emitter/lib/event-subscribers.loader.ts:196:14)
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39m[31mError inserting data into ClickHouse[39m
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39mAggregateError
+[90m    at internalConnectMultiple (node:net:1193:18)[39m
+[90m    at afterConnectMultiple (node:net:1783:7)[39m {
+  code: [32m'ECONNREFUSED'[39m,
+  [errors]: [
+    Error: connect ECONNREFUSED ::1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'::1'[39m,
+      port: [33m8123[39m
+    },
+    Error: connect ECONNREFUSED 127.0.0.1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'127.0.0.1'[39m,
+      port: [33m8123[39m
+    }
+  ]
+}
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[Event] [39m[31mField metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity[39m
+Error: Field metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity
+    at formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/utils/format-data.util.ts:42:19)
+    at WorkspaceRepository.formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:428:47)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async WorkspaceRepository.transformOptions (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:420:36)
+    at async WorkspaceRepository.find (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:43:33)
+    at async TimelineActivityRepository.findRecentTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:84:16)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:35:46
+    at async TimelineActivityRepository.upsertTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:34:9)
+    at async TimelineActivityService.upsertEvents (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/services/timeline-activity.service.ts:76:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:60:13
+    at async UpsertTimelineActivityFromInternalEvent.handle (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:46:9)
+    at async MessageQueueExplorer.invokeProcessMethods (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:128:17)
+    at async MessageQueueExplorer.handleProcessor (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:121:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:94:17
+    at async SyncDriver.processJob (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:43:13)
+    at async SyncDriver.add (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:17:9)
+    at async Promise.all (index 4)
+    at async EntityEventsToDbListener.handleEvent (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/api/graphql/workspace-query-runner/listeners/entity-events-to-db.listener.ts:87:9)
+    at async EventSubscribersLoader.wrapFunctionInTryCatchBlocks (/Users/yahyaismail/dev/twenty/node_modules/@nestjs/event-emitter/lib/event-subscribers.loader.ts:196:14)
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39m[31mError inserting data into ClickHouse[39m
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39mAggregateError
+[90m    at internalConnectMultiple (node:net:1193:18)[39m
+[90m    at afterConnectMultiple (node:net:1783:7)[39m {
+  code: [32m'ECONNREFUSED'[39m,
+  [errors]: [
+    Error: connect ECONNREFUSED ::1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'::1'[39m,
+      port: [33m8123[39m
+    },
+    Error: connect ECONNREFUSED 127.0.0.1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'127.0.0.1'[39m,
+      port: [33m8123[39m
+    }
+  ]
+}
+[31m[Nest] 81691  - [39m09/13/2026, 3:53:58 AM [31m  ERROR[39m [38;5;3m[Event] [39m[31mField metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity[39m
+Error: Field metadata for field "targetFenceSiblingId" is missing in object metadata timelineActivity
+    at formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/utils/format-data.util.ts:42:19)
+    at WorkspaceRepository.formatData (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:428:47)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async WorkspaceRepository.transformOptions (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:420:36)
+    at async WorkspaceRepository.find (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/twenty-orm/repository/workspace.repository.ts:43:33)
+    at async TimelineActivityRepository.findRecentTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:84:16)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:35:46
+    at async TimelineActivityRepository.upsertTimelineActivities (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/repositories/timeline-activity.repository.ts:34:9)
+    at async TimelineActivityService.upsertEvents (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/services/timeline-activity.service.ts:76:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:60:13
+    at async UpsertTimelineActivityFromInternalEvent.handle (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/timeline/jobs/upsert-timeline-activity-from-internal-event.job.ts:46:9)
+    at async MessageQueueExplorer.invokeProcessMethods (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:128:17)
+    at async MessageQueueExplorer.handleProcessor (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:121:13)
+    at async /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/message-queue.explorer.ts:94:17
+    at async SyncDriver.processJob (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:43:13)
+    at async SyncDriver.add (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/core-modules/message-queue/drivers/sync.driver.ts:17:9)
+    at async Promise.all (index 4)
+    at async EntityEventsToDbListener.handleEvent (/Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/engine/api/graphql/workspace-query-runner/listeners/entity-events-to-db.listener.ts:87:9)
+    at async EventSubscribersLoader.wrapFunctionInTryCatchBlocks (/Users/yahyaismail/dev/twenty/node_modules/@nestjs/event-emitter/lib/event-subscribers.loader.ts:196:14)
+PASS test/integration/propel/suites/c1-fence.integration-spec.ts
+  C1 fence — no data-API write reaches the assignment command records (integration)
+    ✓ F0 instrument: objects are app-owned; the key and Jane hold Admin; Jony holds Member (7 ms)
+    ✓ F1 CONTROL: the identical battery on an unfenced sibling is ALLOWED, write for write (252 ms)
+    ✓ F9 the command's own path — raw SQL inside one transaction — still writes both records (3 ms)
+    ✓ F10 an Admin can deactivate and DELETE these objects through the metadata API — unfenceable by a data hook (899 ms)
+    as an Admin-role API key
+      ✓ every write on the receipt is refused by the fence, nothing changes, and reads stay open (131 ms)
+      ✓ every write on the version is refused by the fence, nothing changes, and reads stay open (116 ms)
+    as an Admin user (Jane)
+      ✓ every write on the receipt is refused by the fence, nothing changes, and reads stay open (98 ms)
+      ✓ every write on the version is refused by the fence, nothing changes, and reads stay open (96 ms)
+    as a Member user (Jony)
+      ✓ every write on the receipt is refused by the fence, nothing changes, and reads stay open (96 ms)
+      ✓ every write on the version is refused by the fence, nothing changes, and reads stay open (103 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       10 passed, 10 total
+Snapshots:   0 total
+Time:        3.531 s, estimated 5 s
+Ran all test suites within paths "test/integration/propel/suites/c1-fence.integration-spec.ts".
