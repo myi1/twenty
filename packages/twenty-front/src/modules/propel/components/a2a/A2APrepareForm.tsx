@@ -116,9 +116,19 @@ export const A2APrepareForm = ({
               })
             }
           />
+          {/* ONE number — our agent's share of the commission (founder decision
+              2026-09-12). The CRM route turns it into the agreement's Agent A % /
+              Agent B % split by variant; the other broker gets the rest. */}
           <NumberInput
-            label="Commission (%)"
-            placeholder="2"
+            label="Your commission share (%)"
+            description={
+              typeof prefill.commissionPercent === 'number' &&
+              prefill.commissionPercent >= 0 &&
+              prefill.commissionPercent <= 100
+                ? `The other broker gets the rest: ${Math.round((100 - prefill.commissionPercent) * 100) / 100}%`
+                : 'Of the total commission. The other broker gets the rest.'
+            }
+            placeholder="50"
             min={0}
             max={100}
             decimalScale={2}
@@ -132,6 +142,7 @@ export const A2APrepareForm = ({
         </Group>
         <TextInput
           label="Buyer / client name"
+          description="Printed on the agreement exactly as typed"
           placeholder="Optional"
           value={prefill.buyerName ?? ''}
           onChange={(e) => onPatch({ buyerName: e.currentTarget.value })}

@@ -35,8 +35,16 @@ export type A2AVariant = 'A' | 'B';
 // "Create draft". All scalar — no composite/relation types cross the wire here.
 export interface A2APrefill {
   // Required-ish (the form surfaces these first; the route validates).
+  // Task 38: the CRM route (`a2a-studio-create-draft-route.ts` →
+  // `a2a-studio-contract.ts`) translates these to the doc-service names —
+  // propertyName → propertyAddress (used only when the deal has no linked
+  // property), propertyPriceAed → price "AED 2,500,000", buyerName →
+  // buyerLastName, counterpartyEmail → the Agent slot we do NOT play.
   propertyName?: string;
   propertyPriceAed?: number;
+  /** OUR agent's share of the commission, in percent (founder decision
+   * 2026-09-12: ONE number; the other broker gets the rest). The CRM route turns
+   * it into the agreement's Agent A % / Agent B % split by variant. */
   commissionPercent?: number;
   // Optional extras the agent can override before drafting.
   buyerName?: string;
@@ -86,6 +94,8 @@ export type SendChannel = 'whatsapp' | 'email' | 'copyLink';
 
 export interface SendRequest {
   a2aDocumentId: string;
+  /** Required by the CRM send route (task 38: the hook now sends it). */
+  documensoDocumentId: string;
   channels: SendChannel[];
   counterpartyPersonId?: string;
   /** Forwarded for the WhatsApp-first delivery wired in doc-service. */
@@ -94,10 +104,20 @@ export interface SendRequest {
 }
 
 export interface SendResponse extends A2ARouteError {
+  /** True whenever the envelope was activated — even if NO delivery leg went
+   * out. Read `distribution` for what actually reached the counterparty. */
   ok?: boolean;
   /** Echo so the panel can show/copy the live counterparty link post-send. */
   counterpartySigningUrl?: string;
   status?: A2ADocumentStatus;
+  /** Per-leg report from doc-service (`sendToCounterparty`): the channel, whether
+   * it went out, and why not. `copy-link` ok:true = the link is ready to hand over. */
+  distribution?: {
+    channel: 'whatsapp' | 'email' | 'copy-link';
+    ok: boolean;
+    reason?: string;
+  }[];
+  primaryChannel?: 'whatsapp' | 'email' | 'copy-link';
 }
 
 // status poll → drives A2AStatusStrip + the flip to `done`.
@@ -112,6 +132,15 @@ export interface StatusResponse extends A2ARouteError {
   signedPdfUrl?: string | null;
   auditUrl?: string | null;
   counterpartySigningUrl?: string | null;
+  /** Stamped by doc-service once the signed PDF has been delivered. */
+  deliveredAt?: string | null;
+}
+
+// discard → both ids so doc-service can delete the Documenso envelope as well as
+// void the row (with only a2aDocumentId the envelope leaked, one per abandoned draft).
+export interface DiscardRequest {
+  a2aDocumentId: string;
+  documensoDocumentId?: string;
 }
 
 export interface DiscardResponse extends A2ARouteError {
