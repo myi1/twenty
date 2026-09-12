@@ -99,15 +99,43 @@ const PropelCallEffect = ({
   });
 
   useEffect(() => {
-    if (loading || dialedFor.current === personId) {
+    // Wait for the record, but ONLY for the record. Dropping the flag before it
+    // arrives unmounts this effect (the outer component renders it only while
+    // the flag is present), and the requested call is then simply lost.
+    if (loading) {
+      return;
+    }
+
+    // Drop the flag as soon as the wait is over — BEFORE the repeat-dial guard
+    // below, and whatever that guard decides. The flag is not a record of what
+    // happened; it is an instruction to place a call, and the address bar
+    // outlives this visit (reload, bookmark, Back, a copied link).
+    //
+    // Stripping it after the guard is what task 41 was: a second Call click on
+    // the same contact returned early, left `?call=1` standing, and any later
+    // load of that URL re-ran the dial on a page where `dialedFor` is empty
+    // again. On a contact with a number that is a real phone call nobody asked
+    // for. Dial at most once per contact, and end every visit disarmed.
+    //
+    // Remove ONLY the flag. Dropping the whole query string would take `viewId`
+    // with it — the record page reads that to page between records — and this
+    // now runs on paths that previously returned before touching the URL at all.
+    const remainingParams = new URLSearchParams(location.search);
+    remainingParams.delete('call');
+    const remainingQuery = remainingParams.toString();
+
+    navigate(
+      remainingQuery === ''
+        ? location.pathname
+        : `${location.pathname}?${remainingQuery}`,
+      { replace: true },
+    );
+
+    if (dialedFor.current === personId) {
       return;
     }
 
     dialedFor.current = personId;
-
-    // Drop the flag immediately so a reload, or Back onto this entry, cannot
-    // place the call a second time.
-    navigate(location.pathname, { replace: true });
 
     if (!record) {
       enqueueErrorSnackBar({ message: 'Could not load that contact.' });
@@ -142,6 +170,7 @@ const PropelCallEffect = ({
     personId,
     dialedFor,
     location.pathname,
+    location.search,
     navigate,
     enqueueErrorSnackBar,
   ]);
