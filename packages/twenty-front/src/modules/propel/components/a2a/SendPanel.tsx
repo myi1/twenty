@@ -21,21 +21,25 @@ import { type CounterpartyPerson, type SendChannel } from '@/propel/types/a2a';
 
 // The "send" step (design §5 SendPanel / D4).
 //
-// TASK 38 — LAUNCH MODE (founder decision 3, 2026-09-12: delivery at launch is
-// email only; WhatsApp legs are a later, separate step). At launch doc-service has
-// no WhatsApp line (`WA_SERVICE_*` unset) and cannot email the signing link at send
-// time (only the signed PDF on completion). The only leg that works is copy-link,
-// so the panel offers ONE primary action: "Get signing link" → /a2a/send with
-// `copyLink`, which activates the envelope, marks the agreement Out for signature,
-// stores the counterparty (whose email later receives the signed PDF), and hands
-// the agent the link to send themselves. The WhatsApp / email buttons stay in code
-// behind AUTO_SEND_CHANNELS_ENABLED: flipping it (+ the service's WhatsApp
-// settings) brings them back with the honest per-leg outcome text.
+// TASK 38 — LAUNCH MODE (founder decisions 2026-09-12, via the desk: delivery at
+// launch is email only; WhatsApp is a later, separate step; the Send step is
+// copy-link PRIMARY plus an "Email the link" button). At launch doc-service has
+// no WhatsApp line (`WA_SERVICE_*` unset) and cannot email the signing link at
+// send time itself — the CRM send route does that through Postmark after the
+// service activates the envelope. So the panel offers two actions:
+//   · "Get signing link" → /a2a/send with `copyLink`: activates the envelope,
+//     marks the agreement Out for signature, stores the counterparty (whose
+//     email later receives the signed PDF), hands the agent the link.
+//   · "Email the link to <email>" → /a2a/send with `email`: the same, plus the
+//     CRM emails the other broker their link (Reply-To our agent).
+// The WhatsApp button stays in code behind WHATSAPP_SEND_ENABLED: flipping it
+// (+ the service's WhatsApp settings) brings it back with the same honest
+// per-leg outcome text.
 //
 // Whatever the mode, the sentence under the buttons comes from the service's own
 // per-leg report (a2aSendOutcome.ts) — never from `ok`, which is true even when
 // nothing was delivered.
-const AUTO_SEND_CHANNELS_ENABLED = false;
+const WHATSAPP_SEND_ENABLED = false;
 
 export const SendPanel = ({
   counterparty,
@@ -134,12 +138,10 @@ export const SendPanel = ({
 
       <Box>
         <Text size="xs" c="dimmed" fw={600} tt="uppercase" mb="xs">
-          {AUTO_SEND_CHANNELS_ENABLED
-            ? 'Send the agreement'
-            : 'Share the signing link'}
+          Send the signing link
         </Text>
         <Stack gap="sm">
-          {AUTO_SEND_CHANNELS_ENABLED ? (
+          {WHATSAPP_SEND_ENABLED ? (
             <>
               {/* WhatsApp — the default when a phone exists (needs the
                   service's WhatsApp line; off at launch). */}
@@ -160,21 +162,24 @@ export const SendPanel = ({
                   ? `WhatsApp ${counterparty.phone}`
                   : 'WhatsApp (no phone on file)'}
               </Button>
-              <Button
-                variant="default"
-                justify="flex-start"
-                fullWidth
-                leftSection={<IconMail size={16} />}
-                disabled={!hasEmail}
-                loading={sending}
-                onClick={() => void onSend(['email'])}
-              >
-                {hasEmail
-                  ? `Email ${counterparty.email}`
-                  : 'Email (no email on file)'}
-              </Button>
             </>
           ) : null}
+
+          {/* Email — the CRM sends the link (task 38). Disabled without an
+              email on file; the outcome sentence below says what happened. */}
+          <Button
+            variant="default"
+            justify="flex-start"
+            fullWidth
+            leftSection={<IconMail size={16} />}
+            disabled={!hasEmail}
+            loading={sending}
+            onClick={() => void onSend(['email'])}
+          >
+            {hasEmail
+              ? `Email the link to ${counterparty.email}`
+              : 'Email the link (no email on file)'}
+          </Button>
 
           {/* Copy link — the one leg that always works. The link is only live
               after send activates the envelope, so the first click sends with

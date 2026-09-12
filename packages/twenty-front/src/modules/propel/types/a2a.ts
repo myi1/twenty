@@ -101,6 +101,8 @@ export interface SendRequest {
   /** Forwarded for the WhatsApp-first delivery wired in doc-service. */
   counterpartyPhone?: string;
   counterpartyEmail?: string;
+  /** Greeting for the CRM-sent link email ("Hi Ahmed,"); never used for routing. */
+  counterpartyName?: string;
 }
 
 export interface SendResponse extends A2ARouteError {

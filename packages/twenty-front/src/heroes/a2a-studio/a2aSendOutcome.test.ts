@@ -86,3 +86,17 @@ describe('describeSendOutcome — one plain sentence for the agent', () => {
     assert.doesNotMatch(s, /WA_SERVICE|wa-service|unset/);
   });
 });
+
+describe('describeSendOutcome — the CRM email leg (task 38, founder answer: email button in scope)', () => {
+  it('delivered over email: says so, names the channel and the broker', () => {
+    const s = describeSendOutcome({ linkReady: true, delivered: ['email'], failed: [] }, 'Ahmed');
+    assert.match(s, /Sent to Ahmed over email/);
+    assert.match(s, /signed PDF/i);
+  });
+  it('email refused by Postmark: names the channel honestly and offers the link', () => {
+    const s = describeSendOutcome({ linkReady: true, delivered: [], failed: [{ channel: 'email', reason: 'postmark 406: Inactive recipient' }] }, 'Ahmed');
+    assert.match(s, /could not be sent over email/i);
+    assert.match(s, /copy the link/i);
+    assert.doesNotMatch(s, /postmark|406/i);
+  });
+});
