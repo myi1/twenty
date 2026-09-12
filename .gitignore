@@ -55,3 +55,6 @@ TRANSLATION_QA_REPORT.md
 .playwright-mcp/
 .playwright-cli/
 output/playwright/
+
+# Track-2 C0 spike: a node_modules SYMLINK sails past the directory-only rule above.
+**/node_modules
