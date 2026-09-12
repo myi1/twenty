@@ -119,32 +119,6 @@ export class AtomicCommandService {
             throw new Error('C0 spike: no transactional query runner');
           }
 
-          // ── idempotent replay ────────────────────────────────────────────
-          // Look up a prior matching step BEFORE treating its old expected
-          // version as a conflict: a retry after a lost response must return the
-          // canonical result, not a 409.
-          const prior: { payloadHash: string; assignmentVersion: string }[] =
-            await runner.query(
-              `SELECT "payloadHash", "assignmentVersion"::text AS "assignmentVersion"
-                 FROM ${RECEIPTS}
-                WHERE "workspaceId" = $1 AND "operationId" = $2 AND "stepKey" = $3`,
-              [input.workspaceId, input.operationId, input.stepKey],
-            );
-
-          if (prior.length > 0) {
-            if (prior[0].payloadHash !== input.payloadHash) {
-              throw new IdempotencyConflictError();
-            }
-
-            return {
-              personId: input.personId,
-              ownerValue: input.nextOwner,
-              assignmentVersion: prior[0].assignmentVersion,
-              stepKey: input.stepKey,
-              replay: true,
-            };
-          }
-
           // ── the aggregate must exist IN THIS WORKSPACE ───────────────────
           // FOR UPDATE on the PERSON row, not the version row: the version row
           // may not exist yet on a first assignment, and a lock on a row that is
@@ -171,6 +145,35 @@ export class AtomicCommandService {
             throw new UnknownAggregateError(input.personId);
           }
 
+          // ── idempotent replay — AFTER the person lock, never before ─────────
+          // A retry that arrives while the original is still inside its
+          // transaction must WAIT for it, then find its receipt and replay. Looked
+          // up before the lock, the retry saw no receipt, waited, then read the
+          // advanced version and reported a 409 for work that had just committed
+          // (A19, watched red first). It still runs before the version compare, so
+          // a retry after a lost response returns the canonical result, not a 409.
+          const prior: { payloadHash: string; assignmentVersion: string }[] =
+            await runner.query(
+              `SELECT "payloadHash", "assignmentVersion"::text AS "assignmentVersion"
+                 FROM ${RECEIPTS}
+                WHERE "workspaceId" = $1 AND "operationId" = $2 AND "stepKey" = $3`,
+              [input.workspaceId, input.operationId, input.stepKey],
+            );
+
+          if (prior.length > 0) {
+            if (prior[0].payloadHash !== input.payloadHash) {
+              throw new IdempotencyConflictError();
+            }
+
+            return {
+              personId: input.personId,
+              ownerValue: input.nextOwner,
+              assignmentVersion: prior[0].assignmentVersion,
+              stepKey: input.stepKey,
+              replay: true,
+            };
+          }
+
           // ── lock the assignment row, then compare-and-set ────────────────
           // SELECT ... FOR UPDATE serialises two competing commands on the same
           // aggregate: the second blocks here until the first commits, then reads
@@ -194,7 +197,10 @@ export class AtomicCommandService {
             throw new StaleVersionError(input.expectedVersion, currentVersion);
           }
 
-          const nextVersion = (BigInt(currentVersion) + 1n).toString();
+          // BigInt(1), not the 1n literal: the engine's tsconfig targets below ES2020, where
+          // bigint literals are a type error (TS2737). swc accepts it, so neither the build
+          // nor the tests caught it — only the typecheck did.
+          const nextVersion = (BigInt(currentVersion) + BigInt(1)).toString();
 
           // ── the domain change ────────────────────────────────────────────
           if (input.useOrmWritePath) {
@@ -261,5 +267,45 @@ export class AtomicCommandService {
     }
 
     return committed;
+  }
+
+  /** The committed receipt for (workspace, operation, step), or null. Read-only. */
+  async getStep(
+    workspaceId: string,
+    operationId: string,
+    stepKey: string,
+  ): Promise<{
+    operationId: string;
+    stepKey: string;
+    payloadHash: string;
+    assignmentVersion: string;
+  } | null> {
+    return this.globalWorkspaceOrmManager.executeInWorkspaceContext(
+      async () => {
+        const dataSource =
+          await this.globalWorkspaceOrmManager.getGlobalWorkspaceDataSource();
+        const runner = dataSource.createQueryRunner();
+
+        try {
+          const rows: {
+            operationId: string;
+            stepKey: string;
+            payloadHash: string;
+            assignmentVersion: string;
+          }[] = await runner.query(
+            `SELECT "operationId"::text AS "operationId", "stepKey", "payloadHash",
+                    "assignmentVersion"::text AS "assignmentVersion"
+               FROM ${RECEIPTS}
+              WHERE "workspaceId" = $1 AND "operationId" = $2 AND "stepKey" = $3`,
+            [workspaceId, operationId, stepKey],
+          );
+
+          return rows[0] ?? null;
+        } finally {
+          await runner.release();
+        }
+      },
+      buildSystemAuthContext(workspaceId),
+    );
   }
 }

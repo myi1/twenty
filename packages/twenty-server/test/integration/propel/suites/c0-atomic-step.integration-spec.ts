@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { gql } from 'graphql-tag';
 import request from 'supertest';
 
 import {
@@ -7,6 +8,9 @@ import {
   SEED_YCOMBINATOR_WORKSPACE_ID,
 } from 'src/engine/workspace-manager/dev-seeder/core/constants/seeder-workspaces.constant';
 import { getWorkspaceSchemaName } from 'src/engine/workspace-datasource/utils/get-workspace-schema-name.util';
+import { WORKSPACE_MEMBER_DATA_SEED_IDS } from 'src/engine/workspace-manager/dev-seeder/data/constants/workspace-member-data-seeds.constant';
+import { generateApiKeyToken } from 'test/integration/graphql/utils/generate-api-key-token.util';
+import { makeMetadataAPIRequest } from 'test/integration/metadata/suites/utils/make-metadata-api-request.util';
 
 /**
  * C0 — can the assignment boundary be TRUSTED?
@@ -37,6 +41,13 @@ const OWNER_A = 'C0-OWNER-A';
 const OWNER_B = 'C0-OWNER-B';
 const OWNER_C = 'C0-OWNER-C';
 
+// The seeded API key is on the worker allowlist in .env.test (by its jti).
+const WORKER_TOKEN = API_KEY_ACCESS_TOKEN;
+const JANE_MEMBER = WORKSPACE_MEMBER_DATA_SEED_IDS.JANE; // Admin  -> MANAGER
+const JONY_MEMBER = WORKSPACE_MEMBER_DATA_SEED_IDS.JONY; // Member -> AGENT
+// Jane's userWorkspace in Apple: read from her access token, confirmed in core."userWorkspace".
+const JANE_USER_WORKSPACE = '20202020-1e7c-43d9-a5db-685b5069d816';
+
 const raw = <T = unknown>(sql: string, params?: unknown[]): Promise<T[]> =>
   global.testDataSource.query(sql, params);
 
@@ -45,6 +56,9 @@ const api = () => request(`http://localhost:${APP_PORT}`);
 describe('C0 — the assignment command boundary (integration)', () => {
   let personId: string;
   let foreignPersonId: string;
+  let freshKeyId: string;
+  let freshKeyToken: string;
+  const foreignOnlyMemberId = randomUUID();
 
   beforeAll(async () => {
     await raw(`
@@ -67,6 +81,63 @@ describe('C0 — the assignment command boundary (integration)', () => {
         PRIMARY KEY ("workspaceId", "personId")
       )
     `);
+
+    // A NEW key, deliberately given the Admin role: even an all-powerful key that
+    // is not on the worker allowlist must be refused by the command route.
+    const roles = await makeMetadataAPIRequest({
+      query: gql`query { getRoles { id label } }`,
+    });
+    const adminRoleId = roles.body.data?.getRoles?.find(
+      (role: { label: string }) => role.label === 'Admin',
+    )?.id;
+
+    if (!adminRoleId) {
+      throw new Error(`no Admin role: ${JSON.stringify(roles.body)}`);
+    }
+
+    const created = await makeMetadataAPIRequest({
+      query: gql`
+        mutation CreateApiKey($input: CreateApiKeyInput!) {
+          createApiKey(input: $input) { id }
+        }
+      `,
+      variables: {
+        input: { name: 'C0 not-a-worker key', expiresAt: '2030-01-01T00:00:00Z', roleId: adminRoleId },
+      },
+    });
+
+    freshKeyId = created.body.data?.createApiKey?.id;
+
+    if (!freshKeyId) {
+      throw new Error(`createApiKey failed: ${JSON.stringify(created.body)}`);
+    }
+
+    const minted = await generateApiKeyToken({
+      apiKeyId: freshKeyId,
+      accessToken: APPLE_JANE_ADMIN_ACCESS_TOKEN,
+    });
+
+    freshKeyToken = minted.body.data?.generateApiKeyToken?.token;
+
+    if (!freshKeyToken) {
+      throw new Error(`generateApiKeyToken failed: ${JSON.stringify(minted.body)}`);
+    }
+
+    // A member that exists ONLY in the other workspace. Seeded member ids repeat
+    // across workspaces, so borrowing a seeded id would not test scoping at all.
+    await raw(
+      `INSERT INTO "${OTHER_SCHEMA}"."workspaceMember" (id, "userId") VALUES ($1, $2)`,
+      [foreignOnlyMemberId, randomUUID()],
+    );
+  });
+
+  afterAll(async () => {
+    if (freshKeyId) {
+      await raw('DELETE FROM core."apiKey" WHERE id = $1', [freshKeyId]);
+    }
+    await raw(`DELETE FROM "${OTHER_SCHEMA}"."workspaceMember" WHERE id = $1`, [
+      foreignOnlyMemberId,
+    ]);
   });
 
   beforeEach(async () => {
@@ -123,6 +194,12 @@ describe('C0 — the assignment command boundary (integration)', () => {
     return Number(rows[0].n);
   };
 
+  // Refusal REASONS are read from `response.text`, not `response.body`. This
+  // harness registers MockedUnhandledExceptionFilter, which rethrows; Express then
+  // renders the error as text/html ("ForbiddenException: <message>") and the JSON
+  // body arrives as {}. Production registers UnhandledExceptionFilter, which keeps
+  // { code, message } — proven in src/modules/propel-command/production-error-body.spec.ts.
+  // Checking status alone would pass for a refusal made for the WRONG reason.
   const postStep = (
     overrides: Record<string, unknown> = {},
     token: string | null = APPLE_JANE_ADMIN_ACCESS_TOKEN,
@@ -144,6 +221,19 @@ describe('C0 — the assignment command boundary (integration)', () => {
       failAfter: 'none',
       ...overrides,
     });
+  };
+
+  const getStep = (
+    operationId: string,
+    stepKey: string,
+    token: string,
+    onBehalfOf?: string,
+  ) => {
+    const query = onBehalfOf ? `?onBehalfOfWorkspaceMemberId=${onBehalfOf}` : '';
+
+    return api()
+      .get(`/propel/v1/spike/steps/${operationId}/${encodeURIComponent(stepKey)}${query}`)
+      .set('Authorization', `Bearer ${token}`);
   };
 
   // ── Part 1: the transaction ───────────────────────────────────────────────
@@ -227,6 +317,10 @@ describe('C0 — the assignment command boundary (integration)', () => {
     const stale = await postStep({ expectedVersion: '0', nextOwner: OWNER_C });
 
     expect(stale.status).toBe(409);
+    // The reason, from the raw text (see the note above postStep). The `code` the
+    // worker classifies by is proven against PRODUCTION's filter in
+    // src/modules/propel-command/production-error-body.spec.ts.
+    expect(stale.text).toContain('Expected assignment version 0, found 1');
     expect(await readCity()).toBe(OWNER_B);
     expect(await readVersion()).toBe('1');
   });
@@ -327,13 +421,25 @@ describe('C0 — the assignment command boundary (integration)', () => {
     expect(await readVersion()).toBeNull();
   });
 
-  it('A17 — an API-KEY (service) token cannot move a lead', async () => {
-    // The plan allows service-origin commands only under an explicitly scoped
-    // policy. No such policy exists, so this must fail CLOSED rather than
-    // inherit whatever the key can otherwise do.
-    const response = await postStep({}, API_KEY_ACCESS_TOKEN);
+  it('A17 — an API key NOT on the worker allowlist cannot move a lead, even with the Admin role', async () => {
+    // CONTROL: the fresh key genuinely authenticates. Without this, a 403 below
+    // could just be Twenty refusing an unknown key, and would prove nothing about
+    // the allowlist.
+    const control = await api()
+      .post('/graphql')
+      .set('Authorization', `Bearer ${freshKeyToken}`)
+      .send({ query: '{ people(first: 1) { edges { node { id } } } }' });
+
+    expect(control.status).toBe(200);
+    expect(control.body.errors).toBeUndefined();
+
+    const response = await postStep(
+      { onBehalfOfWorkspaceMemberId: JANE_MEMBER },
+      freshKeyToken,
+    );
 
     expect(response.status).toBe(403);
+    expect(response.text).toContain('not authorised to issue assignment commands');
     expect(await readCity()).toBe(OWNER_A);
     expect(await countReceipts()).toBe(0);
   });
@@ -344,6 +450,136 @@ describe('C0 — the assignment command boundary (integration)', () => {
     expect(response.status).toBe(201);
     expect(await readCity()).toBe(OWNER_B);
     expect(await readVersion()).toBe('1');
+  });
+
+  // ── Part 3c: the COMMAND WORKER credential ───────────────────────────────
+  // Founder decision 2026-09-13: the worker uses its OWN key, accepted only if the
+  // key id is on PROPEL_COMMAND_WORKER_API_KEY_IDS, and the manager it acts for is
+  // re-checked at the moment of the step. No custom role anywhere.
+
+  it('W1 — the worker key acting for a MANAGER can move a lead', async () => {
+    const response = await postStep({ onBehalfOfWorkspaceMemberId: JANE_MEMBER }, WORKER_TOKEN);
+
+    expect(response.status).toBe(201);
+    expect(await readCity()).toBe(OWNER_B);
+    expect(await readVersion()).toBe('1');
+  });
+
+  it('W2 — the worker key acting for someone who is NOT a manager is refused at the step', async () => {
+    const response = await postStep({ onBehalfOfWorkspaceMemberId: JONY_MEMBER }, WORKER_TOKEN);
+
+    expect(response.status).toBe(403);
+    expect(response.text).toContain('NOT_A_MANAGER');
+    expect(await readCity()).toBe(OWNER_A);
+    expect(await countReceipts()).toBe(0);
+  });
+
+  it('W3 — the worker key must name who it acts for', async () => {
+    const response = await postStep({}, WORKER_TOKEN);
+
+    expect(response.status).toBe(400);
+    expect(await readCity()).toBe(OWNER_A);
+    expect(await countReceipts()).toBe(0);
+  });
+
+  it('W4 — a member who exists only in ANOTHER workspace is refused', async () => {
+    const response = await postStep({ onBehalfOfWorkspaceMemberId: foreignOnlyMemberId }, WORKER_TOKEN);
+
+    expect(response.status).toBe(403);
+    expect(response.text).toContain('NOT_A_MEMBER_OF_THIS_WORKSPACE');
+    expect(await readCity()).toBe(OWNER_A);
+  });
+
+  it('W5 — a member id that exists nowhere is refused', async () => {
+    const response = await postStep({ onBehalfOfWorkspaceMemberId: randomUUID() }, WORKER_TOKEN);
+
+    expect(response.status).toBe(403);
+    expect(await readCity()).toBe(OWNER_A);
+  });
+
+  it('W6 — a signed-in USER cannot act on behalf of anyone else', async () => {
+    const response = await postStep({ onBehalfOfWorkspaceMemberId: JONY_MEMBER });
+
+    expect(response.status).toBe(400);
+    expect(await readCity()).toBe(OWNER_A);
+    expect(await countReceipts()).toBe(0);
+  });
+
+  it('W7 — a manager whose login in this workspace was REMOVED is refused', async () => {
+    await raw('UPDATE core."userWorkspace" SET "deletedAt" = now() WHERE id = $1', [JANE_USER_WORKSPACE]);
+
+    try {
+      const response = await postStep({ onBehalfOfWorkspaceMemberId: JANE_MEMBER }, WORKER_TOKEN);
+
+      expect(response.status).toBe(403);
+      expect(response.text).toContain('NO_ACTIVE_LOGIN_IN_THIS_WORKSPACE');
+      expect(await readCity()).toBe(OWNER_A);
+    } finally {
+      await raw('UPDATE core."userWorkspace" SET "deletedAt" = NULL WHERE id = $1', [JANE_USER_WORKSPACE]);
+    }
+  });
+
+  it('G1 — the worker can look up a committed step to resume after an unknown outcome', async () => {
+    const operationId = randomUUID();
+
+    expect((await postStep({ operationId, onBehalfOfWorkspaceMemberId: JANE_MEMBER }, WORKER_TOKEN)).status).toBe(201);
+
+    const found = await getStep(operationId, 'ASSIGN_LEAD:1', WORKER_TOKEN, JANE_MEMBER);
+
+    expect(found.status).toBe(200);
+    expect(found.body).toMatchObject({ operationId, stepKey: 'ASSIGN_LEAD:1', assignmentVersion: '1' });
+  });
+
+  it('G2 — a step that never committed is 404, not an error', async () => {
+    const found = await getStep(randomUUID(), 'ASSIGN_LEAD:1', WORKER_TOKEN, JANE_MEMBER);
+
+    expect(found.status).toBe(404);
+  });
+
+  it('G3 — a step committed in ANOTHER workspace is invisible', async () => {
+    const operationId = randomUUID();
+
+    await raw(
+      `INSERT INTO ${RECEIPTS} ("workspaceId","operationId","stepKey","payloadHash","assignmentVersion")
+       VALUES ($1,$2,'ASSIGN_LEAD:1','hash-1',1)`,
+      [SEED_YCOMBINATOR_WORKSPACE_ID, operationId],
+    );
+
+    try {
+      const found = await getStep(operationId, 'ASSIGN_LEAD:1', WORKER_TOKEN, JANE_MEMBER);
+
+      expect(found.status).toBe(404);
+    } finally {
+      await raw(`DELETE FROM ${RECEIPTS} WHERE "operationId" = $1`, [operationId]);
+    }
+  });
+
+  it('G4 — a step lookup re-authorises: acting for a non-manager is refused', async () => {
+    const operationId = randomUUID();
+
+    expect((await postStep({ operationId, onBehalfOfWorkspaceMemberId: JANE_MEMBER }, WORKER_TOKEN)).status).toBe(201);
+
+    const found = await getStep(operationId, 'ASSIGN_LEAD:1', WORKER_TOKEN, JONY_MEMBER);
+
+    expect(found.status).toBe(403);
+  });
+
+  it('A19 — the SAME command sent twice at once: one change, and BOTH callers get the committed result', async () => {
+    const operationId = randomUUID();
+
+    const [first, second] = await Promise.all([
+      postStep({ operationId }),
+      postStep({ operationId }),
+    ]);
+
+    // A retry that arrives while the original is still inside its transaction must
+    // wait for it and then REPLAY — not read the advanced version and report a
+    // conflict for work that just committed. A worker that got 409 here would
+    // record FAILED for a change that happened.
+    expect([first.status, second.status]).toEqual([201, 201]);
+    expect([first.body.replay, second.body.replay].sort()).toEqual([false, true]);
+    expect(await readVersion()).toBe('1');
+    expect(await countReceipts()).toBe(1);
   });
 
   // ── Part 4: the ORM escape, pinned ────────────────────────────────────────

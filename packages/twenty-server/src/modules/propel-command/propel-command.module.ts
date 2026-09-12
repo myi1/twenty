@@ -1,9 +1,14 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AuthModule } from 'src/engine/core-modules/auth/auth.module';
 import { RoleModule } from 'src/engine/metadata-modules/role/role.module';
 import { UserRoleModule } from 'src/engine/metadata-modules/user-role/user-role.module';
 import { WorkspaceCacheStorageModule } from 'src/engine/workspace-cache-storage/workspace-cache-storage.module';
+import { CoreEntityCacheModule } from 'src/engine/core-entity-cache/core-entity-cache.module';
+import { UserWorkspaceEntity } from 'src/engine/core-modules/user-workspace/user-workspace.entity';
+import { WorkspaceCacheModule } from 'src/engine/workspace-cache/workspace-cache.module';
+import { PropelCommandActorService } from 'src/modules/propel-command/propel-command-actor.service';
 import { PropelTierService } from 'src/modules/propel-rls/propel-tier.service';
 import { AtomicCommandService } from 'src/modules/propel-command/atomic-command.service';
 import { PropelCommandController } from 'src/modules/propel-command/propel-command.controller';
@@ -22,8 +27,16 @@ import { PropelCommandController } from 'src/modules/propel-command/propel-comma
  * The endpoint is 404 unless PROPEL_C0_SPIKE_ENABLED=true (see the controller).
  */
 @Module({
-  imports: [AuthModule, WorkspaceCacheStorageModule, RoleModule, UserRoleModule],
+  imports: [
+    AuthModule,
+    WorkspaceCacheStorageModule,
+    RoleModule,
+    UserRoleModule,
+    CoreEntityCacheModule,
+    WorkspaceCacheModule,
+    TypeOrmModule.forFeature([UserWorkspaceEntity]),
+  ],
   controllers: [PropelCommandController],
-  providers: [AtomicCommandService, PropelTierService],
+  providers: [AtomicCommandService, PropelTierService, PropelCommandActorService],
 })
 export class PropelCommandModule {}
