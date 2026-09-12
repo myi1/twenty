@@ -95,6 +95,8 @@ const buildManifest = (): Manifest =>
       objects: [
         buildDefaultObjectManifest({
           universalIdentifier: R.object,
+          // Mirrors src/objects/propel-step-receipt.object.ts in the app.
+          labelIdentifierFieldMetadataUniversalIdentifier: R.stepKey,
           nameSingular: 'propelStepReceipt',
           namePlural: 'propelStepReceipts',
           labelSingular: 'Command step receipt',
@@ -109,6 +111,8 @@ const buildManifest = (): Manifest =>
         }),
         buildDefaultObjectManifest({
           universalIdentifier: V.object,
+          // Mirrors src/objects/propel-assignment-version.object.ts: a UUID field as the label.
+          labelIdentifierFieldMetadataUniversalIdentifier: V.personId,
           nameSingular: 'propelAssignmentVersion',
           namePlural: 'propelAssignmentVersions',
           labelSingular: 'Assignment version',
