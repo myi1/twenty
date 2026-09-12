@@ -4,6 +4,7 @@ import { RoleModule } from 'src/engine/metadata-modules/role/role.module';
 import { UserRoleModule } from 'src/engine/metadata-modules/user-role/user-role.module';
 import { PropelTierService } from 'src/modules/propel-rls/propel-tier.service';
 import { PropelWritePolicyService } from 'src/modules/propel-rls/propel-write-policy.service';
+import { PROPEL_COMMAND_RECORDS_FENCE_HOOKS } from 'src/modules/propel-rls/propel-command-records-fence.pre-query.hooks';
 import { GenericRlsUpdateOnePreQueryHook } from 'src/modules/propel-rls/generic-rls-update-one.pre-query.hook';
 import { GenericRlsUpdateManyPreQueryHook } from 'src/modules/propel-rls/generic-rls-update-many.pre-query.hook';
 import { SecondaryOpportunityRlsPreQueryHook } from 'src/modules/propel-rls/secondary-opportunity-rls.pre-query.hook';
@@ -174,6 +175,10 @@ import { GenericRlsGroupByPreQueryHook } from 'src/modules/propel-rls/generic-rl
     GenericRlsFindManyPreQueryHook,
     GenericRlsFindOnePreQueryHook,
     GenericRlsGroupByPreQueryHook,
+    // The fence on the assignment command's records (C1, decision B, 2026-09-13): every
+    // data-API write on the step receipt and the assignment version is refused, for every
+    // caller; the command writes them with raw SQL on its own transaction. See the file.
+    ...PROPEL_COMMAND_RECORDS_FENCE_HOOKS,
   ],
 })
 export class PropelRlsModule {}
