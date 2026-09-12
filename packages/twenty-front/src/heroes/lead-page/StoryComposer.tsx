@@ -15,7 +15,7 @@
 // header pill can scroll out of view on a long story, and an agent must never be
 // unsure which number is about to speak for the business.
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { SegmentedControl, Textarea } from '@mantine/core';
 import type { PropelHeroHost } from '@/propel/runtime/heroHost';
 import { InboxComposer } from '@/propel/components/marketingHero/inbox/InboxComposer';
@@ -25,28 +25,27 @@ import { Btn } from '../_pulse/pulse';
 import { Pill } from './styles';
 import { addNote, errorText, sendFirstWhatsApp } from './leadApi';
 import type { LeadLoad } from './types';
+import type { LeadDrafts } from './leadDrafts';
 
 type Mode = 'message' | 'note';
 
-// Draft persistence, scoped per lead so a refresh (or a failed send) never loses
-// what the agent typed. Every access is try/catch'd: a full/disabled store must
-// degrade to "the draft only survives this tab session", never throw.
-const draftKey = (personId: string) => `lead-page-draft:${personId}`;
-const readDraft = (personId: string): string => {
-  try {
-    return window.localStorage.getItem(draftKey(personId)) ?? '';
-  } catch {
-    return '';
-  }
-};
-const writeDraft = (personId: string, text: string) => {
-  try {
-    if (text) window.localStorage.setItem(draftKey(personId), text);
-    else window.localStorage.removeItem(draftKey(personId));
-  } catch {
-    /* best-effort: a lost draft on a full/disabled store is not fatal */
-  }
-};
+// DRAFTS ARE NOT OWNED HERE ANY MORE (F4, 2026-09-12).
+//
+// They used to be: `firstMsg` in this component's state, mirrored to
+// localStorage under `lead-page-draft:<personId>`, and `noteText` in state with
+// no mirror at all. Two things were wrong with that.
+//
+// On a phone the hero renders one column at a time, so tapping Facts UNMOUNTS
+// this component — and with it the note the agent was halfway through writing
+// about the call they had just made. The message draft survived only because of
+// the localStorage mirror, which is the second problem: that key names the LEAD
+// and nobody else, so on a shared office browser profile the next agent to open
+// that lead read the previous one's unsent message about a named customer, for
+// as long as the machine lived.
+//
+// index.tsx owns them now, keyed by (workspace, member, lead) — see
+// leadDrafts.ts. This component reads and writes through props, so it can be
+// unmounted and remounted freely without losing a word.
 
 // Plain words for a failed first-contact send. whatsapp-send-route.ts (and the
 // wa-service it proxies) can hand back a raw engineering string here, such as
@@ -70,6 +69,8 @@ export const StoryComposer = ({
   host,
   data,
   thread,
+  drafts,
+  onDraftsChange,
   pushPending,
   markPendingFailed,
   markPendingSent,
@@ -78,6 +79,9 @@ export const StoryComposer = ({
   host: PropelHeroHost;
   data: LeadLoad;
   thread: InboxThreadPayload | null;
+  /** Owned by index.tsx so a phone tab switch cannot destroy them. */
+  drafts: LeadDrafts;
+  onDraftsChange: (next: Partial<LeadDrafts>) => void;
   pushPending: (body: string, media?: { url: string; kind: InboxMediaKind } | null) => string;
   markPendingFailed: (tempId: string) => void;
   markPendingSent: (tempId: string) => void;
@@ -86,28 +90,17 @@ export const StoryComposer = ({
   const { person, wa, viewer } = data;
   const blocked = person.optedOutWhatsApp || person.isLost;
 
-  const [mode, setMode] = useState<Mode>('message');
-  const [firstMsg, setFirstMsg] = useState(() => readDraft(person.id));
+  // In-flight flags stay local — they describe a request this component made,
+  // not anything the agent typed, and they are meaningless after a remount.
   const [sendingFirst, setSendingFirst] = useState(false);
-  const [noteText, setNoteText] = useState('');
   const [savingNote, setSavingNote] = useState(false);
 
-  // index.tsx sets `data` to null on a personId change, which unmounts Story
-  // (and this composer) through its `{data && ...}` render guard, so in the
-  // current wiring a personId change already remounts this component, and the
-  // `useState(() => readDraft(person.id))` initializer above already loads the
-  // right draft on that fresh mount. This effect is a defensive backstop for if
-  // that guard is ever relaxed and a future personId change reaches this
-  // component WITHOUT a remount: it re-reads THAT lead's own draft rather than
-  // carrying the previous one forward.
-  useEffect(() => {
-    setFirstMsg(readDraft(person.id));
-  }, [person.id]);
-
-  // Mirror every keystroke to localStorage. Never lose what the agent typed.
-  useEffect(() => {
-    writeDraft(person.id, firstMsg);
-  }, [person.id, firstMsg]);
+  const mode = drafts.mode;
+  const setMode = (m: Mode) => onDraftsChange({ mode: m });
+  const firstMsg = drafts.message;
+  const setFirstMsg = (v: string) => onDraftsChange({ message: v });
+  const noteText = drafts.note;
+  const setNoteText = (v: string) => onDraftsChange({ note: v });
 
   const mergeValues = {
     firstName: person.displayName.split(' ')[0],
@@ -137,8 +130,9 @@ export const StoryComposer = ({
       onChanged();
       return;
     }
-    // Anything else: keep the draft (already mirrored to localStorage above) so
-    // the agent never has to retype a message that didn't go out.
+    // Anything else: keep the draft — it lives in the parent, so it survives a
+    // failed send, a phone tab switch and a refresh alike. The agent never has
+    // to retype a message that didn't go out.
     host.notify(sendFailureText(r), 'warning');
   };
 
@@ -149,6 +143,8 @@ export const StoryComposer = ({
     const r = await addNote(host, person.id, text);
     setSavingNote(false);
     if (!r || r.ok === false) {
+      // The note stays exactly as typed. It lives in the parent now, so this is
+      // true through a tab switch and a refresh as well, not just this render.
       host.notify(errorText(r), 'warning');
       return;
     }

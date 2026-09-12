@@ -28,6 +28,7 @@ import { loadLead } from './leadApi';
 import { minutesWords, OUTCOME_WORDS } from './words';
 import type { LeadLoad, LeadTimelineEvent } from './types';
 import { StoryComposer } from './StoryComposer';
+import type { LeadDrafts } from './leadDrafts';
 
 // InboxMediaKind's no-media value (src/modules/propel/types/inbox.ts:190-196).
 const NO_MEDIA = 'NONE' as InboxMediaKind;
@@ -76,12 +77,18 @@ export const Story = ({
   host,
   data,
   reloadToken,
+  drafts,
+  onDraftsChange,
   onChanged,
   phone,
 }: {
   host: PropelHeroHost;
   data: LeadLoad;
   reloadToken: number;
+  /** Owned by index.tsx: this column unmounts on a phone tab switch, and the
+   *  composer's drafts must not go with it. */
+  drafts: LeadDrafts;
+  onDraftsChange: (next: Partial<LeadDrafts>) => void;
   onChanged: () => void;
   // Layout only, from index.tsx's usePhoneLayout (the page's single
   // breakpoint). On desktop this column is a frame: StoryList scrolls and
@@ -426,6 +433,8 @@ export const Story = ({
         host={host}
         data={data}
         thread={thread}
+        drafts={drafts}
+        onDraftsChange={onDraftsChange}
         pushPending={pushPending}
         markPendingFailed={markPendingFailed}
         markPendingSent={markPendingSent}

@@ -283,7 +283,12 @@ export const LeadHeader = ({
   activeDealId: string | null;
   phone: boolean;
   onLogOutcome: () => void;
-  onCallStarted: () => void;
+  /** Reports whether the dial MESSAGE went out — not whether a call is being
+   *  placed. startPropelCall returns true once it has posted a window message to
+   *  the dock, and window.postMessage cannot fail, so `true` here means "we
+   *  asked". The parent turns that into a REQUESTED state and only says "on a
+   *  call" once the CRM can actually see one (callLifecycle.ts). */
+  onCallStarted: (placed: boolean) => void;
   onChanged: () => void;
   onFocusComposer: () => void;
 }) => {
@@ -348,8 +353,10 @@ export const LeadHeader = ({
       leadId: person.id,
       source: 'lead-page',
     });
-    if (ok) onCallStarted();
-    else host.notify('Could not place the call from here. Dial the number shown.', 'warning');
+    // Told either way. A refusal is a state the page now SHOWS, not just a toast
+    // that vanishes before the agent has looked up from the phone.
+    onCallStarted(ok);
+    if (!ok) host.notify('Could not place the call from here. Dial the number shown.', 'warning');
   };
 
   // ── move to another pipeline ────────────────────────────────────────────

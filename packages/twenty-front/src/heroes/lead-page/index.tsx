@@ -22,6 +22,27 @@ import { OutcomeSheet } from './OutcomeSheet';
 import { usePhoneLayout } from './usePhoneLayout';
 import { useHostBottomInset } from './useHostBottomInset';
 import { Columns, LeadNocturne, PhoneBar, PhoneTab, PhoneTabs, Skeleton } from './styles';
+import {
+  clearAllDrafts,
+  draftKey,
+  EMPTY_DRAFTS,
+  purgeLegacyDrafts,
+  readDrafts,
+  writeDrafts,
+  type DraftStore,
+  type LeadDrafts,
+} from './leadDrafts';
+import {
+  CALL_POLL_INTERVAL_MS,
+  CALL_STATUS_TEXT,
+  callRefused,
+  callRequested,
+  IDLE_CALL,
+  nextCallState,
+  shouldOpenOutcomeSheet,
+  shouldPollCall,
+  type CallState,
+} from './callLifecycle';
 
 // ── The load-failure block's ONE button ──────────────────────────────────────
 // My Desk, the agent's own list of leads. Reached through the fork's /h/:bundle
@@ -65,6 +86,30 @@ type LoadFailure = { text: string; backTo: 'desk' | 'contact' };
 //                     case where trying again genuinely can succeed.
 const UNREACHABLE_CODES: ReadonlySet<LeadErr['error']> = new Set<LeadErr['error']>(['NOT_VISIBLE', 'NOT_FOUND']);
 
+// Drafts live in sessionStorage, not localStorage: per-tab, gone when the tab
+// closes. The old localStorage mirror kept an unsent message about a named
+// customer on a shared office machine indefinitely, under a key that named only
+// the lead. Reading the property itself can THROW in a browser with site data
+// blocked, so it is wrapped — a hero must never fail to render over a cache.
+const draftStore = (): DraftStore | null => {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+};
+const legacyStore = (): DraftStore | null => {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+};
+
+// The load failure that means the person at the keyboard is no longer known to
+// be the agent who typed. Everything they typed goes with it.
+const SESSION_EXPIRED: LeadErr['error'] = 'NOT_AUTHENTICATED';
+
 const loadFailure = (r: LeadErr | null): LoadFailure => ({
   text: errorText(r),
   backTo: r !== null && UNREACHABLE_CODES.has(r.error) ? 'desk' : 'contact',
@@ -84,7 +129,25 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
   // See useHostBottomInset.ts.
   const frameRef = useRef<HTMLDivElement>(null);
   const hostBottomInset = useHostBottomInset(frameRef, phone);
-  const callStartedAt = useRef<number | null>(null);
+  // The call is STATE, not a ref. It used to be
+  //   const callStartedAt = useRef<number | null>(null)
+  // with `setData((d) => (d ? { ...d } : d))` next to it to nudge the poll effect
+  // awake — except that effect depends on `data?.latestCall?.id`, which spreading
+  // `data` does not change. Pressing Call therefore did not reliably arm the
+  // poll, so the outcome sheet often never opened and the agent logged nothing.
+  // See callLifecycle.ts.
+  const [call, setCall] = useState<CallState>(IDLE_CALL);
+
+  // Everything the agent has typed and not sent, for the lead on screen. Owned
+  // HERE because this component survives the phone tab switch that unmounts the
+  // story column — see leadDrafts.ts for what used to happen and why the key
+  // includes who is typing.
+  const [drafts, setDrafts] = useState<LeadDrafts>(EMPTY_DRAFTS);
+
+  // Tracked explicitly rather than inferred from whatever error happens to be on
+  // screen. It gates the call poll, and a poll that keeps running against a CRM
+  // refusing every request is the exact behaviour this replaces.
+  const [sessionActive, setSessionActive] = useState(true);
 
   // The ONE deal id the whole page agrees on: which chip FactsRail shows as
   // active, and which deal OutcomeSheet writes the outcome and any stage move
@@ -115,11 +178,12 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
   // rendered under the new lead's URL.
   const loadedFor = useRef<string | null>(null);
   const requestSeq = useRef(0);
-  // callStartedAt.current is reset here too: the fourth path of the same
-  // wrong-record class in this file. Without it, navigating from a lead with a
-  // call in progress to another lead left the poll armed with the FIRST lead's
-  // start time, so a call ending on the new lead popped the outcome sheet for
-  // the old one. activeDealId is reset alongside it for the same reason: an old
+  // The call state is reset here too: the fourth path of the same wrong-record
+  // class in this file. Without it, navigating from a lead with a call in
+  // progress to another lead left the poll armed with the FIRST lead's start
+  // time, so a call ending on the new lead popped the outcome sheet for the old
+  // one. It is also what makes a poll response that lands AFTER the switch
+  // harmless: nextCallState returns IDLE untouched. activeDealId is reset alongside it for the same reason: an old
   // lead's deal id happening to still look "valid" (it never will, ids are
   // globally unique, but nothing should rely on that) has no business
   // surviving a navigation to a different lead. `sheet` is the fifth path of
@@ -133,10 +197,44 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
     setError(null);
     loadedFor.current = null;
     requestSeq.current += 1;
-    callStartedAt.current = null;
+    setCall(IDLE_CALL);
+    setDrafts(EMPTY_DRAFTS);
+    setSessionActive(true);
     setActiveDealId(null);
     setSheet({ open: false, callSeconds: null });
   }, [personId]);
+
+  // One-time cleanup of the OLD draft scheme. Those entries are real message
+  // text about named leads, sitting in localStorage on shared machines with no
+  // member in the key and no expiry; writing somewhere safer from now on would
+  // leave every one of them exactly where it is.
+  useEffect(() => {
+    purgeLegacyDrafts(legacyStore());
+  }, []);
+
+  // Load this lead's drafts once the viewer is known — the key needs the member,
+  // and the member arrives with the lead. Keyed reads mean the draft that comes
+  // back belongs to THIS agent on THIS lead, never to whoever used the browser
+  // before them.
+  const viewerId = data?.viewer.workspaceMemberId ?? null;
+  const draftId = viewerId ? draftKey(host.serverBaseUrl, viewerId, personId) : null;
+  const loadedDraftsFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!draftId || loadedDraftsFor.current === draftId) return;
+    loadedDraftsFor.current = draftId;
+    setDrafts(readDrafts(draftStore(), draftId));
+  }, [draftId]);
+
+  // Mirror them, so a refresh mid-sentence is not punished. The parent's own
+  // state is what the agent is typing into; this is only the safety net.
+  useEffect(() => {
+    if (!draftId || loadedDraftsFor.current !== draftId) return;
+    writeDrafts(draftStore(), draftId, drafts);
+  }, [draftId, drafts]);
+
+  const onDraftsChange = useCallback((next: Partial<LeadDrafts>) => {
+    setDrafts((d) => ({ ...d, ...next }));
+  }, []);
 
   // A first load with no data yet on screen shows the error block: there is
   // nothing else to show. A background refresh (the visibilitychange listener
@@ -154,11 +252,28 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
     const r = await loadLead(host, personId);
     if (seq !== requestSeq.current) return; // a newer request has superseded this one
     if (!r || r.ok === false) {
+      // The session lapsed. The person at the keyboard is no longer known to be
+      // the agent who typed, so the lead's details AND their unsent words come
+      // off the screen and out of the store — even on a page that had loaded
+      // successfully, which every other failure deliberately leaves alone.
+      if (r !== null && r.error === SESSION_EXPIRED) {
+        setSessionActive(false);
+        setData(null);
+        setDrafts(EMPTY_DRAFTS);
+        setCall(IDLE_CALL);
+        setSheet({ open: false, callSeconds: null });
+        loadedFor.current = null;
+        loadedDraftsFor.current = null;
+        clearAllDrafts(draftStore());
+        setError(loadFailure(r));
+        return;
+      }
       if (loadedFor.current === personId) { host.notify(errorText(r), 'warning'); return; }
       setError(loadFailure(r));
       return;
     }
     loadedFor.current = r.person.id;
+    setSessionActive(true);
     setError(null); setData(r); setStoryReload((v) => v + 1);
   }, [host, personId]);
 
@@ -169,26 +284,56 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [reload]);
 
-  // After the agent presses Call, poll every 10 s for up to 30 min; when a newer call
-  // has ended, open the outcome sheet with its length. Manual open cancels the poll.
+  // Watch the call the agent just placed. The gate is the CALL STATE, which is
+  // real state, so pressing Call actually arms this — and it stops the moment
+  // the call ends, the dial goes unconfirmed, the sheet is opened by hand, the
+  // component unmounts, or the session expires. It used to have no session term
+  // at all: once the session lapsed every request failed, the effect returned,
+  // and it tried again ten seconds later for thirty minutes.
   useEffect(() => {
-    if (callStartedAt.current === null || sheet.open) return;
-    const started = callStartedAt.current;
+    if (sheet.open) return;
+    if (!shouldPollCall(call.status, sessionActive)) return;
     const t = window.setInterval(async () => {
-      if (Date.now() - started > 30 * 60_000) { callStartedAt.current = null; window.clearInterval(t); return; }
       const seq = ++requestSeq.current;
       const r = await loadLead(host, personId);
       if (seq !== requestSeq.current) return; // a newer request has superseded this one
-      if (!r || r.ok === false) return;
+      if (!r || r.ok === false) {
+        // A lapsed session ends the watch here and now: the poll is the thing
+        // that notices first, and waiting out a timeout would mean carrying on
+        // against a CRM that is refusing every request. reload() does the rest
+        // (clearing the lead and the drafts) the next time it runs.
+        if (r !== null && r.error === SESSION_EXPIRED) {
+          setSessionActive(false);
+          setCall(IDLE_CALL);
+          return;
+        }
+        // Anything else: try again next tick, and let nextCallState's timeout
+        // end the watch rather than polling a silent CRM forever.
+        setCall((c) => nextCallState(c, null, Date.now()));
+        return;
+      }
       setData(r);
-      const c = r.latestCall;
-      if (c?.endedAt && Date.parse(c.endedAt) > started) { callStartedAt.current = null; window.clearInterval(t); setSheet({ open: true, callSeconds: c.durationSeconds ?? null }); }
-    }, 10_000);
+      setCall((c) => nextCallState(c, r.latestCall, Date.now()));
+    }, CALL_POLL_INTERVAL_MS);
     return () => window.clearInterval(t);
-  }, [host, personId, sheet.open, data?.latestCall?.id]);
+  }, [host, personId, sheet.open, call.status, sessionActive]);
 
-  const onCallStarted = () => { callStartedAt.current = Date.now(); setData((d) => (d ? { ...d } : d)); };
-  const openSheet = () => { callStartedAt.current = null; setSheet({ open: true, callSeconds: null }); };
+  // A call that ended owes an outcome. Separated from the poll so the sheet
+  // opens from the STATE rather than from inside a timer callback — which is
+  // also what lets a late response for a previous lead do nothing at all, since
+  // the reset on personId change puts the state back to IDLE.
+  useEffect(() => {
+    if (!shouldOpenOutcomeSheet(call)) return;
+    setSheet({ open: true, callSeconds: call.endedSeconds });
+    setCall(IDLE_CALL);
+  }, [call]);
+
+  // `placed` is whether the dial MESSAGE went out, not whether a call is being
+  // made — window.postMessage cannot fail. REQUESTED says we asked; the poll
+  // turns it into CONNECTED only when the CRM can actually see a call.
+  const onCallStarted = (placed: boolean) => setCall(placed ? callRequested(Date.now()) : callRefused());
+  const openSheet = () => { setCall(IDLE_CALL); setSheet({ open: true, callSeconds: null }); };
+  const callStatusText = CALL_STATUS_TEXT[call.status];
   // Always lands the agent on the composer area, even for a lead with no
   // textarea to focus (opted out of WhatsApp, or marked lost): scrolling the
   // container into view is unconditional, so a blocked lead still sees the
@@ -235,6 +380,30 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
             {data && (
               <>
                 <LeadHeader host={host} data={data} activeDealId={activeDealId} phone={phone} onLogOutcome={openSheet} onCallStarted={onCallStarted} onChanged={reload} onFocusComposer={focusComposer} />
+                {/* What the page actually knows about the call. "Calling…" while
+                    we are waiting, "On a call" only once the CRM can see one,
+                    and a plain sentence when we asked and nothing came back —
+                    rather than a silent thirty-minute poll for a call that may
+                    never have been placed. A toast cannot do this job: it is
+                    gone in seconds, and this state can last a minute. */}
+                {callStatusText !== null && (
+                  <div
+                    role="status"
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: 13,
+                      opacity: 0.85,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                    }}
+                  >
+                    {callStatusText}
+                    {(call.status === 'UNCONFIRMED' || call.status === 'REFUSED') && (
+                      <Btn variant="secondary" style={{ minHeight: 32 }} onClick={() => setCall(IDLE_CALL)}>Dismiss</Btn>
+                    )}
+                  </div>
+                )}
                 {phone && (
                   <PhoneTabs role="tablist">
                     <PhoneTab role="tab" $active={tab === 'facts'} onClick={() => setTab('facts')}>Facts</PhoneTab>
@@ -245,7 +414,9 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
                   {(!phone || tab === 'facts') && (
                     <FactsRail host={host} data={data} activeDealId={activeDealId} onActiveDealChange={setActiveDealId} onChanged={reload} phone={phone} />
                   )}
-                  {(!phone || tab === 'story') && <Story host={host} data={data} reloadToken={storyReload} onChanged={reload} phone={phone} />}
+                  {(!phone || tab === 'story') && (
+                    <Story host={host} data={data} reloadToken={storyReload} drafts={drafts} onDraftsChange={onDraftsChange} onChanged={reload} phone={phone} />
+                  )}
                 </Columns>
                 {phone && (
                   <PhoneBar $inset={hostBottomInset}>
