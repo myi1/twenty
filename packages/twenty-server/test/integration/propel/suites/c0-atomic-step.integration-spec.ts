@@ -588,8 +588,11 @@ describe('C0 — the assignment command boundary (integration)', () => {
   // rather than folklore. WorkspaceEntityManager.update passes `undefined` where
   // every read path passes `this.queryRunner`, so the write runs on a pooled
   // connection and survives a rollback. Verified by mutation: passing
-  // `this.queryRunner` there turns this test red and is the real fix, whenever
-  // the engine owners choose to review it.
+  // `this.queryRunner` there turns this test red on THIS fork.
+  // Upstream never made that fix: Twenty 2.34 moved transactions to
+  // runInWorkspaceTransaction, and 2.35 DELETED WorkspaceEntityManager (#24182,
+  // #24718). On an upgrade past 2.35 this test will not go red — it will not
+  // compile — and the engine step must be ported (ADR-001, "Upgrade note").
   it('A14 (characterization) — the ORM write path COMMITS THROUGH a rollback', async () => {
     const response = await postStep({
       failAfter: 'domain',
