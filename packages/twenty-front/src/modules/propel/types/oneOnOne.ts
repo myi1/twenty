@@ -91,8 +91,12 @@ export type NextMeeting = {
 export type AgentBlock = {
   /** the agent's next upcoming 1:1, or null if none booked */
   nextMeeting: NextMeeting | null;
-  /** open leads across all pipelines */
-  openLeads: number;
+  /** open leads across all pipelines. null = the route could NOT count them —
+   *  show that, never a 0 (task 55) */
+  openLeads: number | null;
+  /** why openLeads is null ("<lane>: <engine message>"); null when counted.
+   *  Optional: a route from before task 55 does not send it. */
+  openLeadsError?: string | null;
   /** the agent's resolved manager (picker auto-select); null = no manager */
   manager: { id: string; label: string } | null;
 };

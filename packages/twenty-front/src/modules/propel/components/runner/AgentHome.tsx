@@ -113,12 +113,19 @@ export const AgentHome = ({
         mt="xs"
         style={{ fontVariantNumeric: 'tabular-nums' }}
       >
-        {agent.openLeads}
+        {agent.openLeads ?? '—'}
       </Text>
       <Text size="sm" c="dimmed">
         open leads across all pipelines
       </Text>
-      {agent.openLeads === 0 ? (
+      {/* null = the route could not count them. Say so: showing 0, or hiding the
+          card, is how a refused count query stayed invisible (task 55). */}
+      {agent.openLeads === null ? (
+        <Text size="sm" c="dimmed" mt="md">
+          Couldn&rsquo;t count your open leads right now. Refresh the page to try
+          again.
+        </Text>
+      ) : agent.openLeads === 0 ? (
         <Text size="sm" c="dimmed" mt="md">
           No open leads right now — a 1:1 can still happen to plan the week
           ahead.
