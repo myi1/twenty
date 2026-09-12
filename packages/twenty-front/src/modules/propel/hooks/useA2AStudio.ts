@@ -271,6 +271,8 @@ export const useA2AStudio = (
           ...(counterparty !== null
             ? {
                 counterpartyPersonId: counterparty.id,
+                // Greeting for the CRM-sent link email; never used for routing.
+                counterpartyName: counterparty.name,
                 ...(counterparty.phone !== null && counterparty.phone !== ''
                   ? { counterpartyPhone: counterparty.phone }
                   : {}),
