@@ -512,6 +512,13 @@ export class ApplicationInstallService {
       { relativePath: 'manifest.json', fileFolder: FileFolder.Source },
     );
 
+    if (isDefined(manifest.application.yarnLockChecksum)) {
+      files.push({
+        relativePath: 'yarn.lock',
+        fileFolder: FileFolder.Dependencies,
+      });
+    }
+
     for (const logicFunction of manifest.logicFunctions ?? []) {
       files.push({
         relativePath: logicFunction.builtHandlerPath,
