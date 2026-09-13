@@ -1,0 +1,90 @@
+(node:23148) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/propel-command/assignment-root-transition.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ real assignedAgentId/clocks transition increments once and leaves unrelated fields outside patch (1.854958ms)
+✔ pool return clears current assignment clocks and advances; pool-to-agent is assigned event (0.093958ms)
+✔ same owner retains version/clocks and creates no event; expected version still checked (0.177709ms)
+✔ epoch cannot be absent/mismatched and owner eligibility is required even for same owner (0.07975ms)
+✔ new command requires higher fence; malformed physical versions and unsafe growth refuse (0.128ms)
+✔ golden root versions 7 to 11 across A→B→C→pool→B without mutation on stale replay (0.10575ms)
+✔ missing or malformed committed clocks are dependency failures, never reconstructed on no-op (0.395375ms)
+✔ pooled root with only slaBreachedAt set is a dependency failure (0.040709ms)
+✔ pooled root with only slaWarnedAt set is a dependency failure (0.060833ms)
+✔ pooled root with both SLA clocks set is a dependency failure (0.080042ms)
+✔ valid all-null pool no-op retains version, advances fence and emits no mutation (0.096625ms)
+✔ whatsAppMessage actual SELECT cannot rely on caller filter instead of current owner (16.659042ms)
+✔ taskTarget actual SELECT cannot rely on caller filter instead of current owner (0.619875ms)
+✔ missing, malformed and mismatched human identity refuses before SQL even with permission bypass (2.186ms)
+✔ manager exception uses live bound role UIDs and active membership, never request role/cache (0.4265ms)
+✔ all metadata targets must be null or have active allowed roots; newly introduced targets deny when present (2.847417ms)
+✔ absent parent/owner metadata and wrong workspace schemas fail closed (1.6215ms)
+✔ caller OR and caller extra AND remain outside the mandatory scope, including withDeleted (0.49325ms)
+✔ joined protected targets restrict ON, retain unrelated LEFT JOIN roots and survive clones (1.286083ms)
+✔ quoted injection aliases refuse and parameter/alias namespaces cannot collide (0.457334ms)
+✔ protected reads always disable result caching so transfer/revocation is checked in SQL (0.320458ms)
+✔ unsupported raw FROM/subquery/CTE and secondary relation loaders refuse (1.201083ms)
+✔ non-human and ordinary unprotected entity reads retain existing behavior (1.090459ms)
+✔ execute whatsAppMessage emits the fenced PostgreSQL SELECT even with internal permission bypass (0.423833ms)
+✔ execute taskTarget emits the fenced PostgreSQL SELECT even with internal permission bypass (0.261042ms)
+✔ getMany whatsAppMessage emits the fenced PostgreSQL SELECT even with internal permission bypass (0.513292ms)
+✔ getMany taskTarget emits the fenced PostgreSQL SELECT even with internal permission bypass (0.318375ms)
+✔ getRawOne whatsAppMessage emits the fenced PostgreSQL SELECT even with internal permission bypass (0.31775ms)
+✔ getRawOne taskTarget emits the fenced PostgreSQL SELECT even with internal permission bypass (0.299208ms)
+✔ getRawMany whatsAppMessage emits the fenced PostgreSQL SELECT even with internal permission bypass (0.258541ms)
+✔ getRawMany taskTarget emits the fenced PostgreSQL SELECT even with internal permission bypass (0.283958ms)
+✔ getOne whatsAppMessage emits the fenced PostgreSQL SELECT even with internal permission bypass (0.313292ms)
+✔ getOne taskTarget emits the fenced PostgreSQL SELECT even with internal permission bypass (0.283208ms)
+✔ getOneOrFail whatsAppMessage emits the fenced PostgreSQL SELECT even with internal permission bypass (0.372958ms)
+✔ getOneOrFail taskTarget emits the fenced PostgreSQL SELECT even with internal permission bypass (0.316833ms)
+✔ getCount whatsAppMessage emits the fenced PostgreSQL SELECT even with internal permission bypass (0.414083ms)
+✔ getCount taskTarget emits the fenced PostgreSQL SELECT even with internal permission bypass (0.311042ms)
+✔ getManyAndCount whatsAppMessage emits the fenced PostgreSQL SELECT even with internal permission bypass (0.314208ms)
+✔ getManyAndCount taskTarget emits the fenced PostgreSQL SELECT even with internal permission bypass (0.301ms)
+✔ getRawAndEntities whatsAppMessage emits the fenced PostgreSQL SELECT even with internal permission bypass (0.261125ms)
+✔ getRawAndEntities taskTarget emits the fenced PostgreSQL SELECT even with internal permission bypass (0.253958ms)
+✔ stream whatsAppMessage emits the fenced PostgreSQL SELECT even with internal permission bypass (0.290125ms)
+✔ stream taskTarget emits the fenced PostgreSQL SELECT even with internal permission bypass (0.240458ms)
+✔ exists methods remain refused (0.246875ms)
+✔ nested contact-only caller join still fences raw message read without trusting conversation owner (0.35875ms)
+✔ paginated joined entity read emits fenced inner SQL in TypeORM distinct/count clones (0.899833ms)
+✔ every approved contact target in runtime metadata gets its own active root check (0.7435ms)
+✔ relation count and ID loaders on unprotected parents cannot hide protected child reads (1.388666ms)
+✔ real person group-by ranked_records wrapper remains executable for humans (0.856166ms)
+✔ real deal group-by ranked_records wrapper remains executable for humans (0.383084ms)
+✔ real protected whatsAppMessage group-by wrapper embeds current SQL checks and cannot cache them away (0.409834ms)
+✔ real protected taskTarget group-by wrapper embeds current SQL checks and cannot cache them away (0.339083ms)
+✔ the group-by producer cannot certify an opaque inner or wrong-workspace metadata (0.743625ms)
+✔ tampered group-by SQL and parameters refuse before driver execution (2.036375ms)
+✔ group-by provenance cannot be reused by a different actor or workspace (1.506625ms)
+✔ an unattested clone or a copied ranked_records string never inherits producer trust (0.345833ms)
+✔ getRawOne revalidation and repeated real group-by executions preserve the same fenced SQL (2.489125ms)
+✔ caller OR inside real protected group-by cannot escape the appended owner/member fence (0.376042ms)
+✔ an attested wrapper cannot be recycled as a trusted inner metadata query (0.270375ms)
+✔ later source-builder mutation cannot alter the already-bound protected wrapper (0.279ms)
+ℹ tests 60
+ℹ suites 0
+ℹ pass 60
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 587.0065
+        0.61 real         0.52 user         0.09 sys
+           225722368  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+               22436  page reclaims
+                 323  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                 321  messages sent
+                 131  messages received
+                   0  signals received
+                2280  voluntary context switches
+                2491  involuntary context switches
+           442805654  instructions retired
+           167415132  cycles elapsed
+            20335040  peak memory footprint
