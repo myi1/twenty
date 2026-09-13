@@ -843,6 +843,7 @@ export const useA2AStudio = (
     setCreating(false);
     setFinalizing(false);
     setSending(false);
+    setFinalizationState('none');
     if (opportunityId === null || opportunityId === '' || scopeKey === null) {
       setLookupState('unavailable');
       setResuming(false);

@@ -48,11 +48,13 @@ const activated = {
 const Harness = ({
   opportunityId,
   memberId,
+  variant = 'A',
 }: {
   opportunityId: string;
   memberId: string;
+  variant?: 'A' | 'B';
 }) => {
-  const studio = useA2AStudio(opportunityId, 'A', {}, memberId);
+  const studio = useA2AStudio(opportunityId, variant, {}, memberId);
   return (
     <>
       <output aria-label="step">{studio.step}</output>
@@ -61,6 +63,9 @@ const Harness = ({
       <output aria-label="dispatch">{studio.dispatchState}</output>
       <output aria-label="creating">{String(studio.creating)}</output>
       <output aria-label="finalizing">{String(studio.finalizing)}</output>
+      <output aria-label="finalization-state">
+        {studio.finalizationState}
+      </output>
       <output aria-label="message">
         {studio.sendMessage ?? studio.errorMessage ?? ''}
       </output>
@@ -671,6 +676,160 @@ describe('A2A lookup, reconciliation, and stale responses', () => {
     expect(screen.getByLabelText('document')).toHaveTextContent(id);
     view.unmount();
     expect(calls).not.toContain('/a2a/discard');
+  });
+
+  it.each([
+    [
+      'opportunity',
+      {
+        opportunityId: 'scope-unknown-opportunity-a',
+        memberId: 'scope-unknown-member',
+        variant: 'A' as const,
+      },
+      {
+        opportunityId: 'scope-unknown-opportunity-b',
+        memberId: 'scope-unknown-member',
+        variant: 'A' as const,
+      },
+    ],
+    [
+      'member',
+      {
+        opportunityId: 'scope-unknown-member-opportunity',
+        memberId: 'scope-unknown-member-a',
+        variant: 'A' as const,
+      },
+      {
+        opportunityId: 'scope-unknown-member-opportunity',
+        memberId: 'scope-unknown-member-b',
+        variant: 'A' as const,
+      },
+    ],
+    [
+      'variant',
+      {
+        opportunityId: 'scope-unknown-variant-opportunity',
+        memberId: 'scope-unknown-variant-member',
+        variant: 'A' as const,
+      },
+      {
+        opportunityId: 'scope-unknown-variant-opportunity',
+        memberId: 'scope-unknown-variant-member',
+        variant: 'B' as const,
+      },
+    ],
+  ])(
+    'isolates unknown finalization by trusted %s scope and restores the original guard',
+    async (dimension, original, fresh) => {
+      const id = `scope-unknown-${dimension}-doc`;
+      makeRoute({
+        documentId: id,
+        create: { ...draft(id), isRera: false },
+        finalize: null,
+      });
+      const view = render(
+        <Harness
+          opportunityId={original.opportunityId}
+          memberId={original.memberId}
+          variant={original.variant}
+        />,
+      );
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled(),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+      await screen.findByText('error');
+      expect(screen.getByLabelText('finalization-state')).toHaveTextContent(
+        'unknown',
+      );
+
+      view.rerender(
+        <Harness
+          opportunityId={fresh.opportunityId}
+          memberId={fresh.memberId}
+          variant={fresh.variant}
+        />,
+      );
+      await waitFor(() =>
+        expect(screen.getByLabelText('document')).toBeEmptyDOMElement(),
+      );
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled(),
+      );
+      expect(screen.getByLabelText('finalization-state')).toHaveTextContent(
+        'none',
+      );
+
+      view.rerender(
+        <Harness
+          opportunityId={original.opportunityId}
+          memberId={original.memberId}
+          variant={original.variant}
+        />,
+      );
+      await waitFor(() =>
+        expect(screen.getByLabelText('document')).toHaveTextContent(id),
+      );
+      expect(screen.getByLabelText('step')).toHaveTextContent('error');
+      expect(screen.getByLabelText('finalization-state')).toHaveTextContent(
+        'unknown',
+      );
+      expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
+    },
+  );
+
+  it('isolates a pending finalization from a fresh scope and restores the original pending guard', async () => {
+    const pending = deferred();
+    const id = 'scope-pending-doc';
+    makeRoute({
+      documentId: id,
+      create: { ...draft(id), isRera: false },
+      finalize: pending.promise,
+    });
+    const view = render(
+      <Harness
+        opportunityId="scope-pending-a"
+        memberId="scope-pending-member"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await screen.findByText('bakeJunior');
+    expect(screen.getByLabelText('finalization-state')).toHaveTextContent(
+      'pending',
+    );
+
+    view.rerender(
+      <Harness
+        opportunityId="scope-pending-b"
+        memberId="scope-pending-member"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled(),
+    );
+    expect(screen.getByLabelText('finalization-state')).toHaveTextContent(
+      'none',
+    );
+
+    view.rerender(
+      <Harness
+        opportunityId="scope-pending-a"
+        memberId="scope-pending-member"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText('document')).toHaveTextContent(id),
+    );
+    expect(screen.getByLabelText('step')).toHaveTextContent('error');
+    expect(screen.getByLabelText('finalization-state')).toHaveTextContent(
+      'pending',
+    );
+    await act(async () => pending.resolve({ kind: 'ok', baked: true }));
+    expect(screen.getByLabelText('step')).toHaveTextContent('error');
+    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
   });
 
   it.each([

@@ -253,6 +253,22 @@ try {
     await page.getByLabel('Document status').getByText('SIGNED').waitFor();
     await finalizeWarning.waitFor();
     assert.equal(calls.includes('/a2a/discard'), false);
+
+    await page.getByRole('button', { name: 'Show fresh fixture' }).click();
+    await page
+      .getByLabel('Finalization state')
+      .filter({ hasText: 'none' })
+      .waitFor();
+    await create.waitFor();
+    assert.equal(await create.isEnabled(), true);
+    assert.equal(await page.getByLabel('Document ID').textContent(), '');
+    await page.getByRole('button', { name: 'Show finalize fixture' }).click();
+    await finalizeWarning.waitFor();
+    assert.equal(
+      await page.getByLabel('Document ID').textContent(),
+      'browser-finalize-document',
+    );
+    assert.equal(await create.isDisabled(), true);
     await page.screenshot({
       path: join(output, `${profile.name}-finalize-unknown.png`),
       fullPage: true,
@@ -265,7 +281,7 @@ try {
       true,
     );
     process.stdout.write(
-      `${profile.name}: send uncertainty and exact-document finalize uncertainty/reset/remount/status hold PASS\n`,
+      `${profile.name}: send/finalize uncertainty and guarded A to fresh B to guarded A scope switch PASS\n`,
     );
     await context.close();
   }

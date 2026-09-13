@@ -12,9 +12,15 @@ const COUNTERPARTY = {
   phone: null,
 };
 
-const Studio = ({ mode }: { mode: 'send' | 'finalize' }) => {
+type FixtureMode = 'send' | 'finalize' | 'fresh';
+
+const Studio = ({ mode }: { mode: FixtureMode }) => {
   const opportunityId =
-    mode === 'send' ? 'browser-opportunity' : 'browser-finalize-opportunity';
+    mode === 'send'
+      ? 'browser-opportunity'
+      : mode === 'finalize'
+        ? 'browser-finalize-opportunity'
+        : 'browser-fresh-opportunity';
   const studio = useA2AStudio(opportunityId, 'A', {}, 'browser-member');
   return (
     <main style={{ maxWidth: 720, margin: '0 auto', padding: 20 }}>
@@ -69,7 +75,7 @@ const Studio = ({ mode }: { mode: 'send' | 'finalize' }) => {
 
 const Fixture = () => {
   const [mounted, setMounted] = useState(true);
-  const [mode, setMode] = useState<'send' | 'finalize'>('send');
+  const [mode, setMode] = useState<FixtureMode>('send');
   return (
     <MantineProvider>
       <nav style={{ display: 'flex', gap: 8, padding: 12 }}>
@@ -77,6 +83,7 @@ const Fixture = () => {
         <button onClick={() => setMode('finalize')}>
           Show finalize fixture
         </button>
+        <button onClick={() => setMode('fresh')}>Show fresh fixture</button>
         <button onClick={() => setMounted(false)}>Unmount studio</button>
         <button onClick={() => setMounted(true)}>Mount studio</button>
       </nav>
