@@ -1,0 +1,9 @@
+# Current-root child SELECT fence: reviewed source only
+
+Original b5ae6ce340 plus P1 correction b1dee166cd integrated as68390d8612 and6910ab5e49 on the clean7719e54f +7fa6d2b1c0 +338b0ac971 chain. No spike ancestry. Initial review found that unconditional opaque-query refusal broke ordinary Person/Deal groupBy-with-records. The correction carries private checked inner-query provenance through the exact generated wrapper. Independent scoped re-review: original P1 ADDRESSED, spec PASS, security/code quality PASS, no new actionable breakage.
+
+For human contexts, WhatsAppMessage and taskTarget SELECTs use current active user/member/role rows and actual Person.assignedAgentId. Includes direct execution, counts, joined ON predicates, clones, cache disabling and supported groupBy wrappers. Bound values and metadata-derived identifiers; unknown target links cannot grant access. No caller-controlled privacy bypass. Authenticated native A/B HTTP outcomes remain unproven.
+
+Fresh integrated pure tests:56/56 passed in0.62s,225574912 bytes maximum RSS (~215.1MiB),0 swaps; full output in tests.txt. They exercise installed TypeORM PostgreSQL SQL generation with execution replaced, not PostgreSQL or the running engine. The source report lists all gaps: task bodies/socialMessage/other children, unprotected-parent secondary query traversal, opaque raw expressions, non-human policy, snapshots/open streams, actual metadata/query plans and native typecheck. No C3 closure or universal privacy claim. The native fixture/spec and guarded command are being prepared separately and require desk allocation before startup.
+
+No engine boot, live write, dependency install, activation or image build follows from these commits. Read fence source changes apply once the engine is deployed; desk owns integration and native acceptance. Pure root model pooled-clock defect is separately queued; do not treat338b0ac971 as final without its correction. verified: neither

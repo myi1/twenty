@@ -1,0 +1,86 @@
+(node:9662) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/propel-command/assignment-root-transition.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ real assignedAgentId/clocks transition increments once and leaves unrelated fields outside patch (1.555208ms)
+✔ pool return clears current assignment clocks and advances; pool-to-agent is assigned event (0.096208ms)
+✔ same owner retains version/clocks and creates no event; expected version still checked (0.1975ms)
+✔ epoch cannot be absent/mismatched and owner eligibility is required even for same owner (0.094125ms)
+✔ new command requires higher fence; malformed physical versions and unsafe growth refuse (0.1285ms)
+✔ golden root versions 7 to 11 across A→B→C→pool→B without mutation on stale replay (0.102083ms)
+✔ missing or malformed committed clocks are dependency failures, never reconstructed on no-op (0.063833ms)
+✔ whatsAppMessage actual SELECT cannot rely on caller filter instead of current owner (15.248917ms)
+✔ taskTarget actual SELECT cannot rely on caller filter instead of current owner (0.712417ms)
+✔ missing, malformed and mismatched human identity refuses before SQL even with permission bypass (2.26375ms)
+✔ manager exception uses live bound role UIDs and active membership, never request role/cache (0.461416ms)
+✔ all metadata targets must be null or have active allowed roots; newly introduced targets deny when present (2.224542ms)
+✔ absent parent/owner metadata and wrong workspace schemas fail closed (1.518917ms)
+✔ caller OR and caller extra AND remain outside the mandatory scope, including withDeleted (0.490875ms)
+✔ joined protected targets restrict ON, retain unrelated LEFT JOIN roots and survive clones (1.269ms)
+✔ quoted injection aliases refuse and parameter/alias namespaces cannot collide (0.446ms)
+✔ protected reads always disable result caching so transfer/revocation is checked in SQL (0.3525ms)
+✔ unsupported raw FROM/subquery/CTE and secondary relation loaders refuse (1.201834ms)
+✔ non-human and ordinary unprotected entity reads retain existing behavior (1.119708ms)
+✔ execute whatsAppMessage emits the fenced PostgreSQL SELECT even with internal permission bypass (0.421709ms)
+✔ execute taskTarget emits the fenced PostgreSQL SELECT even with internal permission bypass (0.262ms)
+✔ getMany whatsAppMessage emits the fenced PostgreSQL SELECT even with internal permission bypass (0.519959ms)
+✔ getMany taskTarget emits the fenced PostgreSQL SELECT even with internal permission bypass (0.327084ms)
+✔ getRawOne whatsAppMessage emits the fenced PostgreSQL SELECT even with internal permission bypass (0.333084ms)
+✔ getRawOne taskTarget emits the fenced PostgreSQL SELECT even with internal permission bypass (0.294916ms)
+✔ getRawMany whatsAppMessage emits the fenced PostgreSQL SELECT even with internal permission bypass (0.254333ms)
+✔ getRawMany taskTarget emits the fenced PostgreSQL SELECT even with internal permission bypass (0.281042ms)
+✔ getOne whatsAppMessage emits the fenced PostgreSQL SELECT even with internal permission bypass (0.322ms)
+✔ getOne taskTarget emits the fenced PostgreSQL SELECT even with internal permission bypass (0.310917ms)
+✔ getOneOrFail whatsAppMessage emits the fenced PostgreSQL SELECT even with internal permission bypass (0.363583ms)
+✔ getOneOrFail taskTarget emits the fenced PostgreSQL SELECT even with internal permission bypass (0.317792ms)
+✔ getCount whatsAppMessage emits the fenced PostgreSQL SELECT even with internal permission bypass (0.422916ms)
+✔ getCount taskTarget emits the fenced PostgreSQL SELECT even with internal permission bypass (0.285875ms)
+✔ getManyAndCount whatsAppMessage emits the fenced PostgreSQL SELECT even with internal permission bypass (0.330375ms)
+✔ getManyAndCount taskTarget emits the fenced PostgreSQL SELECT even with internal permission bypass (0.29525ms)
+✔ getRawAndEntities whatsAppMessage emits the fenced PostgreSQL SELECT even with internal permission bypass (0.266667ms)
+✔ getRawAndEntities taskTarget emits the fenced PostgreSQL SELECT even with internal permission bypass (0.381958ms)
+✔ stream whatsAppMessage emits the fenced PostgreSQL SELECT even with internal permission bypass (0.487541ms)
+✔ stream taskTarget emits the fenced PostgreSQL SELECT even with internal permission bypass (0.314458ms)
+✔ exists methods remain refused (0.258042ms)
+✔ nested contact-only caller join still fences raw message read without trusting conversation owner (0.376458ms)
+✔ paginated joined entity read emits fenced inner SQL in TypeORM distinct/count clones (0.996416ms)
+✔ every approved contact target in runtime metadata gets its own active root check (0.779792ms)
+✔ relation count and ID loaders on unprotected parents cannot hide protected child reads (1.413708ms)
+✔ real person group-by ranked_records wrapper remains executable for humans (0.849916ms)
+✔ real deal group-by ranked_records wrapper remains executable for humans (0.335833ms)
+✔ real protected whatsAppMessage group-by wrapper embeds current SQL checks and cannot cache them away (0.415209ms)
+✔ real protected taskTarget group-by wrapper embeds current SQL checks and cannot cache them away (0.365875ms)
+✔ the group-by producer cannot certify an opaque inner or wrong-workspace metadata (0.778459ms)
+✔ tampered group-by SQL and parameters refuse before driver execution (1.783333ms)
+✔ group-by provenance cannot be reused by a different actor or workspace (1.631375ms)
+✔ an unattested clone or a copied ranked_records string never inherits producer trust (0.538208ms)
+✔ getRawOne revalidation and repeated real group-by executions preserve the same fenced SQL (3.194416ms)
+✔ caller OR inside real protected group-by cannot escape the appended owner/member fence (0.532542ms)
+✔ an attested wrapper cannot be recycled as a trusted inner metadata query (0.335292ms)
+✔ later source-builder mutation cannot alter the already-bound protected wrapper (0.302125ms)
+ℹ tests 56
+ℹ suites 0
+ℹ pass 56
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 593.253667
+        0.62 real         0.55 user         0.09 sys
+           225574912  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+               22294  page reclaims
+                 323  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                 301  messages sent
+                 108  messages received
+                   0  signals received
+                2209  voluntary context switches
+                2496  involuntary context switches
+           437965968  instructions retired
+           173860095  cycles elapsed
+            18598456  peak memory footprint
