@@ -28,6 +28,8 @@ import { applyRowLevelPermissionPredicates } from 'src/engine/twenty-orm/utils/a
 import { formatResult } from 'src/engine/twenty-orm/utils/format-result.util';
 import { getObjectMetadataFromEntityTarget } from 'src/engine/twenty-orm/utils/get-object-metadata-from-entity-target.util';
 
+import { applyCurrentRootReadFence } from 'src/modules/propel-rls/current-root-read-fence';
+
 export class WorkspaceSelectQueryBuilder<
   T extends ObjectLiteral,
 > extends SelectQueryBuilder<T> {
@@ -224,6 +226,19 @@ export class WorkspaceSelectQueryBuilder<
     }
   }
 
+  override async getRawAndEntities<U = ObjectLiteral>(): Promise<{
+    entities: T[];
+    raw: U[];
+  }> {
+    this.validatePermissions();
+    return super.getRawAndEntities<U>();
+  }
+
+  override async stream() {
+    this.validatePermissions();
+    return super.stream();
+  }
+
   override getExists(): Promise<boolean> {
     throw new PermissionsException(
       'getExists is not supported because it calls dataSource.createQueryBuilder()',
@@ -340,6 +355,7 @@ export class WorkspaceSelectQueryBuilder<
   }
 
   private validatePermissions(): void {
+    applyCurrentRootReadFence(this, this.internalContext, this.authContext);
     this.applyRowLevelPermissionPredicates();
     validateQueryIsPermittedOrThrow({
       expressionMap: this.expressionMap,
