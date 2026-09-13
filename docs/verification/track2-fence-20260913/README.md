@@ -1,3 +1,5 @@
+> Isolation qualification (2026-09-13): the original runtime-isolation assertion below is pending audit. Source review found that raw.datasource.ts and core.datasource.ts reload the working directory's .env.test with override:true after the Jest configuration guard may have run. The existing launcher alone therefore does not prove which database the initialized engine used. The retained logs and read-only clone inventory are historical evidence; no matching actual-connection assertion has yet been established here. The desk is auditing prior connection evidence. Do not rerun the old launcher or treat its intended target as proof. A new native launcher must guard dotenv inputs, assert actual database/server identity before fixture mutations, and block external egress. No new native run is claimed by this note.
+
 # Track 2 fence — local evidence, 2026-09-13
 
 verified: neither. Feature branch only; no image, publish, install or deploy.
