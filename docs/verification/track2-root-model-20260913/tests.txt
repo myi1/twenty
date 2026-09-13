@@ -1,0 +1,19 @@
+(node:19978) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/src/modules/propel-command/assignment-root-transition.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/yahyaismail/dev/_wt/codex-track2-fence-20260913/packages/twenty-server/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ real assignedAgentId/clocks transition increments once and leaves unrelated fields outside patch (1.448959ms)
+✔ pool return clears current assignment clocks and advances; pool-to-agent is assigned event (0.093125ms)
+✔ same owner retains version/clocks and creates no event; expected version still checked (0.191958ms)
+✔ epoch cannot be absent/mismatched and owner eligibility is required even for same owner (0.088208ms)
+✔ new command requires higher fence; malformed physical versions and unsafe growth refuse (0.121709ms)
+✔ golden root versions 7 to 11 across A→B→C→pool→B without mutation on stale replay (0.105666ms)
+✔ missing or malformed committed clocks are dependency failures, never reconstructed on no-op (0.067ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 64.175291
