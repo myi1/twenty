@@ -607,18 +607,18 @@ describe('C0 — the assignment command boundary (integration)', () => {
   };
 
   const expectRefusedBeforeAnyWrite = async (
-    outcome: { step: { status: number; text: string }; lookup: { status: number; text: string } },
+    outcome: { step: { status: number; text: string; body: { code?: string } }; lookup: { status: number; text: string; body: { code?: string } } },
     problem: string,
   ) => {
     expect({
-      step: [outcome.step.status, outcome.step.text.includes(problem)],
-      lookup: [outcome.lookup.status, outcome.lookup.text.includes(problem)],
+      step: [outcome.step.status, outcome.step.text.includes(problem), outcome.step.body.code],
+      lookup: [outcome.lookup.status, outcome.lookup.text.includes(problem), outcome.lookup.body.code],
       city: await readCity(),
       version: await readVersion(),
       receipts: await countReceipts(),
     }).toEqual({
-      step: [503, true],
-      lookup: [503, true],
+      step: [503, true, 'DEPENDENCY_UNAVAILABLE'],
+      lookup: [503, true, 'DEPENDENCY_UNAVAILABLE'],
       city: OWNER_A,
       version: null,
       receipts: 0,

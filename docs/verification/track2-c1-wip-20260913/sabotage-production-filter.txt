@@ -1,0 +1,177 @@
+[31m[Nest] 25095  - [39m09/13/2026, 4:09:44 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39m[31mError inserting data into ClickHouse[39m
+[31m[Nest] 25095  - [39m09/13/2026, 4:09:44 AM [31m  ERROR[39m [38;5;3m[ClickHouseService] [39mAggregateError
+[90m    at internalConnectMultiple (node:net:1193:18)[39m
+[90m    at afterConnectMultiple (node:net:1783:7)[39m {
+  code: [32m'ECONNREFUSED'[39m,
+  [errors]: [
+    Error: connect ECONNREFUSED ::1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'::1'[39m,
+      port: [33m8123[39m
+    },
+    Error: connect ECONNREFUSED 127.0.0.1:8123
+    [90m    at createConnectionError (node:net:1746:14)[39m
+    [90m    at afterConnectMultiple (node:net:1776:16)[39m {
+      errno: [33m-61[39m,
+      code: [32m'ECONNREFUSED'[39m,
+      syscall: [32m'connect'[39m,
+      address: [32m'127.0.0.1'[39m,
+      port: [33m8123[39m
+    }
+  ]
+}
+FAIL test/integration/propel/suites/c0-atomic-step.integration-spec.ts
+  C0 — the assignment command boundary (integration)
+    ✓ A1 — a failure BETWEEN the two writes reverts the first one (44 ms)
+    ✓ A2 — a failure AFTER both writes leaves neither (15 ms)
+    ✓ A3 — a successful command advances the version 0 → 1 with its receipt (19 ms)
+    ✓ A4 — a crash after commit, then a retry, applies the change ONCE (25 ms)
+    ✓ A5 — the same command id with a DIFFERENT payload is a conflict (25 ms)
+    ✓ A6 — a stale expected version is refused and changes nothing (24 ms)
+    ✓ A7 — a fencing token older than one already seen is refused (26 ms)
+    ✓ A8 — two competing commands at version 0: exactly one advances it (24 ms)
+    ✓ A9 — an aggregate in ANOTHER workspace cannot be touched (18 ms)
+    ✓ A10 — an expired token performs no work (13 ms)
+    ✓ A11 — a forged/invalid token performs no work (10 ms)
+    ✓ A12 — no token performs no work (8 ms)
+    ✓ A13 — identity in the body is rejected, not silently ignored (12 ms)
+    ✓ A15 — a valid MEMBER token cannot move a lead (89 ms)
+    ✓ A16 — a valid GUEST token cannot move a lead (12 ms)
+    ✓ A17 — an API key NOT on the worker allowlist cannot move a lead, even with the Admin role (19 ms)
+    ✓ A18 (control) — an ADMIN token still can, so the gate is not blanket-deny (19 ms)
+    ✓ W1 — the worker key acting for a MANAGER can move a lead (18 ms)
+    ✓ W2 — the worker key acting for someone who is NOT a manager is refused at the step (75 ms)
+    ✓ W3 — the worker key must name who it acts for (9 ms)
+    ✓ W4 — a member who exists only in ANOTHER workspace is refused (8 ms)
+    ✓ W5 — a member id that exists nowhere is refused (10 ms)
+    ✓ W6 — a signed-in USER cannot act on behalf of anyone else (8 ms)
+    ✓ W7 — a manager whose login in this workspace was REMOVED is refused (13 ms)
+    ✓ G1 — the worker can look up a committed step to resume after an unknown outcome (27 ms)
+    ✓ G2 — a step that never committed is 404, not an error (12 ms)
+    ✓ G3 — a step committed in ANOTHER workspace is invisible (19 ms)
+    ✓ G4 — a step lookup re-authorises: acting for a non-manager is refused (85 ms)
+    ✓ A19 — the SAME command sent twice at once: one change, and BOTH callers get the committed result (19 ms)
+    ✕ S1 — the receipt table is gone: the step and the lookup refuse 503, nothing is written (19 ms)
+    ✕ S2 — the version object is switched off: refused 503, nothing is written (23 ms)
+    ✕ S3 — the receipt unique index is lost: refused 503, nothing is written (29 ms)
+    ✓ S4 — a version already at the exact limit cannot advance: refused 422, nothing changes (15 ms)
+    ✓ S5 — a version or fence outside the exact range, or a padded version, is refused at the door (16 ms)
+    ✓ A14 (characterization) — the ORM write path COMMITS THROUGH a rollback (28 ms)
+
+  ● C0 — the assignment command boundary (integration) › S1 — the receipt table is gone: the step and the lookup refuse 503, nothing is written
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 2
+    + Received  + 2
+
+      Object {
+        "city": "C0-OWNER-A",
+        "lookup": Array [
+          503,
+          true,
+    -     "DEPENDENCY_UNAVAILABLE",
+    +     undefined,
+        ],
+        "receipts": 0,
+        "step": Array [
+          503,
+          true,
+    -     "DEPENDENCY_UNAVAILABLE",
+    +     undefined,
+        ],
+        "version": null,
+      }
+
+      617 |       version: await readVersion(),
+      618 |       receipts: await countReceipts(),
+    > 619 |     }).toEqual({
+          |        ^
+      620 |       step: [503, true, 'DEPENDENCY_UNAVAILABLE'],
+      621 |       lookup: [503, true, 'DEPENDENCY_UNAVAILABLE'],
+      622 |       city: OWNER_A,
+
+      at expectRefusedBeforeAnyWrite (test/integration/propel/suites/c0-atomic-step.integration-spec.ts:619:8)
+      at async Object.<anonymous> (test/integration/propel/suites/c0-atomic-step.integration-spec.ts:637:5)
+
+  ● C0 — the assignment command boundary (integration) › S2 — the version object is switched off: refused 503, nothing is written
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 2
+    + Received  + 2
+
+      Object {
+        "city": "C0-OWNER-A",
+        "lookup": Array [
+          503,
+          true,
+    -     "DEPENDENCY_UNAVAILABLE",
+    +     undefined,
+        ],
+        "receipts": 0,
+        "step": Array [
+          503,
+          true,
+    -     "DEPENDENCY_UNAVAILABLE",
+    +     undefined,
+        ],
+        "version": null,
+      }
+
+      617 |       version: await readVersion(),
+      618 |       receipts: await countReceipts(),
+    > 619 |     }).toEqual({
+          |        ^
+      620 |       step: [503, true, 'DEPENDENCY_UNAVAILABLE'],
+      621 |       lookup: [503, true, 'DEPENDENCY_UNAVAILABLE'],
+      622 |       city: OWNER_A,
+
+      at expectRefusedBeforeAnyWrite (test/integration/propel/suites/c0-atomic-step.integration-spec.ts:619:8)
+      at async Object.<anonymous> (test/integration/propel/suites/c0-atomic-step.integration-spec.ts:647:5)
+
+  ● C0 — the assignment command boundary (integration) › S3 — the receipt unique index is lost: refused 503, nothing is written
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 2
+    + Received  + 2
+
+      Object {
+        "city": "C0-OWNER-A",
+        "lookup": Array [
+          503,
+          true,
+    -     "DEPENDENCY_UNAVAILABLE",
+    +     undefined,
+        ],
+        "receipts": 0,
+        "step": Array [
+          503,
+          true,
+    -     "DEPENDENCY_UNAVAILABLE",
+    +     undefined,
+        ],
+        "version": null,
+      }
+
+      617 |       version: await readVersion(),
+      618 |       receipts: await countReceipts(),
+    > 619 |     }).toEqual({
+          |        ^
+      620 |       step: [503, true, 'DEPENDENCY_UNAVAILABLE'],
+      621 |       lookup: [503, true, 'DEPENDENCY_UNAVAILABLE'],
+      622 |       city: OWNER_A,
+
+      at expectRefusedBeforeAnyWrite (test/integration/propel/suites/c0-atomic-step.integration-spec.ts:619:8)
+      at async Object.<anonymous> (test/integration/propel/suites/c0-atomic-step.integration-spec.ts:661:5)
+
+Test Suites: 1 failed, 1 total
+Tests:       3 failed, 32 passed, 35 total
+Snapshots:   0 total
+Time:        3.03 s, estimated 11 s
+Ran all test suites within paths "test/integration/propel/suites/c0-atomic-step.integration-spec.ts".
