@@ -123,17 +123,24 @@ try {
       if (input.path === '/a2a/deal-state')
         return route.fulfill({ json: dealState });
       if (input.path === '/a2a/create-draft') {
+        const finalizeFixture =
+          input.body.opportunityId === 'browser-finalize-opportunity';
         return route.fulfill({
           json: {
             kind: 'ok',
             ok: true,
-            a2aDocumentId: 'browser-document',
+            a2aDocumentId: finalizeFixture
+              ? 'browser-finalize-document'
+              : 'browser-document',
             documensoDocumentId: '22',
             ourRecipientToken: 'our-token',
             counterpartyRecipientToken: 'other-token',
-            isRera: true,
+            isRera: !finalizeFixture,
           },
         });
+      }
+      if (input.path === '/a2a/finalize') {
+        return route.fulfill({ body: 'null', contentType: 'application/json' });
       }
       if (input.path === '/a2a/send') {
         heldSends.push(route);
@@ -200,6 +207,56 @@ try {
     await page.getByRole('button', { name: 'Check document status' }).click();
     await page.getByText(/Document activation is confirmed/).waitFor();
     assert.equal(await page.getByText(/delivered|sent to/i).count(), 0);
+
+    dealState = { agreement: null };
+    await page.getByRole('button', { name: 'Show finalize fixture' }).click();
+    await create.waitFor();
+    await assert.doesNotReject(() => create.click());
+    const finalizeWarning = page.getByRole('region', {
+      name: 'Finalize result unconfirmed',
+    });
+    await finalizeWarning.waitFor();
+    await page
+      .getByText(/brokerage-signature result is not confirmed/i)
+      .waitFor();
+    assert.equal(
+      await page.getByLabel('Document ID').textContent(),
+      'browser-finalize-document',
+    );
+    assert.equal(await create.isDisabled(), true);
+    assert.equal(calls.includes('/a2a/discard'), false);
+    await page.getByRole('button', { name: 'Reset fixture' }).click();
+    assert.equal(
+      await page.getByLabel('Document ID').textContent(),
+      'browser-finalize-document',
+    );
+    assert.equal(await create.isDisabled(), true);
+    await page
+      .getByRole('button', { name: 'Unmount studio', exact: true })
+      .click();
+    await page.getByText('Studio unmounted').waitFor();
+    await page
+      .getByRole('button', { name: 'Mount studio', exact: true })
+      .click();
+    await finalizeWarning.waitFor();
+    assert.equal(
+      await page.getByLabel('Document ID').textContent(),
+      'browser-finalize-document',
+    );
+    status = {
+      status: 'SIGNED',
+      signedPdfUrl: 'https://synthetic.invalid/finalize-unknown.pdf',
+    };
+    await finalizeWarning
+      .getByRole('button', { name: 'Check document status' })
+      .click();
+    await page.getByLabel('Document status').getByText('SIGNED').waitFor();
+    await finalizeWarning.waitFor();
+    assert.equal(calls.includes('/a2a/discard'), false);
+    await page.screenshot({
+      path: join(output, `${profile.name}-finalize-unknown.png`),
+      fullPage: true,
+    });
     assert.deepEqual(errors, []);
     assert.equal(
       await page.evaluate(
@@ -208,7 +265,7 @@ try {
       true,
     );
     process.stdout.write(
-      `${profile.name}: pending, unknown, duplicate block, remount guard, DRAFT hold, activation-only reconciliation PASS\n`,
+      `${profile.name}: send uncertainty and exact-document finalize uncertainty/reset/remount/status hold PASS\n`,
     );
     await context.close();
   }

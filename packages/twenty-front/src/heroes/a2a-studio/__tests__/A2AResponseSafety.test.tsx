@@ -399,34 +399,22 @@ describe('A2A lookup, reconciliation, and stale responses', () => {
   });
 
   it.each([
-    ['success', { kind: 'ok', baked: true }],
-    ['error', { error: 'stale finalize failure', attempted: true }],
+    ['success', { kind: 'ok', baked: true }, 'send'],
+    ['uncertainty', { error: 'uncertain finalize', attempted: true }, 'error'],
   ])(
-    'keeps a newer same-scope finalize pending when an invalidated finalize returns %s and finalizes',
-    async (_name, staleResult) => {
-      const first = deferred();
-      const second = deferred();
-      let creates = 0;
-      mockCall.mockImplementation(async (path) => {
-        if (path === '/a2a/deal-state') return { agreement: null } as never;
-        if (path === '/a2a/create-draft') {
-          creates += 1;
-          return {
-            ...draft(`replace-finalize-doc-${creates}`),
-            isRera: false,
-          } as never;
-        }
-        if (path === '/a2a/finalize') {
-          return (await (creates === 1
-            ? first.promise
-            : second.promise)) as never;
-        }
-        return null;
+    'keeps the exact finalize pending across same-scope reset until %s settles',
+    async (name, result, expectedStep) => {
+      const pending = deferred();
+      const id = `same-scope-finalize-${name}`;
+      const calls = makeRoute({
+        documentId: id,
+        create: { ...draft(id), isRera: false },
+        finalize: pending.promise,
       });
-      render(
+      const view = render(
         <Harness
-          opportunityId="opp-replace-finalize"
-          memberId="member-replace-finalize"
+          opportunityId={`opp-${id}`}
+          memberId="member-same-scope-finalize"
         />,
       );
       await waitFor(() =>
@@ -435,24 +423,18 @@ describe('A2A lookup, reconciliation, and stale responses', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Create' }));
       await screen.findByText('bakeJunior');
       fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
-      await waitFor(() =>
-        expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled(),
-      );
-      fireEvent.click(screen.getByRole('button', { name: 'Create' }));
-      await waitFor(() =>
-        expect(screen.getByLabelText('finalizing')).toHaveTextContent('true'),
-      );
-      await act(async () => first.resolve(staleResult));
-      expect(screen.getByLabelText('step')).toHaveTextContent('bakeJunior');
+      expect(screen.getByLabelText('document')).toHaveTextContent(id);
+      expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
       expect(screen.getByLabelText('finalizing')).toHaveTextContent('true');
-      expect(screen.getByLabelText('message')).not.toHaveTextContent(
-        /stale finalize failure/i,
-      );
-      await act(async () => second.resolve({ kind: 'ok', baked: true }));
-      expect(screen.getByLabelText('step')).toHaveTextContent('send');
-      expect(screen.getByLabelText('document')).toHaveTextContent(
-        'replace-finalize-doc-2',
-      );
+      await act(async () => pending.resolve(result));
+      expect(screen.getByLabelText('step')).toHaveTextContent(expectedStep);
+      expect(screen.getByLabelText('document')).toHaveTextContent(id);
+      view.unmount();
+      if (name === 'success') {
+        expect(calls.filter((path) => path === '/a2a/discard')).toHaveLength(1);
+      } else {
+        expect(calls).not.toContain('/a2a/discard');
+      }
     },
   );
 
@@ -509,6 +491,224 @@ describe('A2A lookup, reconciliation, and stale responses', () => {
     await act(async () => pending.resolve({ kind: 'ok', baked: true }));
     expect(calls).not.toContain('/a2a/discard');
   });
+
+  it.each([
+    [
+      'returned uncertainty',
+      {
+        error: 'The document service response is unconfirmed.',
+        attempted: true,
+        uncertain: true,
+      },
+    ],
+    ['null response', null],
+    ['malformed response', { kind: 'ok' }],
+  ])(
+    'preserves a known draft after finalize %s across reset and unmount',
+    async (name, finalize) => {
+      const id = `finalize-uncertain-${name}`;
+      const calls = makeRoute({
+        documentId: id,
+        create: { ...draft(id), isRera: false },
+        finalize,
+      });
+      const view = render(
+        <Harness
+          opportunityId={`opp-${id}`}
+          memberId="member-finalize-uncertain"
+        />,
+      );
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled(),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+      await screen.findByText('error');
+      expect(screen.getByLabelText('message')).toHaveTextContent(
+        /not confirmed|unconfirmed|unknown/i,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+      expect(screen.getByLabelText('document')).toHaveTextContent(id);
+      expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
+      view.unmount();
+      expect(calls).not.toContain('/a2a/discard');
+    },
+  );
+
+  it('preserves a known draft when finalize throws', async () => {
+    const id = 'finalize-uncertain-thrown';
+    const calls: string[] = [];
+    mockCall.mockImplementation(async (path) => {
+      calls.push(path);
+      if (path === '/a2a/deal-state') return { agreement: null } as never;
+      if (path === '/a2a/create-draft') {
+        return { ...draft(id), isRera: false } as never;
+      }
+      if (path === '/a2a/finalize') throw new Error('lost finalize response');
+      return null;
+    });
+    const view = render(
+      <Harness
+        opportunityId="opp-finalize-uncertain-thrown"
+        memberId="member-finalize-uncertain-thrown"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await screen.findByText('error');
+    expect(screen.getByLabelText('message')).toHaveTextContent(
+      /not confirmed|unknown/i,
+    );
+    view.unmount();
+    expect(calls).not.toContain('/a2a/discard');
+  });
+
+  it('restores the exact known draft and finalize uncertainty after remount', async () => {
+    const id = 'finalize-uncertain-remount';
+    const calls = makeRoute({
+      documentId: id,
+      create: { ...draft(id), isRera: false },
+      finalize: null,
+    });
+    const first = render(
+      <Harness
+        opportunityId="opp-finalize-uncertain-remount"
+        memberId="member-finalize-uncertain-remount"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await screen.findByText('error');
+    first.unmount();
+    expect(calls).not.toContain('/a2a/discard');
+
+    render(
+      <Harness
+        opportunityId="opp-finalize-uncertain-remount"
+        memberId="member-finalize-uncertain-remount"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText('document')).toHaveTextContent(id),
+    );
+    expect(screen.getByLabelText('step')).toHaveTextContent('error');
+    expect(screen.getByLabelText('message')).toHaveTextContent(
+      /not confirmed|unknown/i,
+    );
+    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
+  });
+
+  it('preserves a pending finalize and its exact draft across unmount/remount', async () => {
+    const pending = deferred();
+    const id = 'finalize-pending-remount';
+    const calls = makeRoute({
+      documentId: id,
+      create: { ...draft(id), isRera: false },
+      finalize: pending.promise,
+    });
+    const first = render(
+      <Harness
+        opportunityId="opp-finalize-pending-remount"
+        memberId="member-finalize-pending-remount"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await screen.findByText('bakeJunior');
+    first.unmount();
+    expect(calls).not.toContain('/a2a/discard');
+
+    render(
+      <Harness
+        opportunityId="opp-finalize-pending-remount"
+        memberId="member-finalize-pending-remount"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText('document')).toHaveTextContent(id),
+    );
+    expect(screen.getByLabelText('step')).toHaveTextContent('error');
+    expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
+    await act(async () => pending.resolve({ kind: 'ok', baked: true }));
+    expect(screen.getByLabelText('step')).toHaveTextContent('error');
+    expect(calls).not.toContain('/a2a/discard');
+  });
+
+  it('does not treat a newer SIGNED status as proof of finalize outcome', async () => {
+    const id = 'finalize-unknown-status';
+    const calls = makeRoute({
+      documentId: id,
+      create: { ...draft(id), isRera: false },
+      finalize: null,
+      status: {
+        status: 'SIGNED',
+        signedPdfUrl: 'https://files.example/finalize-unknown.pdf',
+      },
+    });
+    const view = render(
+      <Harness
+        opportunityId="opp-finalize-unknown-status"
+        memberId="member-finalize-unknown-status"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await screen.findByText('error');
+    fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
+    await screen.findByText('SIGNED');
+    expect(screen.getByLabelText('step')).toHaveTextContent('error');
+    expect(screen.getByLabelText('message')).toHaveTextContent(
+      /not confirmed/i,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+    expect(screen.getByLabelText('document')).toHaveTextContent(id);
+    view.unmount();
+    expect(calls).not.toContain('/a2a/discard');
+  });
+
+  it.each([
+    [
+      'proved pre-dispatch refusal',
+      { error: 'The document service is not configured.', attempted: false },
+      'error',
+    ],
+    ['confirmed bake', { kind: 'ok', baked: true }, 'send'],
+    [
+      'confirmed embed signing',
+      { kind: 'ok', baked: false, reason: 'signs-in-embed' },
+      'signEmbed',
+    ],
+  ])(
+    'retains never-sent cleanup after finalize %s',
+    async (name, finalize, expectedStep) => {
+      const id = `finalize-cleanup-${name}`;
+      const calls = makeRoute({
+        documentId: id,
+        create: { ...draft(id), isRera: false },
+        finalize,
+      });
+      const view = render(
+        <Harness
+          opportunityId={`opp-${id}`}
+          memberId="member-finalize-cleanup"
+        />,
+      );
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled(),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+      await screen.findByText(expectedStep);
+      view.unmount();
+      expect(calls.filter((path) => path === '/a2a/discard')).toHaveLength(1);
+    },
+  );
 
   it('does not mistake the legitimate signs-in-embed finalize result for confirmed baking', async () => {
     makeRoute({

@@ -245,13 +245,23 @@ export const A2AStudioPage = () => {
                     <Text size="sm" c="dimmed" ta="center">
                       {studio.errorMessage ?? 'Something went wrong.'}
                     </Text>
-                    <Button
-                      variant="default"
-                      leftSection={<IconRefresh size={14} />}
-                      onClick={studio.reset}
-                    >
-                      Start over
-                    </Button>
+                    {studio.finalizationState === 'none' ? (
+                      <Button
+                        variant="default"
+                        leftSection={<IconRefresh size={14} />}
+                        onClick={studio.reset}
+                      >
+                        Start over
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="default"
+                        leftSection={<IconRefresh size={14} />}
+                        onClick={() => void studio.refreshStatus()}
+                      >
+                        Check document status
+                      </Button>
+                    )}
                   </Stack>
                 </Center>
               ) : null}

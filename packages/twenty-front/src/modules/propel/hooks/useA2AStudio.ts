@@ -64,6 +64,7 @@ export interface A2ADraft {
 
 export type SendResult = { ok: boolean; message: string };
 export type A2ADispatchState = 'never' | 'pending' | 'unknown' | 'activated';
+export type A2AFinalizationState = 'none' | 'pending' | 'unknown';
 export type A2ALookupState = 'pending' | 'clear' | 'blocked' | 'unavailable';
 
 export interface A2AStudioState {
@@ -97,6 +98,7 @@ export interface A2AStudioState {
   finalizing: boolean;
   sending: boolean;
   dispatchState: A2ADispatchState;
+  finalizationState: A2AFinalizationState;
   lookupState: A2ALookupState;
   canCreateDraft: boolean;
   canSend: boolean;
@@ -120,12 +122,33 @@ type AttemptGuard = {
   state: Exclude<A2ADispatchState, 'never'>;
 };
 
+type FinalizationGuard = {
+  draft: A2ADraft;
+  state: Exclude<A2AFinalizationState, 'none'>;
+};
+
 // Page-lifetime write-suppression only. The trusted member id, opportunity and
 // variant prevent one user's/document's attempt from blocking another. This map
 // survives React unmount/remount in the same loaded page, but deliberately is not
 // a permission/cache authority and does not claim reload, crash, or cross-tab
 // durability. Durable reconciliation belongs to the held J3/J4 authority work.
 const attemptGuards = new Map<string, AttemptGuard>();
+const finalizationGuards = new Map<string, FinalizationGuard>();
+
+const isSameDraft = (left: A2ADraft, right: A2ADraft): boolean =>
+  left.a2aDocumentId === right.a2aDocumentId &&
+  left.documensoDocumentId === right.documensoDocumentId;
+
+const finalizationGuardFor = (
+  scope: string | null,
+  draft: A2ADraft | null,
+): FinalizationGuard | undefined => {
+  if (scope === null || draft === null) return undefined;
+  const guard = finalizationGuards.get(scope);
+  return guard !== undefined && isSameDraft(guard.draft, draft)
+    ? guard
+    : undefined;
+};
 
 const scopeKeyFor = (
   memberId: string | null,
@@ -187,6 +210,8 @@ const SEND_UNKNOWN_MESSAGE =
   'The send result is unknown. Check document status before leaving or taking another action.';
 const SEND_PENDING_MESSAGE =
   'The send request is still pending. Wait or check document status; another send is blocked.';
+const FINALIZATION_UNKNOWN_MESSAGE =
+  'The brokerage-signature result is not confirmed. This document is preserved; check its status and review it before continuing.';
 
 const idToString = (v: unknown): string =>
   typeof v === 'number' || typeof v === 'string' ? String(v) : '';
@@ -259,6 +284,8 @@ export const useA2AStudio = (
   const [finalizing, setFinalizing] = useState(false);
   const [sending, setSending] = useState(false);
   const [dispatchState, setDispatchState] = useState<A2ADispatchState>('never');
+  const [finalizationState, setFinalizationState] =
+    useState<A2AFinalizationState>('none');
   const [lookupState, setLookupState] = useState<A2ALookupState>('pending');
 
   // A single stable mutable holder for the values the stable callbacks + the
@@ -344,13 +371,15 @@ export const useA2AStudio = (
     if (
       live.lookupConfirmedScope !== scopeKey ||
       live.creating ||
-      live.finalizing
+      live.finalizing ||
+      finalizationGuards.has(scopeKey)
     ) {
       return;
     }
     live.generation += 1;
     const expectedGeneration = live.generation;
     const expectedScope = scopeKey;
+    let dispatchedFinalization: A2ADraft | null = null;
     live.creating = true;
     setCreating(true);
     setErrorMessage(null);
@@ -424,6 +453,12 @@ export const useA2AStudio = (
         // straight to send. `isRera:false` = today's bake path; the signing model
         // flag (`bakeOurSide`) is deliberately never sent (founder decision 4).
         setStep('bakeJunior');
+        finalizationGuards.set(expectedScope, {
+          draft: next,
+          state: 'pending',
+        });
+        dispatchedFinalization = next;
+        setFinalizationState('pending');
         live.finalizing = true;
         setFinalizing(true);
         const fin = await callPropelRoute<FinalizeResponse>('/a2a/finalize', {
@@ -434,16 +469,31 @@ export const useA2AStudio = (
         if (!isCurrent(expectedScope, expectedGeneration, next.a2aDocumentId)) {
           return;
         }
+        if (finalizationGuardFor(expectedScope, next) === undefined) return;
         live.finalizing = false;
         setFinalizing(false);
         if (fin === null || fin.error !== undefined) {
+          if (fin?.attempted === false && fin.uncertain !== true) {
+            finalizationGuards.delete(expectedScope);
+            setFinalizationState('none');
+          } else {
+            finalizationGuards.set(expectedScope, {
+              draft: next,
+              state: 'unknown',
+            });
+            setFinalizationState('unknown');
+          }
           setStep('error');
           setErrorMessage(
-            fin?.error ?? 'Could not apply your brokerage signature.',
+            fin?.attempted === false && fin.uncertain !== true
+              ? (fin.error ?? 'Could not apply your brokerage signature.')
+              : (fin?.error ?? FINALIZATION_UNKNOWN_MESSAGE),
           );
           return;
         }
         if (fin.baked === false && fin.reason === 'signs-in-embed') {
+          finalizationGuards.delete(expectedScope);
+          setFinalizationState('none');
           if (next.ourRecipientToken === null) {
             setStep('error');
             setErrorMessage(
@@ -455,16 +505,40 @@ export const useA2AStudio = (
           return;
         }
         if (fin.baked !== true) {
+          finalizationGuards.set(expectedScope, {
+            draft: next,
+            state: 'unknown',
+          });
+          setFinalizationState('unknown');
           setStep('error');
-          setErrorMessage('Could not confirm the brokerage signature.');
+          setErrorMessage(FINALIZATION_UNKNOWN_MESSAGE);
           return;
         }
+        finalizationGuards.delete(expectedScope);
+        setFinalizationState('none');
         setStep('send');
       }
     } catch {
       if (!isCurrent(expectedScope, expectedGeneration)) return;
+      if (dispatchedFinalization !== null) {
+        if (
+          finalizationGuardFor(expectedScope, dispatchedFinalization) ===
+          undefined
+        ) {
+          return;
+        }
+        finalizationGuards.set(expectedScope, {
+          draft: dispatchedFinalization,
+          state: 'unknown',
+        });
+        setFinalizationState('unknown');
+      }
       setStep('error');
-      setErrorMessage('Could not create the draft.');
+      setErrorMessage(
+        dispatchedFinalization === null
+          ? 'Could not create the draft.'
+          : FINALIZATION_UNKNOWN_MESSAGE,
+      );
     } finally {
       if (isCurrent(expectedScope, expectedGeneration)) {
         live.creating = false;
@@ -510,6 +584,7 @@ export const useA2AStudio = (
       live.status = res.status;
       setStatus(res.status);
     }
+    const guardedFinalization = finalizationGuardFor(expectedScope, d);
     if (res.signedPdfUrl !== undefined) setSignedPdfUrl(res.signedPdfUrl);
     if (res.auditUrl !== undefined) setAuditUrl(res.auditUrl);
     if (res.status === 'OUT_FOR_SIGNATURE' || res.status === 'SIGNED') {
@@ -518,13 +593,22 @@ export const useA2AStudio = (
       }
       live.sent = true;
       setDispatchState('activated');
-      setSendMessage(ACTIVATION_RECONCILED_MESSAGE);
-      setErrorMessage(null);
+      if (guardedFinalization === undefined) {
+        setSendMessage(ACTIVATION_RECONCILED_MESSAGE);
+        setErrorMessage(null);
+      } else {
+        setSendMessage(null);
+        setErrorMessage(FINALIZATION_UNKNOWN_MESSAGE);
+      }
       if (isPublicHttpUrl(res.counterpartySigningUrl)) {
         setShareUrl(res.counterpartySigningUrl);
       }
     }
-    if (res.status === 'SIGNED') setStep('done');
+    // Send/activation status is useful evidence for dispatch, but it is not a
+    // receipt for the earlier finalize mutation. Keep that uncertainty visible.
+    if (res.status === 'SIGNED' && guardedFinalization === undefined) {
+      setStep('done');
+    }
   }, [isCurrent, live]);
 
   const send = useCallback(
@@ -541,6 +625,10 @@ export const useA2AStudio = (
           message:
             'Your signed-in workspace identity is unavailable. No send was attempted.',
         };
+      }
+      if (finalizationGuardFor(expectedScope, d) !== undefined) {
+        setErrorMessage(FINALIZATION_UNKNOWN_MESSAGE);
+        return { ok: false, message: FINALIZATION_UNKNOWN_MESSAGE };
       }
       const guarded = attemptGuards.get(expectedScope);
       if (
@@ -678,6 +766,15 @@ export const useA2AStudio = (
 
   const reset = useCallback(() => {
     const d = live.draft;
+    const guardedFinalization = finalizationGuardFor(live.scopeKey, d);
+    if (d !== null && guardedFinalization !== undefined) {
+      setDraft(d);
+      setFinalizationState(guardedFinalization.state);
+      setSendMessage(null);
+      setErrorMessage(FINALIZATION_UNKNOWN_MESSAGE);
+      setStep('error');
+      return;
+    }
     const guarded =
       live.scopeKey === null ? undefined : attemptGuards.get(live.scopeKey);
     if (
@@ -702,6 +799,7 @@ export const useA2AStudio = (
     live.creating = false;
     live.finalizing = false;
     live.generation += 1;
+    setFinalizationState('none');
     setStep('prepare');
     setErrorMessage(null);
     setMissing(null);
@@ -717,6 +815,7 @@ export const useA2AStudio = (
     setCreating(false);
     setFinalizing(false);
     setSending(false);
+    setFinalizationState('none');
   }, [live]);
 
   // ── What this deal already has (task 52) ──────────────────────────────────
@@ -759,7 +858,68 @@ export const useA2AStudio = (
       });
       if (cancelled || live.scopeKey !== scopeKey) return;
       const guarded = attemptGuards.get(scopeKey);
-      if (isValidDealStateResponse(res)) {
+      const validResponse = isValidDealStateResponse(res);
+      const guardedFinalization = finalizationGuards.get(scopeKey);
+      const shouldRestoreFinalization =
+        guardedFinalization !== undefined &&
+        (!validResponse ||
+          res.agreement === null ||
+          res.agreement.a2aDocumentId ===
+            guardedFinalization.draft.a2aDocumentId);
+      if (shouldRestoreFinalization) {
+        if (validResponse && res.prefill !== undefined) {
+          setPrefillState((cur) => ({ ...res.prefill, ...cur }));
+        }
+        const preservedDraft = guardedFinalization.draft;
+        const preservedAgreement = validResponse ? res.agreement : null;
+        const preservedStatus = preservedAgreement?.status ?? 'DRAFT';
+        setDraft(preservedDraft);
+        live.draft = preservedDraft;
+        setStatus(preservedStatus);
+        live.status = preservedStatus;
+        setSignedPdfUrl(preservedAgreement?.signedPdfUrl ?? null);
+        setAuditUrl(preservedAgreement?.auditUrl ?? null);
+        if (isPublicHttpUrl(preservedAgreement?.counterpartySigningUrl)) {
+          setShareUrl(preservedAgreement.counterpartySigningUrl);
+        }
+        const matchingSendGuard =
+          guarded !== undefined && isSameDraft(guarded.draft, preservedDraft)
+            ? guarded
+            : undefined;
+        if (
+          preservedStatus === 'OUT_FOR_SIGNATURE' ||
+          preservedStatus === 'SIGNED'
+        ) {
+          attemptGuards.set(scopeKey, {
+            draft: preservedDraft,
+            state: 'activated',
+          });
+          live.sent = true;
+          setDispatchState('activated');
+          setSendMessage(ACTIVATION_RECONCILED_MESSAGE);
+        } else if (matchingSendGuard !== undefined) {
+          live.sent = matchingSendGuard.state === 'activated';
+          setDispatchState(matchingSendGuard.state);
+          setSendMessage(
+            matchingSendGuard.state === 'pending'
+              ? SEND_PENDING_MESSAGE
+              : matchingSendGuard.state === 'unknown'
+                ? SEND_UNKNOWN_MESSAGE
+                : ACTIVATION_RECONCILED_MESSAGE,
+          );
+        } else {
+          live.sent = false;
+          setDispatchState('never');
+        }
+        setFinalizationState(guardedFinalization.state);
+        setLookupState('blocked');
+        setStep('error');
+        setSendMessage(null);
+        setErrorMessage(FINALIZATION_UNKNOWN_MESSAGE);
+        setResuming(false);
+        return;
+      }
+      if (validResponse) {
         live.lookupConfirmedScope = scopeKey;
         // Anything the agent (or the launcher) already typed wins over the deal.
         if (res.prefill !== undefined) {
@@ -871,11 +1031,13 @@ export const useA2AStudio = (
       const d = live.draft;
       const guarded =
         live.scopeKey === null ? undefined : attemptGuards.get(live.scopeKey);
+      const guardedFinalization = finalizationGuardFor(live.scopeKey, d);
       if (
         d !== null &&
         !live.sent &&
         !live.creating &&
         !live.finalizing &&
+        guardedFinalization === undefined &&
         (guarded === undefined ||
           guarded.draft.a2aDocumentId !== d.a2aDocumentId)
       ) {
@@ -915,14 +1077,20 @@ export const useA2AStudio = (
     finalizing,
     sending,
     dispatchState,
+    finalizationState,
     lookupState,
     canCreateDraft:
       lookupState === 'clear' &&
       scopeKey !== null &&
       live.lookupConfirmedScope === scopeKey &&
       draft === null &&
-      !creating,
-    canSend: draft !== null && dispatchState === 'never' && !sending,
+      !creating &&
+      finalizationState === 'none',
+    canSend:
+      draft !== null &&
+      dispatchState === 'never' &&
+      finalizationState === 'none' &&
+      !sending,
     setPrefill,
     createDraft,
     onEmbedCompleted,

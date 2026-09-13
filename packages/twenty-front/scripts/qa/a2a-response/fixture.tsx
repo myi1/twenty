@@ -12,12 +12,21 @@ const COUNTERPARTY = {
   phone: null,
 };
 
-const Studio = () => {
-  const studio = useA2AStudio('browser-opportunity', 'A', {}, 'browser-member');
+const Studio = ({ mode }: { mode: 'send' | 'finalize' }) => {
+  const opportunityId =
+    mode === 'send' ? 'browser-opportunity' : 'browser-finalize-opportunity';
+  const studio = useA2AStudio(opportunityId, 'A', {}, 'browser-member');
   return (
     <main style={{ maxWidth: 720, margin: '0 auto', padding: 20 }}>
       <h1>A2A response safety fixture</h1>
       <output aria-label="Dispatch state">{studio.dispatchState}</output>
+      <output aria-label="Finalization state">
+        {studio.finalizationState}
+      </output>
+      <output aria-label="Document ID">
+        {studio.draft?.a2aDocumentId ?? ''}
+      </output>
+      <output aria-label="Document status">{studio.status}</output>
       <button
         disabled={!studio.canCreateDraft}
         onClick={() => void studio.createDraft()}
@@ -30,6 +39,7 @@ const Studio = () => {
       <button onClick={() => void studio.linkCounterparty(COUNTERPARTY)}>
         Add fixture broker
       </button>
+      <button onClick={studio.reset}>Reset fixture</button>
       {studio.step === 'send' ? (
         <SendPanel
           counterparty={studio.counterparty}
@@ -45,19 +55,32 @@ const Studio = () => {
           onCheckStatus={() => void studio.refreshStatus()}
         />
       ) : null}
+      {studio.step === 'error' && studio.finalizationState !== 'none' ? (
+        <section aria-label="Finalize result unconfirmed">
+          <p>{studio.errorMessage}</p>
+          <button onClick={() => void studio.refreshStatus()}>
+            Check document status
+          </button>
+        </section>
+      ) : null}
     </main>
   );
 };
 
 const Fixture = () => {
   const [mounted, setMounted] = useState(true);
+  const [mode, setMode] = useState<'send' | 'finalize'>('send');
   return (
     <MantineProvider>
       <nav style={{ display: 'flex', gap: 8, padding: 12 }}>
+        <button onClick={() => setMode('send')}>Show send fixture</button>
+        <button onClick={() => setMode('finalize')}>
+          Show finalize fixture
+        </button>
         <button onClick={() => setMounted(false)}>Unmount studio</button>
         <button onClick={() => setMounted(true)}>Mount studio</button>
       </nav>
-      {mounted ? <Studio /> : <p>Studio unmounted</p>}
+      {mounted ? <Studio mode={mode} /> : <p>Studio unmounted</p>}
     </MantineProvider>
   );
 };
