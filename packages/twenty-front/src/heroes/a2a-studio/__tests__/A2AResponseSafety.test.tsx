@@ -18,10 +18,12 @@ jest.mock('@/propel/lib/a2aCrm', () => ({
 const mockCall = callPropelRoute as jest.MockedFunction<typeof callPropelRoute>;
 const deferred = () => {
   let resolve!: (value: unknown) => void;
-  const promise = new Promise<unknown>((done) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<unknown>((done, fail) => {
     resolve = done;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, reject, resolve };
 };
 
 const draft = (id: string) => ({
@@ -54,8 +56,11 @@ const Harness = ({
   return (
     <>
       <output aria-label="step">{studio.step}</output>
+      <output aria-label="status">{studio.status}</output>
       <output aria-label="document">{studio.draft?.a2aDocumentId ?? ''}</output>
       <output aria-label="dispatch">{studio.dispatchState}</output>
+      <output aria-label="creating">{String(studio.creating)}</output>
+      <output aria-label="finalizing">{String(studio.finalizing)}</output>
       <output aria-label="message">
         {studio.sendMessage ?? studio.errorMessage ?? ''}
       </output>
@@ -210,6 +215,301 @@ describe('A2A send attempt lifetime', () => {
 });
 
 describe('A2A lookup, reconciliation, and stale responses', () => {
+  it('does not let a late create result replace a document resumed after navigation', async () => {
+    const pending = deferred();
+    mockCall.mockImplementation(async (path, body) => {
+      if (path === '/a2a/deal-state') {
+        return (
+          (body as { opportunityId: string }).opportunityId ===
+          'opp-late-create-b'
+            ? {
+                agreement: {
+                  a2aDocumentId: 'late-create-doc-b',
+                  documensoDocumentId: '22',
+                  status: 'SIGNED',
+                },
+              }
+            : { agreement: null }
+        ) as never;
+      }
+      if (path === '/a2a/create-draft') return (await pending.promise) as never;
+      return null;
+    });
+    const view = render(
+      <Harness
+        opportunityId="opp-late-create-a"
+        memberId="member-late-create"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    view.rerender(
+      <Harness
+        opportunityId="opp-late-create-b"
+        memberId="member-late-create"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText('document')).toHaveTextContent(
+        'late-create-doc-b',
+      ),
+    );
+    await act(async () => pending.resolve(draft('late-create-doc-a')));
+    expect(screen.getByLabelText('document')).toHaveTextContent(
+      'late-create-doc-b',
+    );
+    expect(screen.getByLabelText('step')).toHaveTextContent('done');
+  });
+
+  it('does not let a late finalize result move a resumed signed document back to send', async () => {
+    const pending = deferred();
+    mockCall.mockImplementation(async (path, body) => {
+      if (path === '/a2a/deal-state') {
+        return (
+          (body as { opportunityId: string }).opportunityId ===
+          'opp-late-finalize-b'
+            ? {
+                agreement: {
+                  a2aDocumentId: 'late-finalize-doc-b',
+                  documensoDocumentId: '22',
+                  status: 'SIGNED',
+                },
+              }
+            : { agreement: null }
+        ) as never;
+      }
+      if (path === '/a2a/create-draft') {
+        return {
+          ...draft('late-finalize-doc-a'),
+          isRera: false,
+        } as never;
+      }
+      if (path === '/a2a/finalize') return (await pending.promise) as never;
+      return null;
+    });
+    const view = render(
+      <Harness
+        opportunityId="opp-late-finalize-a"
+        memberId="member-late-finalize"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await screen.findByText('bakeJunior');
+    view.rerender(
+      <Harness
+        opportunityId="opp-late-finalize-b"
+        memberId="member-late-finalize"
+      />,
+    );
+    await screen.findByText('done');
+    await act(async () => pending.resolve({ kind: 'ok', baked: true }));
+    expect(screen.getByLabelText('step')).toHaveTextContent('done');
+    expect(screen.getByLabelText('document')).toHaveTextContent(
+      'late-finalize-doc-b',
+    );
+  });
+
+  it('keeps a newer same-scope create pending when an invalidated create rejects and finalizes', async () => {
+    const first = deferred();
+    const second = deferred();
+    let creates = 0;
+    mockCall.mockImplementation(async (path) => {
+      if (path === '/a2a/deal-state') return { agreement: null } as never;
+      if (path === '/a2a/create-draft') {
+        creates += 1;
+        return (await (creates === 1
+          ? first.promise
+          : second.promise)) as never;
+      }
+      return null;
+    });
+    render(
+      <Harness
+        opportunityId="opp-replace-create"
+        memberId="member-replace-create"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    expect(screen.getByLabelText('creating')).toHaveTextContent('true');
+    await act(async () => first.reject(new Error('stale create failure')));
+    expect(screen.getByLabelText('creating')).toHaveTextContent('true');
+    expect(screen.getByLabelText('message')).not.toHaveTextContent(
+      /stale create failure/i,
+    );
+    await act(async () => second.resolve(draft('replacement-create-doc')));
+    expect(screen.getByLabelText('document')).toHaveTextContent(
+      'replacement-create-doc',
+    );
+  });
+
+  it('ignores an invalidated same-scope create success without discarding it or clearing newer work', async () => {
+    const first = deferred();
+    const second = deferred();
+    const calls: string[] = [];
+    let creates = 0;
+    mockCall.mockImplementation(async (path) => {
+      calls.push(path);
+      if (path === '/a2a/deal-state') return { agreement: null } as never;
+      if (path === '/a2a/create-draft') {
+        creates += 1;
+        return (await (creates === 1
+          ? first.promise
+          : second.promise)) as never;
+      }
+      return null;
+    });
+    render(
+      <Harness
+        opportunityId="opp-replace-success"
+        memberId="member-replace-success"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await act(async () => first.resolve(draft('invalidated-create-doc')));
+    expect(screen.getByLabelText('document')).not.toHaveTextContent(
+      'invalidated-create-doc',
+    );
+    expect(screen.getByLabelText('creating')).toHaveTextContent('true');
+    expect(calls).not.toContain('/a2a/discard');
+    await act(async () => second.resolve(draft('current-create-doc')));
+    expect(screen.getByLabelText('document')).toHaveTextContent(
+      'current-create-doc',
+    );
+  });
+
+  it.each([
+    ['success', { kind: 'ok', baked: true }],
+    ['error', { error: 'stale finalize failure', attempted: true }],
+  ])(
+    'keeps a newer same-scope finalize pending when an invalidated finalize returns %s and finalizes',
+    async (_name, staleResult) => {
+      const first = deferred();
+      const second = deferred();
+      let creates = 0;
+      mockCall.mockImplementation(async (path) => {
+        if (path === '/a2a/deal-state') return { agreement: null } as never;
+        if (path === '/a2a/create-draft') {
+          creates += 1;
+          return {
+            ...draft(`replace-finalize-doc-${creates}`),
+            isRera: false,
+          } as never;
+        }
+        if (path === '/a2a/finalize') {
+          return (await (creates === 1
+            ? first.promise
+            : second.promise)) as never;
+        }
+        return null;
+      });
+      render(
+        <Harness
+          opportunityId="opp-replace-finalize"
+          memberId="member-replace-finalize"
+        />,
+      );
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled(),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+      await screen.findByText('bakeJunior');
+      fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled(),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+      await waitFor(() =>
+        expect(screen.getByLabelText('finalizing')).toHaveTextContent('true'),
+      );
+      await act(async () => first.resolve(staleResult));
+      expect(screen.getByLabelText('step')).toHaveTextContent('bakeJunior');
+      expect(screen.getByLabelText('finalizing')).toHaveTextContent('true');
+      expect(screen.getByLabelText('message')).not.toHaveTextContent(
+        /stale finalize failure/i,
+      );
+      await act(async () => second.resolve({ kind: 'ok', baked: true }));
+      expect(screen.getByLabelText('step')).toHaveTextContent('send');
+      expect(screen.getByLabelText('document')).toHaveTextContent(
+        'replace-finalize-doc-2',
+      );
+    },
+  );
+
+  it.each([
+    ['success', draft('unmounted-create-doc')],
+    ['error', { error: 'late unmounted create failure', attempted: true }],
+  ])('ignores a late create %s after unmount', async (_name, result) => {
+    const pending = deferred();
+    const calls: string[] = [];
+    mockCall.mockImplementation(async (path) => {
+      calls.push(path);
+      if (path === '/a2a/deal-state') return { agreement: null } as never;
+      if (path === '/a2a/create-draft') return (await pending.promise) as never;
+      return null;
+    });
+    const view = render(
+      <Harness
+        opportunityId="opp-unmounted-create"
+        memberId="member-unmounted-create"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    view.unmount();
+    await act(async () => pending.resolve(result));
+    expect(calls).not.toContain('/a2a/discard');
+  });
+
+  it('does not discard a draft while finalize is unconfirmed across unmount', async () => {
+    const pending = deferred();
+    const calls = makeRoute({
+      documentId: 'unmounted-finalize-doc',
+      create: {
+        ...draft('unmounted-finalize-doc'),
+        isRera: false,
+      },
+      finalize: pending.promise,
+    });
+    const view = render(
+      <Harness
+        opportunityId="opp-unmounted-finalize"
+        memberId="member-unmounted-finalize"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await screen.findByText('bakeJunior');
+    view.unmount();
+    expect(calls).not.toContain('/a2a/discard');
+    await act(async () => pending.resolve({ kind: 'ok', baked: true }));
+    expect(calls).not.toContain('/a2a/discard');
+  });
+
   it('does not mistake the legitimate signs-in-embed finalize result for confirmed baking', async () => {
     makeRoute({
       documentId: 'embed-finalize-doc',
@@ -332,6 +632,99 @@ describe('A2A lookup, reconciliation, and stale responses', () => {
       /activation.*confirmed/i,
     );
   });
+
+  it('does not let an older status read replace a newer status result', async () => {
+    const first = deferred();
+    let reads = 0;
+    mockCall.mockImplementation(async (path) => {
+      if (path === '/a2a/deal-state') return { agreement: null } as never;
+      if (path === '/a2a/create-draft')
+        return draft('ordered-status-doc') as never;
+      if (path === '/a2a/status') {
+        reads += 1;
+        return (
+          reads === 1
+            ? await first.promise
+            : {
+                status: 'SIGNED',
+                signedPdfUrl: 'https://files.example/newer.pdf',
+              }
+        ) as never;
+      }
+      return null;
+    });
+    render(
+      <Harness
+        opportunityId="opp-ordered-status"
+        memberId="member-ordered-status"
+      />,
+    );
+    await createReadyDraft();
+    fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
+    await screen.findByText('SIGNED');
+    await act(async () => first.resolve({ status: 'DRAFT' }));
+    expect(screen.getByLabelText('status')).toHaveTextContent('SIGNED');
+    expect(screen.getByLabelText('step')).toHaveTextContent('done');
+  });
+
+  it('does not let a successful send acknowledgement downgrade a newer SIGNED observation', async () => {
+    const pending = deferred();
+    makeRoute({
+      documentId: 'signed-during-send-doc',
+      send: pending.promise,
+      status: {
+        status: 'SIGNED',
+        signedPdfUrl: 'https://files.example/signed-during-send.pdf',
+      },
+    });
+    render(
+      <Harness
+        opportunityId="opp-signed-during-send"
+        memberId="member-signed-during-send"
+      />,
+    );
+    await createReadyDraft();
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await screen.findByText('pending');
+    fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
+    await screen.findByText('SIGNED');
+    await act(async () => pending.resolve(activated));
+    expect(screen.getByLabelText('status')).toHaveTextContent('SIGNED');
+    expect(screen.getByLabelText('step')).toHaveTextContent('done');
+  });
+});
+
+it.each([
+  ['missing agreement', {}],
+  ['undefined body', undefined],
+  ['array body', []],
+  ['primitive body', 'unrelated'],
+  ['malformed agreement', { agreement: {} }],
+  ['malformed prefill', { agreement: null, prefill: 'unrelated' }],
+])('holds create for a %s lookup result', async (name, response) => {
+  mockCall.mockResolvedValueOnce(response as never);
+  render(
+    <Harness
+      opportunityId={`opp-malformed-lookup-${name}`}
+      memberId="member-malformed-lookup"
+    />,
+  );
+  await act(async () => undefined);
+  expect(screen.getByRole('button', { name: 'Create' })).toBeDisabled();
+});
+
+it('enables create for an explicit valid empty agreement lookup', async () => {
+  mockCall.mockResolvedValueOnce({ agreement: null } as never);
+  render(
+    <Harness
+      opportunityId="opp-explicit-empty"
+      memberId="member-explicit-empty"
+    />,
+  );
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Create' })).toBeEnabled(),
+  );
 });
 
 it('never says a signed status proves both recipients received the PDF', async () => {

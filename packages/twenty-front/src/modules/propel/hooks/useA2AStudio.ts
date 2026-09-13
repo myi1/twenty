@@ -191,6 +191,44 @@ const SEND_PENDING_MESSAGE =
 const idToString = (v: unknown): string =>
   typeof v === 'number' || typeof v === 'string' ? String(v) : '';
 
+const isOptionalString = (value: unknown): boolean =>
+  value === undefined || value === null || typeof value === 'string';
+
+const isValidDealStateResponse = (
+  value: unknown,
+): value is DealStateResponse & {
+  agreement: NonNullable<DealStateResponse['agreement']> | null;
+} => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const response = value as DealStateResponse;
+  if (response.error !== undefined) return false;
+  if (!Object.prototype.hasOwnProperty.call(value, 'agreement')) return false;
+  if (
+    response.prefill !== undefined &&
+    (typeof response.prefill !== 'object' ||
+      response.prefill === null ||
+      Array.isArray(response.prefill))
+  ) {
+    return false;
+  }
+  if (response.agreement === null) return true;
+  const agreement = response.agreement;
+  return (
+    typeof agreement === 'object' &&
+    agreement !== null &&
+    typeof agreement.a2aDocumentId === 'string' &&
+    agreement.a2aDocumentId.trim() !== '' &&
+    isOptionalString(agreement.documensoDocumentId) &&
+    isOptionalString(agreement.status) &&
+    isOptionalString(agreement.counterpartySigningUrl) &&
+    isOptionalString(agreement.signedPdfUrl) &&
+    isOptionalString(agreement.auditUrl) &&
+    isOptionalString(agreement.createdAt)
+  );
+};
+
 export const useA2AStudio = (
   opportunityId: string | null,
   variant: A2AVariant,
@@ -232,16 +270,52 @@ export const useA2AStudio = (
     draft: A2ADraft | null;
     sent: boolean;
     scopeKey: string | null;
+    generation: number;
+    mounted: boolean;
+    creating: boolean;
+    finalizing: boolean;
+    status: A2ADocumentStatus | null;
+    latestStatusRequest: number;
+    lookupConfirmedScope: string | null;
   }>(() => ({
     draft: null,
     sent: false,
     scopeKey,
+    generation: 0,
+    mounted: true,
+    creating: false,
+    finalizing: false,
+    status: null,
+    latestStatusRequest: 0,
+    lookupConfirmedScope: null,
   }));
-  if (live.scopeKey === scopeKey) live.draft = draft;
+  if (live.scopeKey !== scopeKey) {
+    // Invalidate outstanding work during render, before an effect from the new
+    // scope can run. This closes the window where an old promise could settle
+    // between navigation render and effect cleanup.
+    live.scopeKey = scopeKey;
+    live.generation += 1;
+    live.draft = null;
+    live.sent = false;
+    live.creating = false;
+    live.finalizing = false;
+    live.status = null;
+    live.latestStatusRequest = 0;
+    live.lookupConfirmedScope = null;
+  } else {
+    live.draft = draft;
+    live.status = status;
+  }
 
   const isCurrent = useCallback(
-    (expectedScope: string | null, expectedDocumentId?: string) =>
+    (
+      expectedScope: string | null,
+      expectedGeneration: number,
+      expectedDocumentId?: string,
+    ) =>
+      live.mounted &&
       live.scopeKey === expectedScope &&
+      live.generation === expectedGeneration &&
       (expectedDocumentId === undefined ||
         live.draft?.a2aDocumentId === expectedDocumentId),
     [live],
@@ -267,6 +341,17 @@ export const useA2AStudio = (
       );
       return;
     }
+    if (
+      live.lookupConfirmedScope !== scopeKey ||
+      live.creating ||
+      live.finalizing
+    ) {
+      return;
+    }
+    live.generation += 1;
+    const expectedGeneration = live.generation;
+    const expectedScope = scopeKey;
+    live.creating = true;
     setCreating(true);
     setErrorMessage(null);
     setMissing(null);
@@ -288,6 +373,7 @@ export const useA2AStudio = (
         '/a2a/create-draft',
         body,
       );
+      if (!isCurrent(expectedScope, expectedGeneration)) return;
       if (res === null) {
         setStep('error');
         setErrorMessage('Could not create the draft. Please try again.');
@@ -315,6 +401,7 @@ export const useA2AStudio = (
       };
       setDraft(next);
       live.draft = next;
+      live.status = 'DRAFT';
       setDispatchState('never');
       setStatus('DRAFT');
       if (res.prefill !== undefined) {
@@ -337,12 +424,17 @@ export const useA2AStudio = (
         // straight to send. `isRera:false` = today's bake path; the signing model
         // flag (`bakeOurSide`) is deliberately never sent (founder decision 4).
         setStep('bakeJunior');
+        live.finalizing = true;
         setFinalizing(true);
         const fin = await callPropelRoute<FinalizeResponse>('/a2a/finalize', {
           a2aDocumentId: next.a2aDocumentId,
           documensoDocumentId: next.documensoDocumentId,
           isRera: false,
         });
+        if (!isCurrent(expectedScope, expectedGeneration, next.a2aDocumentId)) {
+          return;
+        }
+        live.finalizing = false;
         setFinalizing(false);
         if (fin === null || fin.error !== undefined) {
           setStep('error');
@@ -370,10 +462,16 @@ export const useA2AStudio = (
         setStep('send');
       }
     } catch {
+      if (!isCurrent(expectedScope, expectedGeneration)) return;
       setStep('error');
       setErrorMessage('Could not create the draft.');
     } finally {
-      setCreating(false);
+      if (isCurrent(expectedScope, expectedGeneration)) {
+        live.creating = false;
+        live.finalizing = false;
+        setCreating(false);
+        setFinalizing(false);
+      }
     }
   }, [
     opportunityId,
@@ -382,6 +480,7 @@ export const useA2AStudio = (
     variant,
     prefill,
     counterparty,
+    isCurrent,
     live,
   ]);
 
@@ -394,12 +493,23 @@ export const useA2AStudio = (
     const d = live.draft;
     if (d === null) return;
     const expectedScope = live.scopeKey;
+    const expectedGeneration = live.generation;
+    const request = live.latestStatusRequest + 1;
+    live.latestStatusRequest = request;
     const res = await callPropelRoute<StatusResponse>('/a2a/status', {
       a2aDocumentId: d.a2aDocumentId,
     });
-    if (!isCurrent(expectedScope, d.a2aDocumentId)) return;
+    if (
+      !isCurrent(expectedScope, expectedGeneration, d.a2aDocumentId) ||
+      request !== live.latestStatusRequest
+    ) {
+      return;
+    }
     if (res === null || res.error !== undefined) return;
-    if (res.status !== undefined) setStatus(res.status);
+    if (res.status !== undefined) {
+      live.status = res.status;
+      setStatus(res.status);
+    }
     if (res.signedPdfUrl !== undefined) setSignedPdfUrl(res.signedPdfUrl);
     if (res.auditUrl !== undefined) setAuditUrl(res.auditUrl);
     if (res.status === 'OUT_FOR_SIGNATURE' || res.status === 'SIGNED') {
@@ -424,6 +534,7 @@ export const useA2AStudio = (
         return { ok: false, message: 'There is no draft to send yet.' };
       }
       const expectedScope = live.scopeKey;
+      const expectedGeneration = live.generation;
       if (expectedScope === null) {
         return {
           ok: false,
@@ -472,7 +583,7 @@ export const useA2AStudio = (
             : {}),
         };
         const res = await callPropelRoute<SendResponse>('/a2a/send', body);
-        if (!isCurrent(expectedScope, d.a2aDocumentId))
+        if (!isCurrent(expectedScope, expectedGeneration, d.a2aDocumentId))
           return { ok: false, message: SEND_UNKNOWN_MESSAGE };
         if (!isConfirmedActivation(res)) {
           const latestGuard = attemptGuards.get(expectedScope);
@@ -507,7 +618,10 @@ export const useA2AStudio = (
         live.sent = true;
         attemptGuards.set(expectedScope, { draft: d, state: 'activated' });
         setDispatchState('activated');
-        setStatus('OUT_FOR_SIGNATURE');
+        if (live.status !== 'SIGNED') {
+          live.status = 'OUT_FOR_SIGNATURE';
+          setStatus('OUT_FOR_SIGNATURE');
+        }
         // The ONLY link we will ever hand the agent: the one this send resolved
         // off the live document. If the service could not resolve one, we hold
         // nothing rather than offering the dead pre-bake link (task 49).
@@ -529,7 +643,8 @@ export const useA2AStudio = (
         setErrorMessage(null);
         return { ok: true, message };
       } finally {
-        if (isCurrent(expectedScope, d.a2aDocumentId)) setSending(false);
+        if (isCurrent(expectedScope, expectedGeneration, d.a2aDocumentId))
+          setSending(false);
       }
     },
     [counterparty, isCurrent, live],
@@ -583,6 +698,10 @@ export const useA2AStudio = (
     }
     live.sent = false;
     live.draft = null;
+    live.status = null;
+    live.creating = false;
+    live.finalizing = false;
+    live.generation += 1;
     setStep('prepare');
     setErrorMessage(null);
     setMissing(null);
@@ -595,6 +714,9 @@ export const useA2AStudio = (
     setSendMessage(null);
     setShareUrl(null);
     setExistingDraftNotice(null);
+    setCreating(false);
+    setFinalizing(false);
+    setSending(false);
   }, [live]);
 
   // ── What this deal already has (task 52) ──────────────────────────────────
@@ -604,9 +726,13 @@ export const useA2AStudio = (
   // or signed is RESUMED; an older unfinished draft is only reported, because its
   // Documenso draft may be long gone and silently continuing it would be a guess.
   useEffect(() => {
-    live.scopeKey = scopeKey;
+    live.mounted = true;
     live.draft = null;
     live.sent = false;
+    live.status = null;
+    live.creating = false;
+    live.finalizing = false;
+    live.lookupConfirmedScope = null;
     setDraft(null);
     setStatus(null);
     setStep('prepare');
@@ -615,6 +741,9 @@ export const useA2AStudio = (
     setErrorMessage(null);
     setSendMessage(null);
     setShareUrl(null);
+    setCreating(false);
+    setFinalizing(false);
+    setSending(false);
     if (opportunityId === null || opportunityId === '' || scopeKey === null) {
       setLookupState('unavailable');
       setResuming(false);
@@ -630,7 +759,8 @@ export const useA2AStudio = (
       });
       if (cancelled || live.scopeKey !== scopeKey) return;
       const guarded = attemptGuards.get(scopeKey);
-      if (res !== null && res.error === undefined) {
+      if (isValidDealStateResponse(res)) {
+        live.lookupConfirmedScope = scopeKey;
         // Anything the agent (or the launcher) already typed wins over the deal.
         if (res.prefill !== undefined) {
           setPrefillState((cur) => ({ ...res.prefill, ...cur }));
@@ -654,6 +784,7 @@ export const useA2AStudio = (
           setDispatchState('activated');
           setLookupState('blocked');
           setStatus(plan.status);
+          live.status = plan.status;
           setShareUrl(plan.shareUrl);
           setSignedPdfUrl(plan.signedPdfUrl);
           setAuditUrl(plan.auditUrl);
@@ -663,6 +794,7 @@ export const useA2AStudio = (
             setDraft(guarded.draft);
             live.draft = guarded.draft;
             setStatus(res.agreement?.status === 'DRAFT' ? 'DRAFT' : null);
+            live.status = res.agreement?.status === 'DRAFT' ? 'DRAFT' : null;
             setDispatchState(guarded.state);
             setStep('send');
             setSendMessage(
@@ -694,6 +826,7 @@ export const useA2AStudio = (
           setLookupState('clear');
         }
       } else if (guarded !== undefined) {
+        live.lookupConfirmedScope = null;
         setDraft(guarded.draft);
         live.draft = guarded.draft;
         setDispatchState(guarded.state);
@@ -705,6 +838,7 @@ export const useA2AStudio = (
         );
         setLookupState('blocked');
       } else {
+        live.lookupConfirmedScope = null;
         setLookupState('unavailable');
       }
       setResuming(false);
@@ -732,6 +866,7 @@ export const useA2AStudio = (
   // agreementDocument. Both ids: with only the CRM id the service voids the row
   // but cannot delete the envelope. Fire-and-forget — the page is already gone.
   useEffect(() => {
+    live.mounted = true;
     return () => {
       const d = live.draft;
       const guarded =
@@ -739,6 +874,8 @@ export const useA2AStudio = (
       if (
         d !== null &&
         !live.sent &&
+        !live.creating &&
+        !live.finalizing &&
         (guarded === undefined ||
           guarded.draft.a2aDocumentId !== d.a2aDocumentId)
       ) {
@@ -750,6 +887,12 @@ export const useA2AStudio = (
         };
         void callPropelRoute<DiscardResponse>('/a2a/discard', body);
       }
+      live.mounted = false;
+      live.generation += 1;
+      live.draft = null;
+      live.status = null;
+      live.creating = false;
+      live.finalizing = false;
     };
   }, [live]);
 
@@ -776,6 +919,7 @@ export const useA2AStudio = (
     canCreateDraft:
       lookupState === 'clear' &&
       scopeKey !== null &&
+      live.lookupConfirmedScope === scopeKey &&
       draft === null &&
       !creating,
     canSend: draft !== null && dispatchState === 'never' && !sending,
