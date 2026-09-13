@@ -55,6 +55,8 @@ function loadTypeScript(file) {
     compilerOptions: {
       module: ModuleKind.CommonJS,
       target: ScriptTarget.ES2022,
+      experimentalDecorators: true,
+      esModuleInterop: true,
     },
   }).outputText;
   const exports = {};
@@ -570,4 +572,249 @@ test('relation count and ID loaders on unprotected parents cannot hide protected
       /Current-root read boundary/,
     );
   }
+});
+
+// Invoke the real group-by producer method. These injected services/parser branches
+// are unused by the no-orderBy fixture; query construction and partitioning are real.
+stubs['@nestjs/common'] = {
+  Inject: () => () => {},
+  Injectable: () => (target) => target,
+};
+for (const id of [
+  'src/engine/api/common/common-nested-relations-processor/process-nested-relations.helper',
+  'src/engine/api/common/common-result-getters/common-result-getters.service',
+  'src/engine/api/graphql/graphql-query-runner/graphql-query-parsers/graphql-query.parser',
+  'src/engine/api/graphql/graphql-query-runner/graphql-query-parsers/utils/add-relation-join-alias.util',
+  'src/engine/api/graphql/graphql-query-runner/group-by/resolvers/utils/format-result-with-group-by-dimension-values.util',
+  'src/engine/api/graphql/graphql-query-runner/utils/build-columns-to-select',
+])
+  stubs[id] = {};
+const { GroupByWithRecordsService } = loadTypeScript(
+  path.join(
+    server,
+    'src/engine/api/graphql/graphql-query-runner/group-by/services/group-by-with-records.service.ts',
+  ),
+);
+async function groupByFixture(target = 'person', changeInner = () => {}) {
+  const { builder, workspace, auth, context } = await fixture(target);
+  const create = () =>
+    new WorkspaceSelectQueryBuilder(
+      workspace.createQueryBuilder(target, target),
+      {},
+      context,
+      true,
+      auth,
+      {},
+    );
+  const inner = create().where(`${target}.id = :id`, { id: userId });
+  changeInner(inner);
+  const wrapper = new GroupByWithRecordsService().addPartitionByToQueryBuilder({
+    queryBuilderForSubQuery: inner,
+    columnsToSelect: { id: true },
+    groupsResult: [{ group_id: userId }],
+    groupByDefinitions: [{ alias: 'group_id', expression: `"${target}"."id"` }],
+    repository: { createQueryBuilder: create },
+    orderByForRecords: {},
+    flatObjectMetadata: { nameSingular: target },
+    flatObjectMetadataMaps: {},
+    flatFieldMetadataMaps: {},
+  });
+  const queries = [];
+  const runner = workspace.createQueryRunner();
+  runner.query = async (sql, values, structured) => {
+    queries.push({ sql, values });
+    return structured ? { records: [], raw: [], affected: 0 } : [];
+  };
+  wrapper.setQueryRunner(runner);
+  return { wrapper, inner, queries, auth, context, workspace, builder };
+}
+
+for (const target of ['person', 'deal'])
+  test(`real ${target} group-by ranked_records wrapper remains executable for humans`, async () => {
+    const { wrapper, queries } = await groupByFixture(target);
+    assert.equal(wrapper.expressionMap.aliases.length, 1);
+    assert.ok(wrapper.expressionMap.mainAlias.subQuery);
+    await wrapper.getRawMany();
+    assert.equal(queries.length, 1);
+    assert.match(queries[0].sql, /JSON_AGG/);
+    assert.match(queries[0].sql, /ROW_NUMBER\(\) OVER/);
+    assert.match(queries[0].sql, /ranked_records/);
+    assert.ok(queries[0].values.includes(userId));
+  });
+
+for (const target of ['whatsAppMessage', 'taskTarget'])
+  test(`real protected ${target} group-by wrapper embeds current SQL checks and cannot cache them away`, async () => {
+    const { wrapper, queries } = await groupByFixture(target);
+    wrapper.cache('unsafe-group-cache', 60000);
+    await wrapper.getRawMany();
+    assert.equal(wrapper.expressionMap.cache, false);
+    assert.equal(queries.length, 1);
+    assert.match(queries[0].sql, /JSON_AGG/);
+    assert.match(queries[0].sql, /assignedAgentId/);
+    assert.match(queries[0].sql, /"core"\."userWorkspace"/);
+    assert.match(queries[0].sql, /"core"\."roleTarget"/);
+    assert.ok(queries[0].values.includes(memberId));
+    assert.ok(queries[0].values.includes(workspaceId));
+    assert.ok(queries[0].values.includes(userWorkspaceId));
+    assert.doesNotMatch(queries[0].sql, /ownerId|assigneeId/);
+  });
+
+test('the group-by producer cannot certify an opaque inner or wrong-workspace metadata', async () => {
+  await assert.rejects(
+    () =>
+      groupByFixture('person', (inner) => {
+        inner.from('(SELECT * FROM "unknown"."_whatsAppMessage")', 'opaque');
+      }),
+    /Current-root read boundary/,
+  );
+  await assert.rejects(
+    () =>
+      groupByFixture('person', (inner) => {
+        inner.expressionMap.mainAlias.metadata.schema = 'workspace_wrong';
+      }),
+    /Current-root read boundary/,
+  );
+  await assert.rejects(
+    () =>
+      groupByFixture('whatsAppMessage', (inner) => {
+        inner.authContext.workspaceMemberId = '';
+      }),
+    /Current-root read boundary/,
+  );
+});
+
+test('tampered group-by SQL and parameters refuse before driver execution', async () => {
+  for (const change of [
+    (wrapper) => {
+      wrapper.select('(SELECT id FROM "unknown"."_whatsAppMessage" LIMIT 1)');
+    },
+    (wrapper) => {
+      wrapper.expressionMap.mainAlias.subQuery =
+        '(SELECT * FROM "unknown"."_whatsAppMessage")';
+    },
+    (wrapper) => {
+      wrapper.setParameter('pcr0_member_id', userId);
+    },
+    (wrapper) => {
+      wrapper.expressionMap.parameters.id = () => 'NULL OR TRUE';
+    },
+    (wrapper) => {
+      wrapper.addCommonTableExpression('SELECT 1', 'extra');
+    },
+    (wrapper) => {
+      wrapper.leftJoin('person', 'extra', '1=1');
+    },
+  ]) {
+    const { wrapper, queries } = await groupByFixture('whatsAppMessage');
+    change(wrapper);
+    await assert.rejects(
+      () => wrapper.getRawMany(),
+      /Current-root read boundary/,
+    );
+    assert.equal(queries.length, 0);
+  }
+});
+
+test('group-by provenance cannot be reused by a different actor or workspace', async () => {
+  for (const change of [
+    (auth, context) => {
+      auth.workspaceMemberId = userId;
+      auth.workspaceMember.id = userId;
+    },
+    (auth, context) => {
+      auth.userWorkspaceId = memberId;
+    },
+    (auth, context) => {
+      auth.user.id = memberId;
+      auth.workspaceMember.userId = memberId;
+    },
+    (auth, context) => {
+      auth.workspace.id = userId;
+      context.workspaceId = userId;
+    },
+    (auth, context) => {
+      auth.workspaceMember.userId = memberId;
+    },
+  ]) {
+    const { wrapper, queries, auth, context } =
+      await groupByFixture('whatsAppMessage');
+    change(auth, context);
+    await assert.rejects(
+      () => wrapper.getRawMany(),
+      /Current-root read boundary/,
+    );
+    assert.equal(queries.length, 0);
+  }
+});
+
+test('an unattested clone or a copied ranked_records string never inherits producer trust', async () => {
+  const { wrapper, queries, workspace, auth, context } =
+    await groupByFixture('whatsAppMessage');
+  await assert.rejects(
+    () => wrapper.clone().getRawMany(),
+    /Current-root read boundary/,
+  );
+  const copy = new WorkspaceSelectQueryBuilder(
+    workspace.createQueryBuilder('person', 'person'),
+    {},
+    context,
+    true,
+    auth,
+    {},
+  );
+  copy.from(wrapper.expressionMap.mainAlias.subQuery, 'ranked_records');
+  copy.expressionMap.aliases = copy.expressionMap.aliases.filter(
+    (alias) => alias.subQuery,
+  );
+  copy.setParameters(wrapper.getParameters());
+  copy.expressionMap.trustedCurrentRoot = true;
+  await assert.rejects(() => copy.getRawMany(), /Current-root read boundary/);
+  assert.equal(queries.length, 0);
+});
+
+test('getRawOne revalidation and repeated real group-by executions preserve the same fenced SQL', async () => {
+  const { wrapper, queries } = await groupByFixture('taskTarget');
+  await wrapper.getRawOne();
+  await wrapper.getRawMany();
+  assert.equal(queries.length, 2);
+  assert.equal(queries[0].sql, queries[1].sql);
+  assert.deepEqual(queries[0].values, queries[1].values);
+  assert.match(queries[1].sql, /assignedAgentId/);
+});
+
+test('caller OR inside real protected group-by cannot escape the appended owner/member fence', async () => {
+  const { wrapper, queries } = await groupByFixture(
+    'whatsAppMessage',
+    (inner) => inner.orWhere('1=1'),
+  );
+  await wrapper.getRawMany();
+  assert.equal(queries.length, 1);
+  assert.match(
+    queries[0].sql,
+    /OR 1=1.*?\) AND \( "whatsAppMessage"\."deletedAt" IS NULL \) AND \( \(\("whatsAppMessage"\."deletedAt" IS NULL AND EXISTS/s,
+  );
+  assert.match(queries[0].sql, /"assignedAgentId" = \$\d+ OR EXISTS/);
+  assert.ok(queries[0].values.includes(memberId));
+});
+
+test('an attested wrapper cannot be recycled as a trusted inner metadata query', async () => {
+  const { wrapper, queries } = await groupByFixture('whatsAppMessage');
+  const { bindCurrentRootReadGroupByWrapper } = loadTypeScript(
+    path.join(server, 'src/modules/propel-rls/current-root-read-fence.ts'),
+  );
+  assert.throws(
+    () => bindCurrentRootReadGroupByWrapper(wrapper, wrapper),
+    /Current-root read boundary/,
+  );
+  assert.equal(queries.length, 0);
+});
+
+test('later source-builder mutation cannot alter the already-bound protected wrapper', async () => {
+  const { wrapper, inner, queries } = await groupByFixture('whatsAppMessage');
+  inner.where('1=1').setParameter('pcr0_member_id', userId);
+  inner.expressionMap.extraAppendedAndWhereCondition = '';
+  await wrapper.getRawMany();
+  assert.match(queries[0].sql, /assignedAgentId/);
+  assert.ok(queries[0].values.includes(memberId));
+  assert.equal(wrapper.getParameters().pcr0_member_id, memberId);
 });

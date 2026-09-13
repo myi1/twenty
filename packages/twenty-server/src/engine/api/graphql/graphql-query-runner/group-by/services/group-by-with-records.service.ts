@@ -27,6 +27,8 @@ import { type WorkspaceSelectQueryBuilder } from 'src/engine/twenty-orm/reposito
 import { applyRowLevelPermissionPredicates } from 'src/engine/twenty-orm/utils/apply-row-level-permission-predicates.util';
 import { type WorkspaceRepository } from 'src/engine/twenty-orm/repository/workspace.repository';
 
+import { bindCurrentRootReadGroupByWrapper } from 'src/modules/propel-rls/current-root-read-fence';
+
 const RECORDS_PER_GROUP_LIMIT = 10;
 const RELATIONS_PER_RECORD_LIMIT = 5;
 const SUB_QUERY_PREFIX = 'sub_query_';
@@ -242,6 +244,8 @@ export class GroupByWithRecordsService {
     mainQuery.expressionMap.aliases = mainQuery.expressionMap.aliases.filter(
       (alias) => isDefined(alias.subQuery),
     );
+
+    bindCurrentRootReadGroupByWrapper(mainQuery, subQuery);
 
     return mainQuery as WorkspaceSelectQueryBuilder<ObjectLiteral>;
   }

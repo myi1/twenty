@@ -10,6 +10,7 @@ import {
   TwentyORMException,
   TwentyORMExceptionCode,
 } from 'src/engine/twenty-orm/exceptions/twenty-orm.exception';
+import { type WorkspaceSelectQueryBuilder } from 'src/engine/twenty-orm/repository/workspace-select-query-builder';
 import { getWorkspaceSchemaName } from 'src/engine/workspace-datasource/utils/get-workspace-schema-name.util';
 import { STANDARD_ROLE } from 'src/engine/workspace-manager/twenty-standard-application/constants/standard-role.constant';
 
@@ -69,6 +70,112 @@ type AppliedFence = {
 // already retain SQL predicates and parameters through TypeORM's expression map.
 const previousFences = new WeakMap<object, AppliedFence>();
 
+type RankedRecordsProvenance = {
+  sql: string;
+  parameters: string;
+  actor: string;
+  connection: object;
+  coreDataSource: object;
+};
+// Only the real group-by producer registers wrappers. Nothing on the expression
+// map, request, or feature flags can mint this provenance. Clones do not inherit it.
+const rankedRecordsProvenance = new WeakMap<object, RankedRecordsProvenance>();
+
+const actorBinding = (
+  context: WorkspaceInternalContext,
+  auth: WorkspaceAuthContext,
+): string => {
+  if (auth.type !== 'user') return refuse();
+  const ids = [
+    context.workspaceId,
+    auth.user?.id,
+    auth.userWorkspaceId,
+    auth.workspaceMemberId,
+  ];
+  if (
+    !ids.every((id) => typeof id === 'string' && UUID.test(id)) ||
+    auth.workspace?.id !== context.workspaceId ||
+    auth.workspaceMember?.id !== auth.workspaceMemberId ||
+    auth.workspaceMember?.userId !== auth.user.id
+  )
+    return refuse();
+  return JSON.stringify(ids);
+};
+
+const parameterBinding = (parameters: ObjectLiteral): string =>
+  JSON.stringify(parameters, (_key, value: unknown) => {
+    // Function-valued parameters become SQL in TypeORM and cannot be attested by
+    // JSON (which would silently omit them). Group-by values are serializable.
+    if (
+      ['function', 'symbol', 'undefined', 'bigint'].includes(typeof value) ||
+      (typeof value === 'number' && !Number.isFinite(value))
+    )
+      return refuse();
+    return value;
+  });
+
+const isRankedRecordsWrapper = <T extends ObjectLiteral>(
+  builder: SelectQueryBuilder<T>,
+): boolean => {
+  const expression = builder.expressionMap;
+  return (
+    expression.aliases.length === 1 &&
+    expression.mainAlias?.name === 'ranked_records' &&
+    expression.aliases[0].name === 'ranked_records' &&
+    expression.mainAlias.subQuery === expression.aliases[0].subQuery &&
+    Boolean(expression.mainAlias.subQuery) &&
+    !expression.mainAlias.hasMetadata &&
+    expression.joinAttributes.length === 0 &&
+    expression.commonTableExpressions.length === 0 &&
+    expression.relationIdAttributes.length === 0 &&
+    expression.relationCountAttributes.length === 0 &&
+    expression.relationLoadStrategy !== 'query'
+  );
+};
+
+// Called after the producer finishes its ranked_records wrapper. Fence the actual
+// inner metadata query before embedding SQL; attest the completed wrapper and its
+// parameters under this exact actor/workspace, not an arbitrary opaque SQL string.
+export const bindCurrentRootReadGroupByWrapper = <T extends ObjectLiteral>(
+  wrapper: WorkspaceSelectQueryBuilder<T>,
+  inner: WorkspaceSelectQueryBuilder<T>,
+): void => {
+  if (inner.authContext.type !== 'user') return;
+  const actor = actorBinding(inner.internalContext, inner.authContext);
+  if (
+    !isRankedRecordsWrapper(wrapper) ||
+    actorBinding(wrapper.internalContext, wrapper.authContext) !== actor ||
+    wrapper.connection !== inner.connection ||
+    wrapper.internalContext.coreDataSource !==
+      inner.internalContext.coreDataSource
+  )
+    return refuse();
+  applyCurrentRootReadFence(inner, inner.internalContext, inner.authContext);
+  const schema = getWorkspaceSchemaName(inner.internalContext.workspaceId);
+  for (const alias of inner.expressionMap.aliases) {
+    if (
+      !alias.hasMetadata ||
+      alias.subQuery ||
+      typeof alias.metadata.target !== 'string' ||
+      inner.connection.getMetadata(alias.metadata.target) !== alias.metadata
+    )
+      return refuse();
+    table(alias.metadata, schema);
+  }
+  const sql = `(${inner.getQuery()})`;
+  wrapper.expressionMap.mainAlias!.subQuery = sql;
+  wrapper.expressionMap.aliases[0].subQuery = sql;
+  wrapper.setParameters(inner.getParameters());
+  wrapper.expressionMap.cache = false;
+  rankedRecordsProvenance.set(wrapper, {
+    sql: wrapper.getQuery(),
+    parameters: parameterBinding(wrapper.getParameters()),
+    actor,
+    connection: wrapper.connection,
+    coreDataSource: wrapper.internalContext.coreDataSource,
+  });
+};
+
 export const applyCurrentRootReadFence = <T extends ObjectLiteral>(
   queryBuilder: SelectQueryBuilder<T>,
   internalContext: WorkspaceInternalContext,
@@ -77,6 +184,21 @@ export const applyCurrentRootReadFence = <T extends ObjectLiteral>(
   // Existing service/system policy is intentionally unresolved by this human slice.
   if (authContext?.type !== 'user') return;
   const expression = queryBuilder.expressionMap;
+  const provenance = rankedRecordsProvenance.get(queryBuilder);
+  if (provenance) {
+    if (
+      !isRankedRecordsWrapper(queryBuilder) ||
+      provenance.actor !== actorBinding(internalContext, authContext) ||
+      provenance.connection !== queryBuilder.connection ||
+      provenance.coreDataSource !== internalContext.coreDataSource ||
+      provenance.sql !== queryBuilder.getQuery() ||
+      provenance.parameters !== parameterBinding(queryBuilder.getParameters())
+    )
+      return refuse();
+    // Membership, role and owner EXISTS remain inside the executed inner SELECT.
+    expression.cache = false;
+    return;
+  }
   // Opaque FROM/JOIN/CTE SQL cannot be inspected safely for hidden child reads.
   // TypeORM's internal pagination wraps an already-fenced SELECT separately.
   if (
