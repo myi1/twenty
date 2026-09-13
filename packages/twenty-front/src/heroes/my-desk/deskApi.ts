@@ -22,6 +22,8 @@ import type {
   DeskNextActionResponse,
   DeskPartialFailure,
   DeskRailResponse,
+  DeskRailSection,
+  DeskRailSectionHealth,
   DeskRow,
   DeskTimelineResponse,
   DeskWaContextResponse,
@@ -97,8 +99,23 @@ export const fetchBoard = async (
 };
 
 /** Tasks/viewings/unread-WA/priority-leads for the right rail — one call, ≤10 each. */
-export const fetchRail = (): Promise<DeskRailResponse | null> =>
-  callPropelRoute<DeskRailResponse>(ROUTE, { action: 'rail' });
+export const fetchRail = async (): Promise<DeskRailResponse | null> => {
+  const response = await callPropelRoute<DeskRailResponse>(ROUTE, { action: 'rail' });
+  if (!response?.ok) return response ? { ok: false, error: 'DESK_LOAD_FAILED' } : null;
+  const keys: DeskRailSection[] = ['tasks', 'viewings', 'unreadWa', 'priorityLeads'];
+  // Retain legacy arrays, with health omitted (unknown). Never manufacture an
+  // available status from absence; a malformed array still fails its section.
+  if (response.sections === undefined && keys.every((key) => Array.isArray(response[key]))) return response;
+  const sections: Partial<Record<DeskRailSection, DeskRailSectionHealth>> = {};
+  const result = { ...response, sections };
+  for (const key of keys) {
+    if (response.sections === undefined && Array.isArray(response[key])) continue;
+    const available = Array.isArray(response[key]) && response.sections?.[key]?.status === 'available';
+    sections[key] = available ? { status: 'available' } : { status: 'unavailable', error: 'RAIL_SECTION_UNAVAILABLE' };
+    if (!available) result[key] = [];
+  }
+  return { ...result, partial: keys.some((key) => sections[key]?.status === 'unavailable') };
+};
 
 /** WhatsApp 24h session-window state + the approved-template pool for one person. */
 export const fetchWaContext = (

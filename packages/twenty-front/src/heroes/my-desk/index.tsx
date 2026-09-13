@@ -31,6 +31,7 @@ import { BriefingCard } from './BriefingCard';
 import { deskRecordPath, deskRowOpenPath, PeekDrawer, type DrawerMode } from './PeekDrawer';
 import { KeyGlyph, ReidinDrawer } from './ReidinDrawer';
 import { railRowsFrom } from './railRows';
+import { useRail } from './useRail';
 import { RightRail } from './RightRail';
 import {
   StyledDeskBody,
@@ -40,7 +41,7 @@ import {
   useDeskStackedLayout,
 } from './responsive';
 import { TodayStrip, type StripFilter } from './TodayStrip';
-import { fetchBoard, fetchRail, fetchTimeline, runDeskAction } from './deskApi';
+import { fetchBoard, fetchTimeline, runDeskAction } from './deskApi';
 import { StagePicker, type StagePickerAnchor } from './StagePicker';
 import { formatStageLabel } from './format';
 import {
@@ -62,7 +63,6 @@ import type {
   DeskGate,
   DeskMoveResponse,
   DeskPartialFailure,
-  DeskRailOk,
   DeskRow,
   DeskUndoResponse,
 } from './types';
@@ -126,9 +126,6 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
     DeskPartialFailure[]
   >([]);
 
-  const [railStatus, setRailStatus] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [rail, setRail] = useState<DeskRailOk | null>(null);
-  const [railError, setRailError] = useState<string | null>(null);
 
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -148,6 +145,8 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
   // lands — we NEVER hardcode a name or an id.
   const [firstName, setFirstName] = useState<string | null>(null);
   const [memberId, setMemberId] = useState<string | null>(null);
+  const getRailScope = () => JSON.stringify([host.serverBaseUrl, host.getToken() ?? null, memberId]);
+  const { status: railStatus, rail, refreshing: railRefreshing, load: loadRail } = useRail(getRailScope(), getRailScope);
   const persist = useCallback((patch: Partial<DeskPersistedState>) => {
     persistedRef.current = { ...persistedRef.current, ...patch };
     saveDeskState(stateKeyRef.current, persistedRef.current);
@@ -459,24 +458,6 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
     // until its first page arrives.
     void loadBoard();
 
-    // Rail — fails ALONE (a board outage must never blank the day's panels).
-    fetchRail()
-      .then((res) => {
-        if (cancelledRef.current) return;
-        if (res === null || !res.ok) {
-          setRailStatus('error');
-          setRailError(res && !res.ok ? res.error : 'DESK_LOAD_FAILED');
-          return;
-        }
-        setRail(res);
-        setRailStatus('ready');
-      })
-      .catch(() => {
-        if (cancelledRef.current) return;
-        setRailStatus('error');
-        setRailError('DESK_LOAD_FAILED');
-      });
-
     return () => {
       cancelledRef.current = true;
       boardLoadCoordinator.invalidate();
@@ -563,6 +544,8 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
             rows={boardRows}
             railStatus={railStatus}
             rail={rail}
+            onRetryRail={() => void loadRail()}
+            railRefreshing={railRefreshing}
             nowMs={nowMs}
             activeFilter={stripFilter}
             onToggleFilter={(filter) =>
@@ -617,7 +600,9 @@ export default function MyDeskHero({ host }: { host: PropelHeroHost }) {
             <RightRail
               status={railStatus}
               rail={rail}
-              error={railError}
+              error={railStatus === 'error' ? 'DESK_LOAD_FAILED' : null}
+              onRetry={() => void loadRail()}
+              refreshing={railRefreshing}
               nowMs={nowMs}
               onRowAction={handleRowAction}
               onCompleteTask={completeTaskFromRail}

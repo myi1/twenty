@@ -41,8 +41,9 @@ import { DUR, EASE, SPACE } from '../_pulse/pulse-tokens';
 import { FONT_MONO, FONT_UI, P, Seal } from '../_pulse/pulse';
 
 import { bandOf } from './banding';
+import { railAvailability } from './railAvailability';
 import { SlaRing } from './SlaRing';
-import { formatClock, formatRelative, friendlyError } from './format';
+import { formatClock, formatRelative } from './format';
 import { rowForTask, rowForUnreadWa, rowForViewing } from './railRows';
 import { DESK_PHONE_BREAKPOINT_PX, DESK_STACK_BREAKPOINT_PX } from './responsive';
 import { SkeletonStack, Text } from './shared';
@@ -562,7 +563,8 @@ const viewingClock = (v: DeskViewingItem): string => formatClock(v.scheduledAt) 
 export const RightRail = ({
   status,
   rail,
-  error,
+  onRetry,
+  refreshing = false,
   nowMs,
   onRowAction,
   onCompleteTask,
@@ -574,6 +576,8 @@ export const RightRail = ({
   status: 'loading' | 'ready' | 'error';
   rail: DeskRailOk | null;
   error: string | null;
+  onRetry?: () => void;
+  refreshing?: boolean;
   /** The hero's re-ticked clock — drives the priority-lead SLA ring. */
   nowMs: number;
   /** The board's own action handler (dialer / drawer) — reused, never re-built.
@@ -596,7 +600,9 @@ export const RightRail = ({
 
   const order = arrangement.order;
   const folds = arrangement.folds;
-  const effectiveCollapsed = arrangement.collapsed && !forceExpanded;
+  // An outage must remain visible even with a saved collapsed arrangement.
+  const unavailable = status === 'error' || Object.values(rail?.sections ?? {}).some((section) => section.status === 'unavailable');
+  const effectiveCollapsed = arrangement.collapsed && !forceExpanded && !unavailable;
 
   const [hoverHeadId, setHoverHeadId] = useState<RailPanelId | null>(null);
   const [hoverItemId, setHoverItemId] = useState<string | null>(null);
@@ -629,10 +635,10 @@ export const RightRail = ({
 
   // ── Panel definitions (title / count / see-all / body) ───────────────────────
   const counts = {
-    tasks: rail ? rail.tasks.length : null,
-    viewings: rail ? rail.viewings.length : null,
-    unreadWa: rail ? rail.unreadWa.length : null,
-    priorityLeads: rail ? rail.priorityLeads.length : null,
+    tasks: status === 'ready' && rail && railAvailability(rail, 'tasks') !== 'unavailable' ? rail.tasks.length : null,
+    viewings: status === 'ready' && rail && railAvailability(rail, 'viewings') !== 'unavailable' ? rail.viewings.length : null,
+    unreadWa: status === 'ready' && rail && railAvailability(rail, 'unreadWa') !== 'unavailable' ? rail.unreadWa.length : null,
+    priorityLeads: status === 'ready' && rail && railAvailability(rail, 'priorityLeads') !== 'unavailable' ? rail.priorityLeads.length : null,
   };
   const priorityUrgent = (rail?.priorityLeads ?? []).some((r) => bandOf(r, nowMs) === 'slaAtRisk');
 
@@ -816,21 +822,21 @@ export const RightRail = ({
         </RailToggle>
         <Scroll>
           <Strip type="button" title="Show panels" aria-label="Show panels" onClick={toggleCollapse}>
-            <StripBadge title={`${counts.tasks ?? 0} tasks due today`}>
+            <StripBadge title={counts.tasks === null ? 'tasks due today: unavailable' : `${counts.tasks} tasks due today`}>
               <StripTask />
-              {counts.tasks !== null && <b>{counts.tasks}</b>}
+              <b>{counts.tasks ?? '—'}</b>
             </StripBadge>
-            <StripBadge title={`${counts.viewings ?? 0} viewings today`}>
+            <StripBadge title={counts.viewings === null ? 'viewings today: unavailable' : `${counts.viewings} viewings today`}>
               <StripView />
-              {counts.viewings !== null && <b>{counts.viewings}</b>}
+              <b>{counts.viewings ?? '—'}</b>
             </StripBadge>
-            <StripBadge title={`${counts.unreadWa ?? 0} unread WhatsApp`}>
+            <StripBadge title={counts.unreadWa === null ? 'unread WhatsApp: unavailable' : `${counts.unreadWa} unread WhatsApp`}>
               <StripWa />
-              {counts.unreadWa !== null && <b>{counts.unreadWa}</b>}
+              <b>{counts.unreadWa ?? '—'}</b>
             </StripBadge>
-            <StripBadge $urgent={priorityUrgent} title={`${counts.priorityLeads ?? 0} priority leads`}>
+            <StripBadge $urgent={priorityUrgent} title={counts.priorityLeads === null ? 'priority leads: unavailable' : `${counts.priorityLeads} priority leads`}>
               <StripLead />
-              {counts.priorityLeads !== null && <b>{counts.priorityLeads}</b>}
+              <b>{counts.priorityLeads ?? '—'}</b>
             </StripBadge>
           </Strip>
         </Scroll>
@@ -853,7 +859,9 @@ export const RightRail = ({
       <Scroll>
         {order.map((id) => {
           const panel = panels[id];
-          const folded = folds[id];
+          const unavailable = status === 'error' || (status === 'ready' && railAvailability(rail, id) === 'unavailable');
+          const unknown = status === 'ready' && railAvailability(rail, id) === 'unknown';
+          const folded = folds[id] && !unavailable;
           const drop = dropTarget && dropTarget.id === id ? (dropTarget.before ? 'before' : 'after') : null;
           const count = panel.count;
           return (
@@ -961,8 +969,9 @@ export const RightRail = ({
               <PanelBody $folded={folded}>
                 <PanelItems>
                   {status === 'loading' && <SkeletonStack rows={2} height={RAIL_ITEM_HEIGHT} />}
-                  {status === 'error' && <Text muted>{friendlyError(error ?? 'DESK_LOAD_FAILED')}</Text>}
-                  {status === 'ready' && count === 0 && <Text muted>{panel.emptyLabel}</Text>}
+                  {unavailable && <div role="status"><Text muted>{panel.title} unavailable.</Text><SeeAll type="button" aria-label={`Retry ${panel.title}`} disabled={refreshing || !onRetry} onClick={onRetry}>{refreshing ? 'Retrying…' : 'Retry'}</SeeAll></div>}
+                  {unknown && <Text muted>Availability not reported by this server.</Text>}
+                  {status === 'ready' && !unknown && !unavailable && count === 0 && <Text muted>{panel.emptyLabel}</Text>}
                   {status === 'ready' && count !== null && count > 0 && panel.body}
                 </PanelItems>
               </PanelBody>

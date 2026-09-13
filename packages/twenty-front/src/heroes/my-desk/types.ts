@@ -73,9 +73,8 @@ export type DeskBoardResponse =
   | DeskErrorResponse;
 
 // rail — tasks/viewings/unreadWa/priorityLeads, each capped at RAIL_CAP (10).
-// Each panel fails ALONE server-side (safeList) and degrades to `[]` — a panel
-// that had a lookup error is indistinguishable, on the wire, from a genuinely
-// empty one; only a `null`/`ok:false` response is a rail-wide failure.
+// Section health is additive. Legacy servers omit it: keep their rows usable,
+// but omission does not establish that an empty section was successfully read.
 // Every rail item now carries its OWN record target + contact reachability
 // (my-desk-route.ts's rail enrichment, shared/my-desk-rail.ts) so the hero's
 // mini-actions are live for every item WITHOUT a board-row join. `laneObject` /
@@ -113,6 +112,11 @@ export type DeskUnreadWaItem = {
   contactId: string | null;
 } & RailTarget;
 
+export type DeskRailSection = 'tasks' | 'viewings' | 'unreadWa' | 'priorityLeads';
+export type DeskRailSectionHealth =
+  | { status: 'available' }
+  | { status: 'unavailable'; error: 'RAIL_SECTION_UNAVAILABLE' };
+
 export type DeskRailResponse =
   | {
       ok: true;
@@ -120,6 +124,8 @@ export type DeskRailResponse =
       viewings: DeskViewingItem[];
       unreadWa: DeskUnreadWaItem[];
       priorityLeads: DeskRow[];
+      sections?: Partial<Record<DeskRailSection, DeskRailSectionHealth>>;
+      partial?: boolean;
     }
   | DeskErrorResponse;
 

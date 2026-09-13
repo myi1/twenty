@@ -21,6 +21,8 @@ const unread = (id: string, unreadCount: number): DeskUnreadWaItem => ({
 
 const rail = (unreadWa: DeskUnreadWaItem[]): DeskRailOk => ({
   ok: true,
+  partial: false,
+  sections: { tasks: { status: 'available' }, viewings: { status: 'available' }, unreadWa: { status: 'available' }, priorityLeads: { status: 'available' } },
   tasks: [],
   viewings: [],
   unreadWa,

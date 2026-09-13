@@ -106,3 +106,14 @@ it('stays inert (no button role, no crash) when no handler is supplied', () => {
   ).not.toBeInTheDocument();
   expect(screen.getByText('Amelia Rossi')).toBeVisible();
 });
+
+it('keeps failure and retry visible when the saved rail and panel were collapsed', () => {
+  renderRail({
+    forceExpanded: false,
+    status: 'error',
+    rail: null,
+    onRetry: jest.fn(),
+    arrangement: { ...arrangement, collapsed: true, folds: { ...arrangement.folds, tasks: true } },
+  });
+  expect(screen.getByRole('button', { name: "Retry Today's tasks" })).toBeVisible();
+});

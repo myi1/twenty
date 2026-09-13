@@ -182,3 +182,11 @@ it('emits first-page metadata only once across multiple pages', async () => {
     memberId: 'member-1',
   });
 });
+
+it('keeps healthy legacy arrays usable when a sibling array is malformed, without manufacturing verified health', async () => {
+  mockCall.mockResolvedValueOnce({ ok: true, tasks: null, viewings: [{ id: 'viewing-1' }], unreadWa: [], priorityLeads: [] } as never);
+  const { fetchRail } = await import('../deskApi');
+  const result = await fetchRail();
+  expect(result).toEqual({ ok: true, tasks: [], viewings: [{ id: 'viewing-1' }], unreadWa: [], priorityLeads: [], partial: true,
+    sections: { tasks: { status: 'unavailable', error: 'RAIL_SECTION_UNAVAILABLE' } } });
+});

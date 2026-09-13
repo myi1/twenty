@@ -19,6 +19,7 @@ import { DUR, EASE } from '../_pulse/pulse-tokens';
 import { FONT_MONO, FONT_UI, P } from '../_pulse/pulse';
 
 import { bandOf } from './banding';
+import { railAvailability } from './railAvailability';
 import { formatClock } from './format';
 import { StyledTodayStripGrid } from './responsive';
 import { SkeletonBar } from './shared';
@@ -115,6 +116,8 @@ export const TodayStrip = ({
   rows,
   railStatus,
   rail,
+  onRetryRail,
+  railRefreshing = false,
   nowMs,
   activeFilter,
   onToggleFilter,
@@ -123,6 +126,8 @@ export const TodayStrip = ({
   rows: DeskRow[];
   railStatus: 'loading' | 'ready' | 'error';
   rail: DeskRailOk | null;
+  onRetryRail?: () => void;
+  railRefreshing?: boolean;
   nowMs: number;
   activeFilter: StripFilter | null;
   onToggleFilter: (filter: StripFilter) => void;
@@ -136,6 +141,7 @@ export const TodayStrip = ({
   const nextViewingClock =
     rail && rail.viewings.length > 0 ? formatClock(rail.viewings[0]?.scheduledAt ?? null) : null;
 
+  const sectionStatus = (section: 'tasks' | 'viewings' | 'unreadWa') => railStatus === 'ready' && railAvailability(rail, section) === 'unavailable' ? 'error' : railStatus;
   const tiles: TileSpec[] = [
     {
       key: 'slaAtRisk',
@@ -151,14 +157,14 @@ export const TodayStrip = ({
     {
       key: 'viewingToday',
       label: STRIP_FILTER_LABEL.viewingToday,
-      status: railStatus,
+      status: sectionStatus('viewings'),
       figure: rail ? rail.viewings.length : null,
       hint: nextViewingClock ? `next at ${nextViewingClock}` : 'none scheduled',
     },
     {
       key: 'unreadWa',
       label: STRIP_FILTER_LABEL.unreadWa,
-      status: railStatus,
+      status: sectionStatus('unreadWa'),
       // COUNT CONVERSATIONS, not messages. This summed `unreadCount` while the hint
       // said "conversations", so a desk with two chats holding 1 and 3 unread read
       // "4 conversations waiting on a reply" — and contradicted the rail beside it,
@@ -174,7 +180,7 @@ export const TodayStrip = ({
     {
       key: 'taskDueToday',
       label: STRIP_FILTER_LABEL.taskDueToday,
-      status: railStatus,
+      status: sectionStatus('tasks'),
       figure: rail ? rail.tasks.length : null,
       hint: rail && rail.tasks.length > 0 ? "on today's list" : 'nothing due today',
     },
@@ -184,6 +190,9 @@ export const TodayStrip = ({
     <StyledTodayStripGrid>
       {tiles.map((tile) => {
         const active = activeFilter === tile.key;
+        const retry = tile.status === 'error' && tile.key !== 'slaAtRisk' && !!onRetryRail;
+        const section = tile.key === 'taskDueToday' ? 'tasks' : tile.key === 'viewingToday' ? 'viewings' : 'unreadWa';
+        const legacy = tile.key !== 'slaAtRisk' && railStatus === 'ready' && railAvailability(rail, section) === 'unknown';
         const showPulse = Boolean(tile.urgent) && tile.status === 'ready' && (tile.figure ?? 0) > 0;
         return (
           <TileButton
@@ -191,9 +200,9 @@ export const TodayStrip = ({
             type="button"
             $active={active}
             $urgent={Boolean(tile.urgent)}
-            disabled={tile.status !== 'ready'}
+            disabled={retry ? railRefreshing : tile.status !== 'ready'}
             aria-pressed={active}
-            onClick={() => onToggleFilter(tile.key)}
+            onClick={() => retry ? onRetryRail?.() : onToggleFilter(tile.key)}
           >
             <div
               style={{
@@ -245,10 +254,10 @@ export const TodayStrip = ({
               }}
             >
               {tile.status === 'error'
-                ? "Couldn't load"
+                ? retry ? 'Unavailable · Retry' : "Couldn't load"
                 : tile.status === 'loading'
                   ? LINE_PLACEHOLDER
-                  : tile.hint}
+                  : legacy && tile.figure === 0 ? 'Availability not reported by this server' : tile.hint}
               {tile.status === 'ready' ? <Arrow className="md-strip-arrow">→</Arrow> : null}
             </div>
           </TileButton>
