@@ -19,7 +19,11 @@ type RailState = {
 // getter also rejects a session change while a request is in flight, before
 // another render has observed that change.
 export const useRail = (scope: string, getScope: () => string) => {
+  // The request sequence coordinates async completions and is not displayed state.
+  // oxlint-disable-next-line twenty/no-state-useref
   const sequence = useRef(0);
+  // The committed scope getter rejects stale completions without triggering renders.
+  // oxlint-disable-next-line twenty/no-state-useref
   const currentScope = useRef(getScope);
   // A suspended/abandoned render must never steal ownership from the committed scope.
   useLayoutEffect(() => {

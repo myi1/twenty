@@ -117,3 +117,16 @@ it('keeps failure and retry visible when the saved rail and panel were collapsed
   });
   expect(screen.getByRole('button', { name: "Retry Today's tasks" })).toBeVisible();
 });
+
+it('shows unknown rather than verified zero counts for a collapsed legacy response', () => {
+  renderRail({
+    forceExpanded: false,
+    rail: { ...rail, priorityLeads: [] },
+    arrangement: { ...arrangement, collapsed: true },
+  });
+  expect(screen.getByTitle('tasks due today: availability unknown')).toHaveTextContent('—');
+  expect(screen.getByTitle('viewings today: availability unknown')).toHaveTextContent('—');
+  expect(screen.getByTitle('unread WhatsApp: availability unknown')).toHaveTextContent('—');
+  expect(screen.getByTitle('priority leads: availability unknown')).toHaveTextContent('—');
+  expect(screen.queryByTitle(/^0 .*$/)).not.toBeInTheDocument();
+});

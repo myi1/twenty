@@ -1,9 +1,9 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { StrictMode, Suspense, startTransition, useState } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { callPropelRoute } from '@/propel/lib/callPropelRoute';
 import type { PropelHeroHost } from '@/propel/runtime/heroHost';
-import MyDeskHero from '../index';
+import MyDeskHero from '~/heroes/my-desk';
 
 jest.mock('@/propel/lib/callPropelRoute');
 // Host chrome is outside this hero's ownership. All desk components and the
@@ -284,7 +284,7 @@ it('allows the committed request to settle when another scope render suspends an
   const pending = deferred();
   responses.push(pending.promise);
   const never = new Promise(() => undefined);
-  const Suspend = ({ changed }: { changed: boolean }) => {
+  const SuspendEffect = ({ changed }: { changed: boolean }) => {
     if (changed) throw never;
     return null;
   };
@@ -302,7 +302,7 @@ it('allows the committed request to settle when another scope render suspends an
               ? 'http://speculative.local'
               : host.serverBaseUrl,
           })}
-          <Suspend changed={changed} />
+          <SuspendEffect changed={changed} />
         </Suspense>
       </>
     );

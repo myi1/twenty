@@ -635,10 +635,16 @@ export const RightRail = ({
 
   // ── Panel definitions (title / count / see-all / body) ───────────────────────
   const counts = {
-    tasks: status === 'ready' && rail && railAvailability(rail, 'tasks') !== 'unavailable' ? rail.tasks.length : null,
-    viewings: status === 'ready' && rail && railAvailability(rail, 'viewings') !== 'unavailable' ? rail.viewings.length : null,
-    unreadWa: status === 'ready' && rail && railAvailability(rail, 'unreadWa') !== 'unavailable' ? rail.unreadWa.length : null,
-    priorityLeads: status === 'ready' && rail && railAvailability(rail, 'priorityLeads') !== 'unavailable' ? rail.priorityLeads.length : null,
+    tasks: status === 'ready' && rail && railAvailability(rail, 'tasks') === 'available' ? rail.tasks.length : null,
+    viewings: status === 'ready' && rail && railAvailability(rail, 'viewings') === 'available' ? rail.viewings.length : null,
+    unreadWa: status === 'ready' && rail && railAvailability(rail, 'unreadWa') === 'available' ? rail.unreadWa.length : null,
+    priorityLeads: status === 'ready' && rail && railAvailability(rail, 'priorityLeads') === 'available' ? rail.priorityLeads.length : null,
+  };
+  const itemCounts = {
+    tasks: rail?.tasks.length ?? 0,
+    viewings: rail?.viewings.length ?? 0,
+    unreadWa: rail?.unreadWa.length ?? 0,
+    priorityLeads: rail?.priorityLeads.length ?? 0,
   };
   const priorityUrgent = (rail?.priorityLeads ?? []).some((r) => bandOf(r, nowMs) === 'slaAtRisk');
 
@@ -822,19 +828,19 @@ export const RightRail = ({
         </RailToggle>
         <Scroll>
           <Strip type="button" title="Show panels" aria-label="Show panels" onClick={toggleCollapse}>
-            <StripBadge title={counts.tasks === null ? 'tasks due today: unavailable' : `${counts.tasks} tasks due today`}>
+            <StripBadge title={railAvailability(rail, 'tasks') === 'unknown' ? 'tasks due today: availability unknown' : counts.tasks === null ? 'tasks due today: unavailable' : `${counts.tasks} tasks due today`}>
               <StripTask />
               <b>{counts.tasks ?? '—'}</b>
             </StripBadge>
-            <StripBadge title={counts.viewings === null ? 'viewings today: unavailable' : `${counts.viewings} viewings today`}>
+            <StripBadge title={railAvailability(rail, 'viewings') === 'unknown' ? 'viewings today: availability unknown' : counts.viewings === null ? 'viewings today: unavailable' : `${counts.viewings} viewings today`}>
               <StripView />
               <b>{counts.viewings ?? '—'}</b>
             </StripBadge>
-            <StripBadge title={counts.unreadWa === null ? 'unread WhatsApp: unavailable' : `${counts.unreadWa} unread WhatsApp`}>
+            <StripBadge title={railAvailability(rail, 'unreadWa') === 'unknown' ? 'unread WhatsApp: availability unknown' : counts.unreadWa === null ? 'unread WhatsApp: unavailable' : `${counts.unreadWa} unread WhatsApp`}>
               <StripWa />
               <b>{counts.unreadWa ?? '—'}</b>
             </StripBadge>
-            <StripBadge $urgent={priorityUrgent} title={counts.priorityLeads === null ? 'priority leads: unavailable' : `${counts.priorityLeads} priority leads`}>
+            <StripBadge $urgent={priorityUrgent} title={railAvailability(rail, 'priorityLeads') === 'unknown' ? 'priority leads: availability unknown' : counts.priorityLeads === null ? 'priority leads: unavailable' : `${counts.priorityLeads} priority leads`}>
               <StripLead />
               <b>{counts.priorityLeads ?? '—'}</b>
             </StripBadge>
@@ -972,7 +978,7 @@ export const RightRail = ({
                   {unavailable && <div role="status"><Text muted>{panel.title} unavailable.</Text><SeeAll type="button" aria-label={`Retry ${panel.title}`} disabled={refreshing || !onRetry} onClick={onRetry}>{refreshing ? 'Retrying…' : 'Retry'}</SeeAll></div>}
                   {unknown && <Text muted>Availability not reported by this server.</Text>}
                   {status === 'ready' && !unknown && !unavailable && count === 0 && <Text muted>{panel.emptyLabel}</Text>}
-                  {status === 'ready' && count !== null && count > 0 && panel.body}
+                  {status === 'ready' && !unavailable && itemCounts[id] > 0 && panel.body}
                 </PanelItems>
               </PanelBody>
             </Panel>
