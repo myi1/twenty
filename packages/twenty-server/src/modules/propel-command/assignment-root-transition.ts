@@ -58,7 +58,9 @@ export const planAssignmentTransition = (
 ): AssignmentTransition => {
   if (!canonicalCounter(state.assignmentVersion) || !canonicalCounter(state.lastFence) ||
       !canonicalId(state.personId) || (state.assignedAgentId !== null && !canonicalId(state.assignedAgentId)) ||
-      (state.assignedAgentId === null ? state.assignedAt !== null : !clockIsValid(state.assignedAt)) ||
+      (state.assignedAgentId === null
+        ? state.assignedAt !== null || state.slaBreachedAt !== null || state.slaWarnedAt !== null
+        : !clockIsValid(state.assignedAt)) ||
       (state.slaBreachedAt !== null && !clockIsValid(state.slaBreachedAt)) ||
       (state.slaWarnedAt !== null && !clockIsValid(state.slaWarnedAt))) {
     throw new AssignmentTransitionError('DEPENDENCY_UNAVAILABLE', 'Stored assignment authority is malformed');

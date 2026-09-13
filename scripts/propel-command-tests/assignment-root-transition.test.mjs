@@ -69,3 +69,28 @@ test('missing or malformed committed clocks are dependency failures, never recon
     fails(() => planAssignmentTransition({ ...state(), ...patch }, { ...request(), nextOwnerId: agentA }, clock), 'DEPENDENCY_UNAVAILABLE');
   }
 });
+
+test('pooled root with only slaBreachedAt set is a dependency failure', () => {
+  fails(() => planAssignmentTransition({ ...state(), assignedAgentId: null, assignedAt: null, slaWarnedAt: null }, { ...request(), nextOwnerId: null }, clock), 'DEPENDENCY_UNAVAILABLE');
+});
+
+test('pooled root with only slaWarnedAt set is a dependency failure', () => {
+  fails(() => planAssignmentTransition({ ...state(), assignedAgentId: null, assignedAt: null, slaBreachedAt: null }, { ...request(), nextOwnerId: null }, clock), 'DEPENDENCY_UNAVAILABLE');
+});
+
+test('pooled root with both SLA clocks set is a dependency failure', () => {
+  fails(() => planAssignmentTransition({ ...state(), assignedAgentId: null, assignedAt: null }, { ...request(), nextOwnerId: null }, clock), 'DEPENDENCY_UNAVAILABLE');
+});
+
+test('valid all-null pool no-op retains version, advances fence and emits no mutation', () => {
+  const pooled = { ...state(), assignedAgentId: null, assignedAt: null, slaBreachedAt: null, slaWarnedAt: null };
+  const original = structuredClone(pooled);
+  const result = planAssignmentTransition(pooled, { ...request(), nextOwnerId: null }, clock);
+
+  assert.equal(result.changed, false);
+  assert.equal(result.assignmentVersion, '7');
+  assert.equal(result.lastFence, '5');
+  assert.equal(result.eventType, null);
+  assert.deepEqual(result.personPatch, {});
+  assert.deepEqual(pooled, original);
+});
