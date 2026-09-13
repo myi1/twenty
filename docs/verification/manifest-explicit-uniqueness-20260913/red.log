@@ -1,0 +1,148 @@
+✖ unchanged required UUID with declared unique index needs no metadata update (67.141083ms)
+✖ repeated construction keeps the declared index identifier and member without an automatic index (0.292833ms)
+✖ explicit false cannot contradict a declared single-field unique index (0.152291ms)
+✖ top-level fields receive the same index-derived uniqueness (0.129417ms)
+✔ non-unique single-field index follows live cache uniqueness semantics (0.354333ms)
+✔ multi-field unique index follows live cache uniqueness semantics (0.128292ms)
+✔ unique composite subfield index follows live cache uniqueness semantics (4.977ms)
+✖ unrelated field beside a unique scalar follows live cache uniqueness semantics (0.24475ms)
+✔ field-level explicit true still creates its automatic unique index (1.781208ms)
+✔ field-level true and a distinct non-unique declared index retain both intentions (0.245083ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 5
+ℹ fail 5
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 85.305417
+
+✖ failing tests:
+
+test at docs/verification/manifest-explicit-uniqueness-20260913/target-builder.test.cjs:54:1
+✖ unchanged required UUID with declared unique index needs no metadata update (67.141083ms)
+  AssertionError [ERR_ASSERTION]: Unexpected existing-field update: {"isUnique":false}
+  + actual - expected
+
+  + {
+  +   isUnique: false
+  + }
+  - undefined
+
+      at assertNoFalseUpdate (/Users/yahyaismail/dev/_wt/manifest-explicit-uniqueness-20260913/docs/verification/manifest-explicit-uniqueness-20260913/target-builder.test.cjs:50:10)
+      at TestContext.<anonymous> (/Users/yahyaismail/dev/_wt/manifest-explicit-uniqueness-20260913/docs/verification/manifest-explicit-uniqueness-20260913/target-builder.test.cjs:56:3)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.start (node:internal/test_runner/test:1096:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [Object],
+    expected: undefined,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at docs/verification/manifest-explicit-uniqueness-20260913/target-builder.test.cjs:60:1
+✖ repeated construction keeps the declared index identifier and member without an automatic index (0.292833ms)
+  AssertionError [ERR_ASSERTION]: Unexpected existing-field update: {"isUnique":false}
+  + actual - expected
+
+  + {
+  +   isUnique: false
+  + }
+  - undefined
+
+      at assertNoFalseUpdate (/Users/yahyaismail/dev/_wt/manifest-explicit-uniqueness-20260913/docs/verification/manifest-explicit-uniqueness-20260913/target-builder.test.cjs:50:10)
+      at TestContext.<anonymous> (/Users/yahyaismail/dev/_wt/manifest-explicit-uniqueness-20260913/docs/verification/manifest-explicit-uniqueness-20260913/target-builder.test.cjs:65:5)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [Object],
+    expected: undefined,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at docs/verification/manifest-explicit-uniqueness-20260913/target-builder.test.cjs:81:1
+✖ explicit false cannot contradict a declared single-field unique index (0.152291ms)
+  AssertionError [ERR_ASSERTION]: Unexpected existing-field update: {"isUnique":false}
+  + actual - expected
+
+  + {
+  +   isUnique: false
+  + }
+  - undefined
+
+      at assertNoFalseUpdate (/Users/yahyaismail/dev/_wt/manifest-explicit-uniqueness-20260913/docs/verification/manifest-explicit-uniqueness-20260913/target-builder.test.cjs:50:10)
+      at TestContext.<anonymous> (/Users/yahyaismail/dev/_wt/manifest-explicit-uniqueness-20260913/docs/verification/manifest-explicit-uniqueness-20260913/target-builder.test.cjs:83:3)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [Object],
+    expected: undefined,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at docs/verification/manifest-explicit-uniqueness-20260913/target-builder.test.cjs:87:1
+✖ top-level fields receive the same index-derived uniqueness (0.129417ms)
+  AssertionError [ERR_ASSERTION]: Unexpected existing-field update: {"isUnique":false}
+  + actual - expected
+
+  + {
+  +   isUnique: false
+  + }
+  - undefined
+
+      at assertNoFalseUpdate (/Users/yahyaismail/dev/_wt/manifest-explicit-uniqueness-20260913/docs/verification/manifest-explicit-uniqueness-20260913/target-builder.test.cjs:50:10)
+      at TestContext.<anonymous> (/Users/yahyaismail/dev/_wt/manifest-explicit-uniqueness-20260913/docs/verification/manifest-explicit-uniqueness-20260913/target-builder.test.cjs:91:3)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [Object],
+    expected: undefined,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at docs/verification/manifest-explicit-uniqueness-20260913/target-builder.test.cjs:107:3
+✖ unrelated field beside a unique scalar follows live cache uniqueness semantics (0.24475ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+    [
+  -   true,
+      false,
+  +   false
+    ]
+
+      at TestContext.<anonymous> (/Users/yahyaismail/dev/_wt/manifest-explicit-uniqueness-20260913/docs/verification/manifest-explicit-uniqueness-20260913/target-builder.test.cjs:110:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [Array],
+    expected: [Array],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

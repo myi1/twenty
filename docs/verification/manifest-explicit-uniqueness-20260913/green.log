@@ -1,0 +1,19 @@
+✔ unchanged required UUID with declared unique index needs no metadata update (74.850792ms)
+✔ repeated construction keeps the declared index identifier and member without an automatic index (0.376ms)
+✔ explicit false cannot contradict a declared single-field unique index (0.142083ms)
+✔ top-level fields receive the same index-derived uniqueness (0.130541ms)
+✔ non-unique single-field index follows live cache uniqueness semantics (0.136458ms)
+✔ multi-field unique index follows live cache uniqueness semantics (0.121083ms)
+✔ unique composite subfield index follows live cache uniqueness semantics (5.488542ms)
+✔ unrelated field beside a unique scalar follows live cache uniqueness semantics (0.150375ms)
+✔ field-level explicit true still creates its automatic unique index (1.693625ms)
+✔ field-level true and a distinct non-unique declared index retain both intentions (0.198708ms)
+✔ characterizes the pre-existing redundant true flag plus identical declared index conflict (0.128875ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 86.152709
