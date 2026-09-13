@@ -63,6 +63,8 @@ export interface A2ADraft {
 }
 
 export type SendResult = { ok: boolean; message: string };
+export type A2ADispatchState = 'never' | 'pending' | 'unknown' | 'activated';
+export type A2ALookupState = 'pending' | 'clear' | 'blocked' | 'unavailable';
 
 export interface A2AStudioState {
   step: A2AStep;
@@ -94,6 +96,10 @@ export interface A2AStudioState {
   creating: boolean;
   finalizing: boolean;
   sending: boolean;
+  dispatchState: A2ADispatchState;
+  lookupState: A2ALookupState;
+  canCreateDraft: boolean;
+  canSend: boolean;
 
   setPrefill: (patch: Partial<A2APrefill>) => void;
   createDraft: () => Promise<void>;
@@ -109,6 +115,79 @@ export interface A2AStudioState {
 
 const POLL_INTERVAL_MS = 6000;
 
+type AttemptGuard = {
+  draft: A2ADraft;
+  state: Exclude<A2ADispatchState, 'never'>;
+};
+
+// Page-lifetime write-suppression only. The trusted member id, opportunity and
+// variant prevent one user's/document's attempt from blocking another. This map
+// survives React unmount/remount in the same loaded page, but deliberately is not
+// a permission/cache authority and does not claim reload, crash, or cross-tab
+// durability. Durable reconciliation belongs to the held J3/J4 authority work.
+const attemptGuards = new Map<string, AttemptGuard>();
+
+const scopeKeyFor = (
+  memberId: string | null,
+  opportunityId: string | null,
+  variant: A2AVariant,
+): string | null =>
+  memberId !== null &&
+  memberId !== '' &&
+  opportunityId !== null &&
+  opportunityId !== ''
+    ? JSON.stringify([memberId, opportunityId, variant])
+    : null;
+
+const isPublicHttpUrl = (value: unknown): value is string => {
+  if (typeof value !== 'string' || value.trim() === '') return false;
+  try {
+    const url = new URL(value);
+    return (
+      (url.protocol === 'http:' || url.protocol === 'https:') &&
+      url.username === '' &&
+      url.password === ''
+    );
+  } catch {
+    return false;
+  }
+};
+
+const isConfirmedActivation = (
+  value: SendResponse | null,
+): value is SendResponse & {
+  ok: true;
+  status: 'OUT_FOR_SIGNATURE';
+  distribution: NonNullable<SendResponse['distribution']>;
+  signingUrlVerified: boolean;
+} =>
+  value !== null &&
+  value.error === undefined &&
+  value.ok === true &&
+  value.status === 'OUT_FOR_SIGNATURE' &&
+  Array.isArray(value.distribution) &&
+  value.distribution.every(
+    (leg) =>
+      (leg.channel === 'whatsapp' ||
+        leg.channel === 'email' ||
+        leg.channel === 'copy-link') &&
+      typeof leg.ok === 'boolean',
+  ) &&
+  (value.primaryChannel === 'whatsapp' ||
+    value.primaryChannel === 'email' ||
+    value.primaryChannel === 'copy-link') &&
+  typeof value.signingUrlVerified === 'boolean' &&
+  (value.counterpartySigningUrl === null ||
+    value.counterpartySigningUrl === undefined ||
+    typeof value.counterpartySigningUrl === 'string');
+
+const ACTIVATION_RECONCILED_MESSAGE =
+  'Document activation is confirmed. Recipient delivery is still separate; review the agreement before contacting the other broker.';
+const SEND_UNKNOWN_MESSAGE =
+  'The send result is unknown. Check document status before leaving or taking another action.';
+const SEND_PENDING_MESSAGE =
+  'The send request is still pending. Wait or check document status; another send is blocked.';
+
 const idToString = (v: unknown): string =>
   typeof v === 'number' || typeof v === 'string' ? String(v) : '';
 
@@ -116,7 +195,9 @@ export const useA2AStudio = (
   opportunityId: string | null,
   variant: A2AVariant,
   seedPrefill: A2APrefill,
+  memberId: string | null = null,
 ): A2AStudioState => {
+  const scopeKey = scopeKeyFor(memberId, opportunityId, variant);
   const [step, setStep] = useState<A2AStep>('prepare');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [missing, setMissing] = useState<string[] | null>(null);
@@ -139,17 +220,32 @@ export const useA2AStudio = (
   const [creating, setCreating] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [sending, setSending] = useState(false);
+  const [dispatchState, setDispatchState] = useState<A2ADispatchState>('never');
+  const [lookupState, setLookupState] = useState<A2ALookupState>('pending');
 
   // A single stable mutable holder for the values the stable callbacks + the
   // unmount cleanup need to read at call-time (the live draft + whether we've
   // sent). Lazily initialized via useState so the object identity is stable
   // across renders without `useRef` (Twenty's no-state-useref rule reserves
   // useRef for DOM element refs only). We keep it in sync each render.
-  const [live] = useState<{ draft: A2ADraft | null; sent: boolean }>(() => ({
+  const [live] = useState<{
+    draft: A2ADraft | null;
+    sent: boolean;
+    scopeKey: string | null;
+  }>(() => ({
     draft: null,
     sent: false,
+    scopeKey,
   }));
-  live.draft = draft;
+  if (live.scopeKey === scopeKey) live.draft = draft;
+
+  const isCurrent = useCallback(
+    (expectedScope: string | null, expectedDocumentId?: string) =>
+      live.scopeKey === expectedScope &&
+      (expectedDocumentId === undefined ||
+        live.draft?.a2aDocumentId === expectedDocumentId),
+    [live],
+  );
 
   const setPrefill = useCallback((patch: Partial<A2APrefill>) => {
     setPrefillState((cur) => ({ ...cur, ...patch }));
@@ -160,6 +256,14 @@ export const useA2AStudio = (
       setStep('error');
       setErrorMessage(
         'No opportunity in context — open A2A Studio from a deal.',
+      );
+      return;
+    }
+    if (scopeKey === null || lookupState !== 'clear') {
+      setErrorMessage(
+        lookupState === 'unavailable'
+          ? 'We could not check this deal for an existing agreement. Try the status check before creating one.'
+          : 'Wait until the existing agreement check finishes before creating a draft.',
       );
       return;
     }
@@ -210,6 +314,8 @@ export const useA2AStudio = (
         isRera: res.isRera === true,
       };
       setDraft(next);
+      live.draft = next;
+      setDispatchState('never');
       setStatus('DRAFT');
       if (res.prefill !== undefined) {
         setPrefillState((cur) => ({ ...cur, ...res.prefill }));
@@ -245,6 +351,22 @@ export const useA2AStudio = (
           );
           return;
         }
+        if (fin.baked === false && fin.reason === 'signs-in-embed') {
+          if (next.ourRecipientToken === null) {
+            setStep('error');
+            setErrorMessage(
+              'The signing session is missing — the draft was created but cannot be signed here.',
+            );
+            return;
+          }
+          setStep('signEmbed');
+          return;
+        }
+        if (fin.baked !== true) {
+          setStep('error');
+          setErrorMessage('Could not confirm the brokerage signature.');
+          return;
+        }
         setStep('send');
       }
     } catch {
@@ -253,7 +375,15 @@ export const useA2AStudio = (
     } finally {
       setCreating(false);
     }
-  }, [opportunityId, variant, prefill, counterparty]);
+  }, [
+    opportunityId,
+    scopeKey,
+    lookupState,
+    variant,
+    prefill,
+    counterparty,
+    live,
+  ]);
 
   const onEmbedCompleted = useCallback(() => {
     // Our recipient finished signing in the embed → move to send.
@@ -263,15 +393,29 @@ export const useA2AStudio = (
   const refreshStatus = useCallback(async () => {
     const d = live.draft;
     if (d === null) return;
+    const expectedScope = live.scopeKey;
     const res = await callPropelRoute<StatusResponse>('/a2a/status', {
       a2aDocumentId: d.a2aDocumentId,
     });
+    if (!isCurrent(expectedScope, d.a2aDocumentId)) return;
     if (res === null || res.error !== undefined) return;
     if (res.status !== undefined) setStatus(res.status);
     if (res.signedPdfUrl !== undefined) setSignedPdfUrl(res.signedPdfUrl);
     if (res.auditUrl !== undefined) setAuditUrl(res.auditUrl);
+    if (res.status === 'OUT_FOR_SIGNATURE' || res.status === 'SIGNED') {
+      if (expectedScope !== null) {
+        attemptGuards.set(expectedScope, { draft: d, state: 'activated' });
+      }
+      live.sent = true;
+      setDispatchState('activated');
+      setSendMessage(ACTIVATION_RECONCILED_MESSAGE);
+      setErrorMessage(null);
+      if (isPublicHttpUrl(res.counterpartySigningUrl)) {
+        setShareUrl(res.counterpartySigningUrl);
+      }
+    }
     if (res.status === 'SIGNED') setStep('done');
-  }, [live]);
+  }, [isCurrent, live]);
 
   const send = useCallback(
     async (channels: SendChannel[]): Promise<SendResult> => {
@@ -279,6 +423,34 @@ export const useA2AStudio = (
       if (d === null) {
         return { ok: false, message: 'There is no draft to send yet.' };
       }
+      const expectedScope = live.scopeKey;
+      if (expectedScope === null) {
+        return {
+          ok: false,
+          message:
+            'Your signed-in workspace identity is unavailable. No send was attempted.',
+        };
+      }
+      const guarded = attemptGuards.get(expectedScope);
+      if (
+        guarded !== undefined &&
+        guarded.draft.a2aDocumentId === d.a2aDocumentId
+      ) {
+        const message =
+          guarded.state === 'pending'
+            ? SEND_PENDING_MESSAGE
+            : guarded.state === 'unknown'
+              ? SEND_UNKNOWN_MESSAGE
+              : ACTIVATION_RECONCILED_MESSAGE;
+        setSendMessage(message);
+        return { ok: false, message };
+      }
+
+      // Install the page-lifetime write guard before yielding to the route. A
+      // second click in this same tick therefore cannot dispatch again.
+      attemptGuards.set(expectedScope, { draft: d, state: 'pending' });
+      setDispatchState('pending');
+      setSendMessage(SEND_PENDING_MESSAGE);
       setSending(true);
       try {
         const body: SendRequest = {
@@ -300,8 +472,32 @@ export const useA2AStudio = (
             : {}),
         };
         const res = await callPropelRoute<SendResponse>('/a2a/send', body);
-        if (res === null || res.error !== undefined || res.ok === false) {
-          const message = res?.error ?? 'Could not send to the counterparty.';
+        if (!isCurrent(expectedScope, d.a2aDocumentId))
+          return { ok: false, message: SEND_UNKNOWN_MESSAGE };
+        if (!isConfirmedActivation(res)) {
+          const latestGuard = attemptGuards.get(expectedScope);
+          if (
+            latestGuard?.draft.a2aDocumentId === d.a2aDocumentId &&
+            latestGuard.state === 'activated'
+          ) {
+            return { ok: true, message: ACTIVATION_RECONCILED_MESSAGE };
+          }
+          if (res?.attempted === false) {
+            attemptGuards.delete(expectedScope);
+            setDispatchState('never');
+            const message = res.error ?? 'The send was not attempted.';
+            setErrorMessage(message);
+            setSendMessage(message);
+            return { ok: false, message };
+          }
+          attemptGuards.set(expectedScope, { draft: d, state: 'unknown' });
+          setDispatchState('unknown');
+          setSendMessage(SEND_UNKNOWN_MESSAGE);
+          setErrorMessage(SEND_UNKNOWN_MESSAGE);
+          return { ok: false, message: SEND_UNKNOWN_MESSAGE };
+        }
+        if (res.error !== undefined) {
+          const message = res.error;
           setErrorMessage(message);
           return { ok: false, message };
         }
@@ -309,17 +505,20 @@ export const useA2AStudio = (
         // reached the counterparty is a separate question — answered by the
         // service's per-leg report, never by `ok`.
         live.sent = true;
-        setStatus(res.status ?? 'OUT_FOR_SIGNATURE');
+        attemptGuards.set(expectedScope, { draft: d, state: 'activated' });
+        setDispatchState('activated');
+        setStatus('OUT_FOR_SIGNATURE');
         // The ONLY link we will ever hand the agent: the one this send resolved
         // off the live document. If the service could not resolve one, we hold
         // nothing rather than offering the dead pre-bake link (task 49).
-        const returnedUrl = res.counterpartySigningUrl ?? null;
+        const returnedUrl = isPublicHttpUrl(res.counterpartySigningUrl)
+          ? res.counterpartySigningUrl
+          : null;
         if (returnedUrl !== null) setShareUrl(returnedUrl);
         const outcome = summariseDistribution(res.distribution);
         const finalOutcome: SendOutcome = {
           ...outcome,
-          linkReady:
-            outcome.linkReady || returnedUrl !== null || shareUrl !== null,
+          linkReady: outcome.linkReady || returnedUrl !== null,
         };
         const message = describeSendOutcome(
           finalOutcome,
@@ -330,10 +529,10 @@ export const useA2AStudio = (
         setErrorMessage(null);
         return { ok: true, message };
       } finally {
-        setSending(false);
+        if (isCurrent(expectedScope, d.a2aDocumentId)) setSending(false);
       }
     },
-    [counterparty, live, shareUrl],
+    [counterparty, isCurrent, live],
   );
 
   const searchPeople = useCallback(
@@ -363,6 +562,25 @@ export const useA2AStudio = (
   );
 
   const reset = useCallback(() => {
+    const d = live.draft;
+    const guarded =
+      live.scopeKey === null ? undefined : attemptGuards.get(live.scopeKey);
+    if (
+      d !== null &&
+      guarded !== undefined &&
+      guarded.draft.a2aDocumentId === d.a2aDocumentId
+    ) {
+      const message =
+        guarded.state === 'pending'
+          ? SEND_PENDING_MESSAGE
+          : guarded.state === 'unknown'
+            ? SEND_UNKNOWN_MESSAGE
+            : ACTIVATION_RECONCILED_MESSAGE;
+      setSendMessage(message);
+      setErrorMessage(message);
+      setStep('send');
+      return;
+    }
     live.sent = false;
     live.draft = null;
     setStep('prepare');
@@ -386,15 +604,32 @@ export const useA2AStudio = (
   // or signed is RESUMED; an older unfinished draft is only reported, because its
   // Documenso draft may be long gone and silently continuing it would be a guess.
   useEffect(() => {
-    if (opportunityId === null || opportunityId === '') return;
+    live.scopeKey = scopeKey;
+    live.draft = null;
+    live.sent = false;
+    setDraft(null);
+    setStatus(null);
+    setStep('prepare');
+    setDispatchState('never');
+    setExistingDraftNotice(null);
+    setErrorMessage(null);
+    setSendMessage(null);
+    setShareUrl(null);
+    if (opportunityId === null || opportunityId === '' || scopeKey === null) {
+      setLookupState('unavailable');
+      setResuming(false);
+      return;
+    }
     let cancelled = false;
+    setLookupState('pending');
     setResuming(true);
     void (async () => {
       const res = await callPropelRoute<DealStateResponse>('/a2a/deal-state', {
         opportunityId,
         variant,
       });
-      if (cancelled) return;
+      if (cancelled || live.scopeKey !== scopeKey) return;
+      const guarded = attemptGuards.get(scopeKey);
       if (res !== null && res.error === undefined) {
         // Anything the agent (or the launcher) already typed wins over the deal.
         if (res.prefill !== undefined) {
@@ -415,17 +650,62 @@ export const useA2AStudio = (
           // cleanup discards an UN-SENT draft, so without this an agent who opens
           // the deal and navigates away would void a live agreement.
           live.sent = plan.markSent;
+          attemptGuards.set(scopeKey, { draft: resumed, state: 'activated' });
+          setDispatchState('activated');
+          setLookupState('blocked');
           setStatus(plan.status);
           setShareUrl(plan.shareUrl);
           setSignedPdfUrl(plan.signedPdfUrl);
           setAuditUrl(plan.auditUrl);
           setStep(plan.step);
         } else if (plan.kind === 'notice') {
-          setExistingDraftNotice({
-            status: plan.status,
-            createdAt: plan.createdAt,
-          });
+          if (guarded !== undefined) {
+            setDraft(guarded.draft);
+            live.draft = guarded.draft;
+            setStatus(res.agreement?.status === 'DRAFT' ? 'DRAFT' : null);
+            setDispatchState(guarded.state);
+            setStep('send');
+            setSendMessage(
+              guarded.state === 'pending'
+                ? SEND_PENDING_MESSAGE
+                : SEND_UNKNOWN_MESSAGE,
+            );
+          } else {
+            setExistingDraftNotice({
+              status: plan.status,
+              createdAt: plan.createdAt,
+            });
+          }
+          setLookupState('blocked');
+        } else if (guarded !== undefined) {
+          setDraft(guarded.draft);
+          live.draft = guarded.draft;
+          setDispatchState(guarded.state);
+          setStep('send');
+          setSendMessage(
+            guarded.state === 'pending'
+              ? SEND_PENDING_MESSAGE
+              : guarded.state === 'unknown'
+                ? SEND_UNKNOWN_MESSAGE
+                : ACTIVATION_RECONCILED_MESSAGE,
+          );
+          setLookupState('blocked');
+        } else {
+          setLookupState('clear');
         }
+      } else if (guarded !== undefined) {
+        setDraft(guarded.draft);
+        live.draft = guarded.draft;
+        setDispatchState(guarded.state);
+        setStep('send');
+        setSendMessage(
+          guarded.state === 'pending'
+            ? SEND_PENDING_MESSAGE
+            : SEND_UNKNOWN_MESSAGE,
+        );
+        setLookupState('blocked');
+      } else {
+        setLookupState('unavailable');
       }
       setResuming(false);
     })();
@@ -434,7 +714,7 @@ export const useA2AStudio = (
     };
     // Reads once per deal/variant; the form owns everything after that.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opportunityId, variant]);
+  }, [live, opportunityId, scopeKey, variant]);
 
   // Poll status while the doc is out for signature, so the strip + the flip to
   // `done` happen without a manual refresh.
@@ -454,7 +734,14 @@ export const useA2AStudio = (
   useEffect(() => {
     return () => {
       const d = live.draft;
-      if (d !== null && !live.sent) {
+      const guarded =
+        live.scopeKey === null ? undefined : attemptGuards.get(live.scopeKey);
+      if (
+        d !== null &&
+        !live.sent &&
+        (guarded === undefined ||
+          guarded.draft.a2aDocumentId !== d.a2aDocumentId)
+      ) {
         const body: DiscardRequest = {
           a2aDocumentId: d.a2aDocumentId,
           ...(d.documensoDocumentId !== ''
@@ -484,6 +771,14 @@ export const useA2AStudio = (
     creating,
     finalizing,
     sending,
+    dispatchState,
+    lookupState,
+    canCreateDraft:
+      lookupState === 'clear' &&
+      scopeKey !== null &&
+      draft === null &&
+      !creating,
+    canSend: draft !== null && dispatchState === 'never' && !sending,
     setPrefill,
     createDraft,
     onEmbedCompleted,

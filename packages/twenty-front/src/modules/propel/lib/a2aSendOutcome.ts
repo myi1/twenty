@@ -88,5 +88,5 @@ export const describeSendOutcome = (
     return `The signing link is ready — send it to ${who} yourself (WhatsApp or email). ${SIGNED_PDF_NOTE}`;
   }
 
-  return `The agreement was not sent${outcome.failed.length > 0 ? ` (${failedVia} is not available here)` : ''}. Try again, or start over.`;
+  return `The agreement is active, but it was not sent through a delivery channel and no shareable link was confirmed${outcome.failed.length > 0 ? ` (${failedVia} is not available here)` : ''}. Check the agreement record before taking another action.`;
 };

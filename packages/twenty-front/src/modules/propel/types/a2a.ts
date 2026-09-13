@@ -66,6 +66,10 @@ export interface A2ARouteError {
   error?: string;
   /** 422 readiness checklist: which CRM fields doc-service still needs. */
   missing?: string[];
+  /** false only when the server proved it did not dispatch to doc-service. */
+  attempted?: boolean;
+  /** The mutation may have taken effect but no valid result was received. */
+  uncertain?: boolean;
 }
 
 // create-draft → the draft handles the hero needs to drive the rest of the flow.
@@ -120,6 +124,8 @@ export interface SendResponse extends A2ARouteError {
     reason?: string;
   }[];
   primaryChannel?: 'whatsapp' | 'email' | 'copy-link';
+  /** The returned URL was read from the live envelope during this send. */
+  signingUrlVerified?: boolean;
 }
 
 // status poll → drives A2AStatusStrip + the flip to `done`.

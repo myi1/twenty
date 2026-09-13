@@ -17,6 +17,8 @@ import { SendPanel } from '@/propel/components/a2a/SendPanel';
 import { useA2AStudio } from '@/propel/hooks/useA2AStudio';
 import { usePropelToast } from '@/propel/hooks/usePropelToast';
 import { type A2APrefill, type A2AVariant } from '@/propel/types/a2a';
+import { currentWorkspaceMemberState } from '@/auth/states/currentWorkspaceMemberState';
+import { useAtomStateValue } from '@/ui/utilities/state/jotai/hooks/useAtomStateValue';
 
 // The graduated A2A Studio hero (Plane 3, lane #15). Rides Twenty's DefaultLayout
 // (nav + top bar come from the router <Outlet/>); this page owns the header + the
@@ -34,6 +36,7 @@ const isVariant = (v: string | null): v is A2AVariant => v === 'A' || v === 'B';
 export const A2AStudioPage = () => {
   const [searchParams] = useSearchParams();
   const notify = usePropelToast();
+  const currentWorkspaceMember = useAtomStateValue(currentWorkspaceMemberState);
 
   const opportunityId = searchParams.get('opportunityId');
   const variantParam = searchParams.get('variant');
@@ -52,7 +55,12 @@ export const A2AStudioPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const studio = useA2AStudio(opportunityId, variant, seedPrefill);
+  const studio = useA2AStudio(
+    opportunityId,
+    variant,
+    seedPrefill,
+    currentWorkspaceMember?.id ?? null,
+  );
   const [contactOpen, setContactOpen] = useState(false);
 
   const noOpportunity = opportunityId === null || opportunityId === '';
@@ -117,8 +125,20 @@ export const A2AStudioPage = () => {
                   {studio.existingDraftNotice.status
                     .toLowerCase()
                     .replace(/_/g, ' ')}
-                  ). Creating another will leave two agreements on the same
-                  deal.
+                  ). Review that agreement before creating another.
+                </Alert>
+              ) : null}
+
+              {studio.step === 'prepare' &&
+              studio.lookupState === 'unavailable' ? (
+                <Alert
+                  color="yellow"
+                  variant="light"
+                  icon={<IconAlertTriangle size={16} />}
+                  title="Existing agreement check unavailable"
+                >
+                  We cannot safely create another agreement until this deal can
+                  be checked. Reload this page to try the read again.
                 </Alert>
               ) : null}
 
@@ -128,6 +148,7 @@ export const A2AStudioPage = () => {
                   prefill={studio.prefill}
                   counterparty={studio.counterparty}
                   creating={studio.creating}
+                  canCreate={studio.canCreateDraft}
                   errorMessage={studio.errorMessage}
                   missing={studio.missing}
                   onPatch={studio.setPrefill}
@@ -183,6 +204,8 @@ export const A2AStudioPage = () => {
                   counterparty={studio.counterparty}
                   shareUrl={studio.shareUrl}
                   sending={studio.sending}
+                  canSend={studio.canSend}
+                  dispatchState={studio.dispatchState}
                   sent={studio.status === 'OUT_FOR_SIGNATURE'}
                   outcome={studio.sendOutcome}
                   outcomeMessage={studio.sendMessage}
@@ -194,6 +217,7 @@ export const A2AStudioPage = () => {
                     notify(result.message, result.ok ? 'success' : 'error');
                     return result.ok;
                   }}
+                  onCheckStatus={() => void studio.refreshStatus()}
                 />
               ) : null}
 
@@ -205,9 +229,9 @@ export const A2AStudioPage = () => {
                       Agreement signed
                     </Text>
                     <Text size="sm" c="dimmed" ta="center">
-                      Both parties have the fully signed &amp; stamped PDF, and
-                      it&rsquo;s attached to the deal. Links are in the status
-                      strip above.
+                      The fully signed &amp; stamped PDF is attached to the
+                      deal. Its file and audit links are in the status strip
+                      above.
                     </Text>
                   </Stack>
                 </Center>

@@ -15,9 +15,10 @@ import {
   IconLink,
   IconMail,
   IconSend,
+  IconUserPlus,
 } from 'twenty-ui/display';
-import { IconUserPlus } from 'twenty-ui/display';
 import { type SendOutcome } from '@/propel/lib/a2aSendOutcome';
+import { type A2ADispatchState } from '@/propel/hooks/useA2AStudio';
 import { type CounterpartyPerson, type SendChannel } from '@/propel/types/a2a';
 
 // The "send" step (design §5 SendPanel / D4).
@@ -43,16 +44,21 @@ export const SendPanel = ({
   counterparty,
   shareUrl,
   sending,
+  canSend,
+  dispatchState,
   sent,
   outcome,
   outcomeMessage,
   onOpenContact,
   onSend,
+  onCheckStatus,
 }: {
   counterparty: CounterpartyPerson | null;
   /** The counterparty's live signing link — ONLY ever a link a send returned. */
   shareUrl: string | null;
   sending: boolean;
+  canSend: boolean;
+  dispatchState: A2ADispatchState;
   /** The agreement is out for signature (a send has happened). */
   sent: boolean;
   /** What that send actually did, per channel. */
@@ -60,6 +66,7 @@ export const SendPanel = ({
   outcomeMessage: string | null;
   onOpenContact: () => void;
   onSend: (channels: SendChannel[]) => Promise<unknown>;
+  onCheckStatus: () => void;
 }) => {
   const hasPhone =
     counterparty?.phone != null && counterparty.phone.trim() !== '';
@@ -67,12 +74,38 @@ export const SendPanel = ({
     counterparty?.email != null && counterparty.email.trim() !== '';
   const linkReady = shareUrl != null && shareUrl !== '';
   const somethingFailed = outcome != null && outcome.failed.length > 0;
+  const uncertaintyNotice =
+    dispatchState === 'pending' || dispatchState === 'unknown' ? (
+      <Alert
+        color="yellow"
+        variant="light"
+        icon={<IconAlertTriangle size={16} />}
+        title={
+          dispatchState === 'pending'
+            ? 'Send confirmation pending'
+            : 'Send result needs checking'
+        }
+      >
+        {dispatchState === 'pending'
+          ? 'The request is still pending. Another send is blocked.'
+          : 'The document service may have activated this agreement. Another send and starting over are blocked until status provides evidence.'}
+        <Button variant="default" size="xs" mt="sm" onClick={onCheckStatus}>
+          Check document status
+        </Button>
+      </Alert>
+    ) : null;
 
   // No counterparty at all → capture one first: their email is where the signed
   // PDF goes once both sides have signed.
   if (counterparty === null) {
     return (
       <Stack gap="md" maw={560}>
+        {uncertaintyNotice}
+        {dispatchState === 'activated' && outcomeMessage !== null ? (
+          <Alert color="green" variant="light" icon={<IconCheck size={16} />}>
+            {outcomeMessage}
+          </Alert>
+        ) : null}
         <Alert
           color="blue"
           variant="light"
@@ -138,6 +171,7 @@ export const SendPanel = ({
       ) : null}
 
       <Box>
+        {uncertaintyNotice}
         <Text size="xs" c="dimmed" fw={600} tt="uppercase" mb="xs">
           {sent ? 'The signing link' : 'Send the signing link'}
         </Text>
@@ -149,7 +183,7 @@ export const SendPanel = ({
               justify="space-between"
               fullWidth
               leftSection={<IconSend size={16} />}
-              disabled={!hasPhone}
+              disabled={!hasPhone || !canSend}
               loading={sending}
               onClick={() => void onSend(['whatsapp'])}
             >
@@ -185,6 +219,7 @@ export const SendPanel = ({
               fullWidth
               leftSection={<IconLink size={16} />}
               loading={sending}
+              disabled={!canSend}
               onClick={() => void onSend(['copyLink'])}
             >
               Get signing link
@@ -196,7 +231,7 @@ export const SendPanel = ({
             justify="flex-start"
             fullWidth
             leftSection={<IconMail size={16} />}
-            disabled={!hasEmail}
+            disabled={!hasEmail || !canSend}
             loading={sending}
             onClick={() => void onSend(['email'])}
           >
@@ -239,7 +274,8 @@ export const SendPanel = ({
           title="No signing link came back"
         >
           The agreement is out for signature but we did not get a link to share.
-          Open it from the agreement record, or start over.
+          Open it from the agreement record and verify its state before taking
+          another action.
         </Alert>
       ) : null}
     </Stack>

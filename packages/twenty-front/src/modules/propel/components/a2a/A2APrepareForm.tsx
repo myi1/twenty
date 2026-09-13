@@ -40,6 +40,7 @@ export const A2APrepareForm = ({
   prefill,
   counterparty,
   creating,
+  canCreate,
   errorMessage,
   missing,
   onPatch,
@@ -50,6 +51,7 @@ export const A2APrepareForm = ({
   prefill: A2APrefill;
   counterparty: CounterpartyPerson | null;
   creating: boolean;
+  canCreate: boolean;
   errorMessage: string | null;
   missing: string[] | null;
   onPatch: (patch: Partial<A2APrefill>) => void;
@@ -214,6 +216,7 @@ export const A2APrepareForm = ({
           color="red"
           rightSection={<IconArrowRight size={16} />}
           loading={creating}
+          disabled={!canCreate}
           onClick={onCreateDraft}
         >
           Create draft
