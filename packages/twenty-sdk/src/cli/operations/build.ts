@@ -1,6 +1,6 @@
-import { execSync } from 'child_process';
 import path from 'path';
 
+import { packApplication } from '@/cli/utilities/build/common/pack-application';
 import { buildApplication } from '@/cli/utilities/build/common/build-application';
 import { runTypecheck } from '@/cli/utilities/build/common/typecheck-plugin';
 import { buildAndValidateManifest } from '@/cli/utilities/build/manifest/build-and-validate-manifest';
@@ -90,14 +90,7 @@ const innerAppBuild = async (
   if (options.tarball) {
     onProgress?.('Packing tarball...');
 
-    const packOutput = execSync('npm pack --pack-destination .', {
-      cwd: outputDir,
-      encoding: 'utf-8',
-    }).trim();
-
-    const tarballName = packOutput.split('\n').pop()!;
-
-    result.tarballPath = path.join(outputDir, tarballName);
+    result.tarballPath = await packApplication(outputDir);
   }
 
   return { success: true, data: result };
