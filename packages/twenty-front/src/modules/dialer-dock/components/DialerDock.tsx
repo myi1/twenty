@@ -4,9 +4,7 @@ import {
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
-  type PointerEventHandler,
 } from 'react';
-import { IconPhone } from 'twenty-ui/display';
 
 import { REACT_APP_SERVER_BASE_URL } from '~/config';
 import { getTokenPair } from '@/apollo/utils/getTokenPair';
@@ -17,7 +15,10 @@ import {
   navigateCrm,
   openWhatsAppInCrm,
 } from '@/dialer-dock/utils/dialerCrmBridge';
-import { dialerAccent, dockColor } from '@/ui/theme/dockColorTokens';
+import { DialerDockLauncher } from './DialerDockLauncher';
+import { dockColor } from '@/ui/theme/dockColorTokens';
+
+export { DialerDockLauncher } from './DialerDockLauncher';
 
 // Resolved once at module load, same dual mechanism as REACT_APP_SERVER_BASE_URL
 // (src/config/index.ts): window._env_ for the Docker runtime injection,
@@ -78,7 +79,10 @@ const readStoredDockPosition = (): DockPosition => {
       ) {
         // Clamp on read: a position saved on a larger window must not strand
         // the dock off-screen on a smaller one.
-        return clampDockPosition({ right: parsed.right, bottom: parsed.bottom });
+        return clampDockPosition({
+          right: parsed.right,
+          bottom: parsed.bottom,
+        });
       }
     }
   } catch {
@@ -166,63 +170,6 @@ const StyledIframe = styled.iframe`
   width: 100%;
 `;
 
-const StyledLauncher = styled.button`
-  align-items: center;
-  align-self: flex-end;
-  background: ${dialerAccent.pillBg};
-  border: 0;
-  border-radius: 50%;
-  box-shadow: ${dockColor.shadowStrong};
-  color: ${dockColor.iconOnAccent};
-  cursor: pointer;
-  display: flex;
-  height: 44px;
-  justify-content: center;
-  padding: 0;
-  touch-action: none;
-  width: 44px;
-
-  &:hover {
-    background: ${dialerAccent.pillBgHover};
-  }
-
-  &:focus-visible {
-    outline: 2px solid ${dockColor.textPrimary};
-    outline-offset: 2px;
-  }
-`;
-
-type DialerDockLauncherProps = {
-  onClick: () => void;
-  onPointerDown?: PointerEventHandler<HTMLButtonElement>;
-  onPointerMove?: PointerEventHandler<HTMLButtonElement>;
-  onPointerUp?: PointerEventHandler<HTMLButtonElement>;
-  onPointerCancel?: PointerEventHandler<HTMLButtonElement>;
-};
-
-export const DialerDockLauncher = ({
-  onClick,
-  onPointerDown,
-  onPointerMove,
-  onPointerUp,
-  onPointerCancel,
-}: DialerDockLauncherProps) => (
-  <StyledLauncher
-    aria-label="Expand dialer"
-    title="Open dialer"
-    type="button"
-    onClick={onClick}
-    onPointerDown={onPointerDown}
-    onPointerMove={onPointerMove}
-    onPointerUp={onPointerUp}
-    onPointerCancel={onPointerCancel}
-  >
-    <span aria-hidden="true">
-      <IconPhone size={20} />
-    </span>
-  </StyledLauncher>
-);
-
 type DialerDockMessage = {
   type: 'propel:dial';
   number: string;
@@ -248,7 +195,9 @@ type DialerIframeRequest =
   | { type: 'propel:open'; path: string }
   | { type: 'propel:open-whatsapp'; number: string };
 
-const parseDialerIframeRequest = (data: unknown): DialerIframeRequest | null => {
+const parseDialerIframeRequest = (
+  data: unknown,
+): DialerIframeRequest | null => {
   if (typeof data !== 'object' || data === null) {
     return null;
   }
@@ -294,7 +243,9 @@ export const DialerDock = () => {
   const [isExpanded, setIsExpanded] = useState(
     () => localStorage.getItem(DIALER_DOCK_EXPANDED_STORAGE_KEY) === 'true',
   );
-  const [position, setPosition] = useState<DockPosition>(readStoredDockPosition);
+  const [position, setPosition] = useState<DockPosition>(
+    readStoredDockPosition,
+  );
   // Live drag bookkeeping. A drag and a click share the same pointer gesture on
   // the launcher — `moved` past the threshold turns the gesture into a drag, and
   // suppressClickRef swallows the click event the browser fires after pointerup.
@@ -396,7 +347,10 @@ export const DialerDock = () => {
       const credential = credentialRef.current;
       const contentWindow = iframeRef.current?.contentWindow;
       if (credential && contentWindow) {
-        contentWindow.postMessage({ type: 'propel:config', credential }, dockOrigin);
+        contentWindow.postMessage(
+          { type: 'propel:config', credential },
+          dockOrigin,
+        );
       }
     };
     pushConfigRef.current = pushConfig;
@@ -419,7 +373,10 @@ export const DialerDock = () => {
         case 'propel:add-to-crm': {
           void createPersonWithPhone(request.number).then((personId) => {
             if (personId === null) {
-              postToDialer({ type: 'propel:add-failed', number: request.number });
+              postToDialer({
+                type: 'propel:add-failed',
+                number: request.number,
+              });
               return;
             }
             postToDialer({
@@ -471,7 +428,9 @@ export const DialerDock = () => {
       ) {
         // Readiness handshake: push the line the moment the iframe's message
         // listener is up (avoids racing its boot).
-        if ((event.data as { type?: unknown } | null)?.type === 'propel:ready') {
+        if (
+          (event.data as { type?: unknown } | null)?.type === 'propel:ready'
+        ) {
           pushConfig();
           return;
         }

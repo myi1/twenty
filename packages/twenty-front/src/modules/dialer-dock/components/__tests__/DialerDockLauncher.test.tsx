@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
-import { DialerDockLauncher } from '@/dialer-dock/components/DialerDock';
+import { DialerDockLauncher } from '@/dialer-dock/components/DialerDockLauncher';
 
 const getEmotionRuleText = (element: HTMLElement) => {
   const emotionClassName = [...element.classList].find((className) =>
@@ -21,7 +22,7 @@ const getEmotionRuleText = (element: HTMLElement) => {
 };
 
 describe('DialerDockLauncher', () => {
-  it('renders an icon-only 44px circle and activates accessibly', () => {
+  it('renders an icon-only 44px circle and activates natively by click and keyboard', async () => {
     let clickCount = 0;
     const onClick = () => {
       clickCount += 1;
@@ -46,7 +47,15 @@ describe('DialerDockLauncher', () => {
       'outline: 2px solid var(--t-font-color-primary)',
     );
 
-    fireEvent.click(launcher);
+    const user = userEvent.setup();
+
+    await user.click(launcher);
     expect(clickCount).toBe(1);
+
+    await user.keyboard('{Enter}');
+    expect(clickCount).toBe(2);
+
+    await user.keyboard(' ');
+    expect(clickCount).toBe(3);
   });
 });
