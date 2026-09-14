@@ -43,8 +43,13 @@ export const fetchInbox = (): Promise<InboxPayload | null> =>
 export const fetchInboxThread = (
   id: string,
   channel: InboxChannel,
+  cursor?: string | null,
 ): Promise<InboxThreadPayload | null> =>
-  callPropelRoute<InboxThreadPayload>('/marketing/inbox-thread', { id, channel });
+  callPropelRoute<InboxThreadPayload>('/marketing/inbox-thread', {
+    id,
+    channel,
+    ...(cursor ? { cursor } : {}),
+  });
 
 export const sendInboxReply = (args: {
   id: string;
