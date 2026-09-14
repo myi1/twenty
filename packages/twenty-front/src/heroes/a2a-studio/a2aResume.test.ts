@@ -4,7 +4,7 @@
 // already OUT_FOR_SIGNATURE showed the blank prepare form and a "Create draft"
 // button. The decision below is the whole fix, kept out of the hook so it can be
 // exercised without a renderer.
-import { describe, it } from 'node:test';
+import { describe, it } from '@jest/globals';
 import assert from 'node:assert/strict';
 
 import { planResume } from '../../modules/propel/lib/a2aResume.ts';
