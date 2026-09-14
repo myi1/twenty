@@ -20,6 +20,15 @@ import { IconChevronDown } from 'twenty-ui/display';
 import type { PropelHeroHost } from '@/propel/runtime/heroHost';
 import { fetchInboxThread } from '@/propel/lib/inboxApi';
 import { reconcilePending, type PendingMessage } from '@/propel/lib/inboxThread';
+import {
+  applyOlderThreadPage,
+  beginOlderThreadPageLoad,
+  createThreadPageState,
+  failOlderThreadPageLoad,
+  isCurrentOlderThreadPageRequest,
+  mergeLiveThreadPage,
+  type InboxThreadPageState,
+} from '@/propel/lib/inboxThreadPagination';
 import type { InboxMediaKind, InboxMessageRow, InboxThreadPayload } from '@/propel/types/inbox';
 import { MessageBubble, type PendingRow } from '@/propel/components/marketingHero/inbox/MessageBubble';
 import { Btn } from '../_pulse/pulse';
@@ -109,8 +118,12 @@ export const Story = ({
     nextCursor: data.timeline.nextCursor,
   });
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [olderThreadPage, setOlderThreadPage] = useState<
+    InboxThreadPageState<InboxMessageRow>
+  >(() => createThreadPageState<InboxMessageRow>([]));
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const scrolledOnceRef = useRef(false);
+  const conversationId = data.wa.conversationId;
   // Mirror of `pending`, read synchronously inside the thread-fetch effect below
   // (a plain closure over `pending` would see a stale snapshot from whenever the
   // effect was created, not the latest sends). Same pattern as InboxThreadPane.
@@ -118,12 +131,24 @@ export const Story = ({
   // Server row ids already matched to a pending temp, so the same real message
   // can never reconcile a second temp. Mirrors InboxThreadPane's claimedRowIdsRef.
   const claimedRowIdsRef = useRef<Set<string>>(new Set());
+  const activeConversationKeyRef = useRef(conversationId ?? '');
+  activeConversationKeyRef.current = conversationId ?? '';
+  const loadedConversationKeyRef = useRef('');
+  const olderThreadRequestSeqRef = useRef(0);
+  const olderThreadPageRef = useRef<InboxThreadPageState<InboxMessageRow>>(
+    createThreadPageState<InboxMessageRow>([]),
+  );
+  const replaceOlderThreadPage = useCallback(
+    (next: InboxThreadPageState<InboxMessageRow>) => {
+      olderThreadPageRef.current = next;
+      setOlderThreadPage(next);
+    },
+    [],
+  );
 
   useEffect(() => {
     pendingRef.current = pending;
   }, [pending]);
-
-  const conversationId = data.wa.conversationId;
 
   // Fetch (or refresh) the live WhatsApp thread. A null/failed payload leaves
   // `thread` null: the merge below then falls back to the timeline's own
@@ -134,6 +159,13 @@ export const Story = ({
   // block below for why this is load-bearing, not cosmetic).
   useEffect(() => {
     let alive = true;
+    const conversationKey = conversationId ?? '';
+    const switchedConversation = loadedConversationKeyRef.current !== conversationKey;
+    loadedConversationKeyRef.current = conversationKey;
+    if (switchedConversation) {
+      olderThreadRequestSeqRef.current += 1;
+      replaceOlderThreadPage(createThreadPageState<InboxMessageRow>([]));
+    }
     if (!conversationId) {
       setThread(null);
       setThreadSettled(true);
@@ -142,9 +174,18 @@ export const Story = ({
     fetchInboxThread(conversationId, 'WHATSAPP').then((r) => {
       if (!alive) return;
       const next = r && r.ok !== false ? r : null;
-      setThread(next);
+      setThread((previous) =>
+        next && previous && !switchedConversation
+          ? { ...next, messages: mergeLiveThreadPage(previous.messages, next.messages) }
+          : next,
+      );
       setThreadSettled(true);
       if (next) {
+        if (switchedConversation) {
+          replaceOlderThreadPage(
+            createThreadPageState(next.messages, next.nextCursor, next.complete),
+          );
+        }
         const result = reconcilePending(pendingRef.current, next.messages, claimedRowIdsRef.current);
         for (const rowId of result.newlyClaimed) claimedRowIdsRef.current.add(rowId);
         if (result.kept !== pendingRef.current) {
@@ -156,7 +197,7 @@ export const Story = ({
     return () => {
       alive = false;
     };
-  }, [conversationId, reloadToken]);
+  }, [conversationId, reloadToken, replaceOlderThreadPage]);
 
   // Re-seed the "older" pagination window from a fresh full-page load. Keyed on
   // reloadToken ONLY (not on `data` itself): index.tsx's 10-second call-outcome
@@ -224,7 +265,7 @@ export const Story = ({
     failed: t.failed,
   }));
 
-  const loadOlder = async () => {
+  const loadOlderTimeline = async () => {
     if (!older.nextCursor || loadingOlder) return;
     setLoadingOlder(true);
     const r = await loadLead(host, data.person.id, older.nextCursor);
@@ -241,6 +282,36 @@ export const Story = ({
       };
     });
   };
+
+  const loadOlderWhatsAppMessages = useCallback(() => {
+    if (!conversationId) return;
+    const page = olderThreadPageRef.current;
+    if (page.complete || !page.nextCursor || page.phase === 'loading') return;
+
+    const requestConversationKey = conversationId;
+    const requestSequence = (olderThreadRequestSeqRef.current += 1);
+    replaceOlderThreadPage(beginOlderThreadPageLoad(page));
+    fetchInboxThread(conversationId, 'WHATSAPP', page.nextCursor)
+      .then((response) => {
+        if (!isCurrentOlderThreadPageRequest(requestConversationKey, activeConversationKeyRef.current, requestSequence, olderThreadRequestSeqRef.current)) return;
+        if (!response || response.ok === false) {
+          replaceOlderThreadPage(failOlderThreadPageLoad(olderThreadPageRef.current));
+          return;
+        }
+        const nextPage = applyOlderThreadPage(olderThreadPageRef.current, {
+          messages: response.messages,
+          nextCursor: response.nextCursor ?? null,
+          complete: response.complete ?? true,
+        });
+        replaceOlderThreadPage(nextPage);
+        setThread((previous) => previous ? { ...previous, messages: nextPage.messages } : previous);
+      })
+      .catch(() => {
+        if (isCurrentOlderThreadPageRequest(requestConversationKey, activeConversationKeyRef.current, requestSequence, olderThreadRequestSeqRef.current)) {
+          replaceOlderThreadPage(failOlderThreadPageLoad(olderThreadPageRef.current));
+        }
+      });
+  }, [conversationId, replaceOlderThreadPage]);
 
   // ── Build the merged, time-ordered story ────────────────────────────────────
   const events = older.events.filter((e) => e.type !== 'WHATSAPP' || !thread);
@@ -400,11 +471,28 @@ export const Story = ({
           <Btn
             variant="ghost"
             disabled={loadingOlder}
-            onClick={() => void loadOlder()}
+            onClick={() => void loadOlderTimeline()}
             style={{ alignSelf: 'center', minHeight: 44 }}
           >
             {loadingOlder ? 'Loading…' : 'Load older'}
           </Btn>
+        )}
+
+        {!olderThreadPage.complete && olderThreadPage.nextCursor && (
+          <div style={{ alignSelf: 'center', textAlign: 'center' }}>
+            <Btn variant="ghost" disabled={olderThreadPage.phase === 'loading'} onClick={() => void loadOlderWhatsAppMessages()} style={{ minHeight: 44 }}>
+              {olderThreadPage.phase === 'loading'
+                ? 'Loading older WhatsApp messages…'
+                : olderThreadPage.phase === 'error'
+                  ? 'Retry older WhatsApp messages'
+                  : 'Load older WhatsApp messages'}
+            </Btn>
+            {olderThreadPage.phase === 'error' ? (
+              <div role="alert" style={{ fontSize: 12, color: 'var(--p-ink-2)' }}>
+                Older WhatsApp messages are unavailable. The current messages are still shown.
+              </div>
+            ) : null}
+          </div>
         )}
 
         {items.length === 0 && pending.length === 0 && (

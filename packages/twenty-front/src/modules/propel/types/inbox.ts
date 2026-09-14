@@ -250,6 +250,11 @@ export interface InboxThreadPayload {
   canReply: boolean; // false when the thread can't accept an outbound reply yet
   replyHint: string; // why reply is disabled ('' when canReply)
   messages: InboxMessageRow[]; // chronological (oldest → newest)
+  // Thread history uses opaque cursor continuation. These are optional while the
+  // deployed route is still returning its original single-page payload; callers
+  // must treat their absence as a complete, non-paginated history.
+  complete?: boolean;
+  nextCursor?: string | null;
   // #83 — OFFICIAL (Meta Cloud-API) line + 24h session-window state, surfaced at load
   // so the composer renders the right mode UP FRONT (proactive re-engagement card when
   // the window is closed) instead of only after a failed send.

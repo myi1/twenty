@@ -2,6 +2,7 @@ import { getTokenPair } from '@/apollo/utils/getTokenPair';
 import {
   resolveWaTarget,
   sendWaText,
+  fetchWaThread,
   type WaPersonResult,
   type WaTarget,
 } from '@/whatsapp-dock/utils/whatsAppComposeBridge';
@@ -89,6 +90,41 @@ describe('sendWaText — compose mode (no conversationId yet)', () => {
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(outcome.ok).toBe(false);
+  });
+});
+
+describe('fetchWaThread — cursor continuation', () => {
+  beforeEach(() => {
+    jest.resetAllMocks();
+    mockGetTokenPair.mockReturnValue(validTokenPair);
+    global.fetch = jest.fn();
+  });
+
+  it('passes the opaque cursor and preserves an incomplete response for the dock', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        id: 'conversation-1',
+        messages: [],
+        complete: false,
+        nextCursor: 'opaque-next-cursor',
+      }),
+    });
+
+    const thread = await fetchWaThread('conversation-1', 'opaque-cursor');
+
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(JSON.parse((init as RequestInit).body as string)).toMatchObject({
+      id: 'conversation-1',
+      channel: 'WHATSAPP',
+      cursor: 'opaque-cursor',
+    });
+    expect(thread).toMatchObject({
+      complete: false,
+      nextCursor: 'opaque-next-cursor',
+    });
   });
 });
 

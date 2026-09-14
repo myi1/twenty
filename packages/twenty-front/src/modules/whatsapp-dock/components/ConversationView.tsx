@@ -1,6 +1,15 @@
 import styled from '@emotion/styled';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
+import {
+  applyOlderThreadPage,
+  beginOlderThreadPageLoad,
+  createThreadPageState,
+  failOlderThreadPageLoad,
+  isCurrentOlderThreadPageRequest,
+  mergeLiveThreadPage,
+  type InboxThreadPageState,
+} from '@/propel/lib/inboxThreadPagination';
 import { dockColor } from '@/ui/theme/dockColorTokens';
 import { subscribeOwnTyping } from '@/whatsapp-dock/utils/waTypingBroadcast';
 import {
@@ -104,6 +113,27 @@ const StyledEmpty = styled.div`
   text-align: center;
 `;
 
+const StyledLoadOlder = styled.button`
+  align-self: center;
+  background: transparent;
+  border: 0;
+  color: ${dockColor.accentGreenStrong};
+  cursor: pointer;
+  font: 600 12px/1.2 ${dockColor.fontFamily};
+  padding: 6px 8px;
+
+  &:disabled {
+    color: ${dockColor.textTertiary};
+    cursor: default;
+  }
+`;
+
+const StyledLoadError = styled.div`
+  color: ${dockColor.textTertiary};
+  font-size: 11px;
+  text-align: center;
+`;
+
 const initial = (name: string): string => (name.trim()[0] ?? '?').toUpperCase();
 
 const hoursLeftLabel = (endsAtMs: number | null): string => {
@@ -130,6 +160,9 @@ export const ConversationView = ({ target, onBack, onTargetUpdate }: Conversatio
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [isOwnTyping, setIsOwnTyping] = useState(false);
+  const [olderThreadPage, setOlderThreadPage] = useState<
+    InboxThreadPageState<WaThread['messages'][number]>
+  >(() => createThreadPageState<WaThread['messages'][number]>([]));
   // A windowClosed outcome from a SEND can be more current than the thread we
   // loaded a moment ago (the window can lapse mid-session) — this override
   // forces the template chooser immediately rather than waiting on a refetch.
@@ -139,12 +172,37 @@ export const ConversationView = ({ target, onBack, onTargetUpdate }: Conversatio
   } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<number | null>(null);
+  const activeConversationKeyRef = useRef(target.conversationId ?? '');
+  activeConversationKeyRef.current = target.conversationId ?? '';
+  const olderThreadRequestSeqRef = useRef(0);
+  const olderThreadPageRef = useRef<
+    InboxThreadPageState<WaThread['messages'][number]>
+  >(createThreadPageState<WaThread['messages'][number]>([]));
+  const pendingScrollRestoreRef = useRef<{ height: number; top: number } | null>(null);
+  const replaceOlderThreadPage = useCallback(
+    (next: InboxThreadPageState<WaThread['messages'][number]>) => {
+      olderThreadPageRef.current = next;
+      setOlderThreadPage(next);
+    },
+    [],
+  );
 
   const loadThread = async (conversationId: string) => {
     setLoading(true);
     const result = await fetchWaThread(conversationId);
-    setThread(result);
+    if (activeConversationKeyRef.current !== conversationId) return;
+    setThread((previous) =>
+      result.ok && previous
+        ? { ...result, messages: mergeLiveThreadPage(previous.messages, result.messages) }
+        : result,
+    );
+    if (result.ok && olderThreadPageRef.current.messages.length === 0) {
+      replaceOlderThreadPage(
+        createThreadPageState(result.messages, result.nextCursor, result.complete),
+      );
+    }
     setForcedClosed(null);
     setLoading(false);
   };
@@ -152,17 +210,58 @@ export const ConversationView = ({ target, onBack, onTargetUpdate }: Conversatio
   useEffect(() => {
     setSendError(null);
     setForcedClosed(null);
+    olderThreadRequestSeqRef.current += 1;
+    replaceOlderThreadPage(createThreadPageState<WaThread['messages'][number]>([]));
     if (target.conversationId) {
       void loadThread(target.conversationId);
     } else {
       setThread(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [target.conversationId]);
+  }, [target.conversationId, replaceOlderThreadPage]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const messagesElement = messagesRef.current;
+    const restore = pendingScrollRestoreRef.current;
+    if (messagesElement && restore) {
+      messagesElement.scrollTop = restore.top + (messagesElement.scrollHeight - restore.height);
+      pendingScrollRestoreRef.current = null;
+      return;
+    }
     messagesEndRef.current?.scrollIntoView({ block: 'end' });
   }, [thread?.messages.length]);
+
+  const loadOlderMessages = useCallback(() => {
+    const conversationId = target.conversationId;
+    const page = olderThreadPageRef.current;
+    if (!conversationId || page.complete || !page.nextCursor || page.phase === 'loading') return;
+
+    const requestSequence = (olderThreadRequestSeqRef.current += 1);
+    const messagesElement = messagesRef.current;
+    if (messagesElement) {
+      pendingScrollRestoreRef.current = {
+        height: messagesElement.scrollHeight,
+        top: messagesElement.scrollTop,
+      };
+    }
+    replaceOlderThreadPage(beginOlderThreadPageLoad(page));
+    fetchWaThread(conversationId, page.nextCursor)
+      .then((response) => {
+        if (!isCurrentOlderThreadPageRequest(conversationId, activeConversationKeyRef.current, requestSequence, olderThreadRequestSeqRef.current)) return;
+        if (!response.ok) {
+          replaceOlderThreadPage(failOlderThreadPageLoad(olderThreadPageRef.current));
+          return;
+        }
+        const nextPage = applyOlderThreadPage(olderThreadPageRef.current, response);
+        replaceOlderThreadPage(nextPage);
+        setThread((previous) => previous ? { ...previous, messages: nextPage.messages } : previous);
+      })
+      .catch(() => {
+        if (isCurrentOlderThreadPageRequest(conversationId, activeConversationKeyRef.current, requestSequence, olderThreadRequestSeqRef.current)) {
+          replaceOlderThreadPage(failOlderThreadPageLoad(olderThreadPageRef.current));
+        }
+      });
+  }, [replaceOlderThreadPage, target.conversationId]);
 
   useEffect(() => {
     if (!target.conversationId) {
@@ -267,7 +366,23 @@ export const ConversationView = ({ target, onBack, onTargetUpdate }: Conversatio
         </StyledHeaderText>
       </StyledHeader>
 
-      <StyledMessages>
+      <StyledMessages ref={messagesRef}>
+        {!olderThreadPage.complete && olderThreadPage.nextCursor ? (
+          <div>
+            <StyledLoadOlder disabled={olderThreadPage.phase === 'loading'} onClick={loadOlderMessages} type="button">
+              {olderThreadPage.phase === 'loading'
+                ? 'Loading older messages…'
+                : olderThreadPage.phase === 'error'
+                  ? 'Retry older messages'
+                  : 'Load older messages'}
+            </StyledLoadOlder>
+            {olderThreadPage.phase === 'error' ? (
+              <StyledLoadError role="alert">
+                Older messages are unavailable. The current conversation is still shown.
+              </StyledLoadError>
+            ) : null}
+          </div>
+        ) : null}
         {loading ? (
           <StyledEmpty>Loading conversation…</StyledEmpty>
         ) : !thread || thread.messages.length === 0 ? (

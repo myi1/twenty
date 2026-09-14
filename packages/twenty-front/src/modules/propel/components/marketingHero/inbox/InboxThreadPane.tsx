@@ -13,6 +13,7 @@ import { friendlyError } from '@/propel/lib/friendlyError';
 import {
   type InboxChannel,
   type InboxMediaKind,
+  type InboxMessageRow,
   type InboxStatusAction,
   type InboxThreadPayload,
   type InboxThreadRow,
@@ -25,6 +26,15 @@ import {
   latestInboundId,
   reconcilePending,
 } from '@/propel/lib/inboxThread';
+import {
+  applyOlderThreadPage,
+  beginOlderThreadPageLoad,
+  createThreadPageState,
+  failOlderThreadPageLoad,
+  isCurrentOlderThreadPageRequest,
+  mergeLiveThreadPage,
+  type InboxThreadPageState,
+} from '@/propel/lib/inboxThreadPagination';
 import {
   fetchInboxThread,
   saveInboxMedia,
@@ -100,8 +110,13 @@ export const InboxThreadPane = ({
   const [savingId, setSavingId] = useState<string | null>(null);
   const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
   const [statusBusy, setStatusBusy] = useState(false);
+  const [olderPage, setOlderPage] = useState<InboxThreadPageState<InboxMessageRow>>(
+    () => createThreadPageState<InboxMessageRow>([]),
+  );
 
   const curKey = useRef('');
+  const activeThreadKeyRef = useRef(`${channel}:${id}`);
+  activeThreadKeyRef.current = `${channel}:${id}`;
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const nearBottomRef = useRef(true);
   const stickRef = useRef(true);
@@ -112,6 +127,14 @@ export const InboxThreadPane = ({
   const pendingRef = useRef<PendingMessage[]>([]);
   const inFlightRef = useRef(false);
   const reqSeqRef = useRef(0);
+  const olderRequestSeqRef = useRef(0);
+  const olderPageRef = useRef<InboxThreadPageState<InboxMessageRow>>(
+    createThreadPageState<InboxMessageRow>([]),
+  );
+  const replaceOlderPage = useCallback((next: InboxThreadPageState<InboxMessageRow>) => {
+    olderPageRef.current = next;
+    setOlderPage(next);
+  }, []);
 
   // Imperative thread load. `reason` distinguishes a SWITCH (blank to skeleton,
   // reset per-thread state, always fetch) from a REFRESH (silent, in-place, skipped
@@ -121,6 +144,7 @@ export const InboxThreadPane = ({
       const isSwitch = reason === 'switch';
       if (!isSwitch && inFlightRef.current) return;
       if (isSwitch) {
+        olderRequestSeqRef.current += 1;
         setPhase('loading');
         setThread(null);
         setPending([]);
@@ -132,6 +156,7 @@ export const InboxThreadPane = ({
         stickRef.current = true;
         seenIdsRef.current = new Set();
         claimedRowIdsRef.current = new Set();
+        replaceOlderPage(createThreadPageState<InboxMessageRow>([]));
       }
       const seq = (reqSeqRef.current += 1);
       inFlightRef.current = true;
@@ -154,7 +179,21 @@ export const InboxThreadPane = ({
             if (inboundChanged && historyLoadedRef.current)
               setHasNewBelow(true);
           }
-          setThread(res);
+          if (isSwitch) {
+            replaceOlderPage(
+              createThreadPageState(res.messages, res.nextCursor, res.complete),
+            );
+            setThread(res);
+          } else {
+            setThread((previous) =>
+              previous
+                ? {
+                    ...res,
+                    messages: mergeLiveThreadPage(previous.messages, res.messages),
+                  }
+                : res,
+            );
+          }
           // Reconcile optimistic temps the server now reflects — run the PURE
           // matcher ONCE here against the live pendingRef mirror, then commit both
           // halves of its result.
@@ -178,8 +217,53 @@ export const InboxThreadPane = ({
           if (seq === reqSeqRef.current) inFlightRef.current = false;
         });
     },
-    [id, channel],
+    [id, channel, replaceOlderPage],
   );
+
+  const loadOlderMessages = useCallback(() => {
+    const page = olderPageRef.current;
+    if (page.complete || !page.nextCursor || page.phase === 'loading') return;
+
+    const requestThreadKey = `${channel}:${id}`;
+    const requestSequence = (olderRequestSeqRef.current += 1);
+    const cursor = page.nextCursor;
+    replaceOlderPage(beginOlderThreadPageLoad(page));
+
+    fetchInboxThread(id, channel, cursor)
+      .then((res) => {
+        if (
+          !isCurrentOlderThreadPageRequest(
+            requestThreadKey,
+            activeThreadKeyRef.current,
+            requestSequence,
+            olderRequestSeqRef.current,
+          )
+        ) return;
+        if (!res || !res.ok) {
+          replaceOlderPage(failOlderThreadPageLoad(olderPageRef.current));
+          return;
+        }
+        const nextPage = applyOlderThreadPage(olderPageRef.current, {
+          messages: res.messages,
+          nextCursor: res.nextCursor ?? null,
+          complete: res.complete ?? true,
+        });
+        replaceOlderPage(nextPage);
+        setThread((previous) =>
+          previous ? { ...previous, messages: nextPage.messages } : previous,
+        );
+      })
+      .catch(() => {
+        if (
+          isCurrentOlderThreadPageRequest(
+            requestThreadKey,
+            activeThreadKeyRef.current,
+            requestSequence,
+            olderRequestSeqRef.current,
+          )
+        ) replaceOlderPage(failOlderThreadPageLoad(olderPageRef.current));
+      });
+  }, [channel, id, replaceOlderPage]);
 
   // Keep pendingRef a faithful mirror of `pending` after every commit.
   useEffect(() => {
@@ -340,6 +424,7 @@ export const InboxThreadPane = ({
     if (!el || typeof el.scrollHeight !== 'number') return;
     const near = isNearBottom(el);
     nearBottomRef.current = near;
+    stickRef.current = near;
     if (near && hasNewBelow) setHasNewBelow(false);
   }, [hasNewBelow]);
 
@@ -547,6 +632,30 @@ export const InboxThreadPane = ({
               gap: 10,
             }}
           >
+            {!olderPage.complete && olderPage.nextCursor ? (
+              <Box style={{ alignSelf: 'center', textAlign: 'center' }}>
+                <Button
+                  size="compact-sm"
+                  variant="subtle"
+                  loading={olderPage.phase === 'loading'}
+                  onClick={loadOlderMessages}
+                  aria-label={
+                    olderPage.phase === 'error'
+                      ? 'Retry loading older messages'
+                      : 'Load older messages'
+                  }
+                >
+                  {olderPage.phase === 'error'
+                    ? 'Retry loading older messages'
+                    : 'Load older messages'}
+                </Button>
+                {olderPage.phase === 'error' ? (
+                  <Text size="xs" c="red" role="alert">
+                    Older messages are unavailable. Your current conversation is still shown.
+                  </Text>
+                ) : null}
+              </Box>
+            ) : null}
             {allRows.length === 0 ? (
               <Text size="sm" c="dimmed" ta="center" mt={20}>
                 No messages in this thread.

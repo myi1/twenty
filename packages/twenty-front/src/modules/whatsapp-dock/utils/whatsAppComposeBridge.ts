@@ -497,6 +497,10 @@ export type WaThread = {
   suggestedTemplate: WaApprovedTemplate | null;
   approvedTemplates: WaApprovedTemplate[];
   messages: WaMessage[];
+  // Optional cursor continuation mirrors /marketing/inbox-thread. Missing fields
+  // mean the legacy route returned the complete history in one response.
+  complete: boolean;
+  nextCursor: string | null;
   error: string | null;
 };
 
@@ -513,13 +517,19 @@ const EMPTY_THREAD = (id: string, error: string): WaThread => ({
   suggestedTemplate: null,
   approvedTemplates: [],
   messages: [],
+  complete: true,
+  nextCursor: null,
   error,
 });
 
-export const fetchWaThread = async (conversationId: string): Promise<WaThread> => {
+export const fetchWaThread = async (
+  conversationId: string,
+  cursor?: string | null,
+): Promise<WaThread> => {
   const res = await appRoute<Record<string, unknown>>('/marketing/inbox-thread', {
     id: conversationId,
     channel: 'WHATSAPP',
+    ...(cursor ? { cursor } : {}),
   });
   if (res === null) {
     return EMPTY_THREAD(conversationId, 'Could not reach WhatsApp. Try again.');
@@ -552,6 +562,11 @@ export const fetchWaThread = async (conversationId: string): Promise<WaThread> =
       mediaUrl: (m.mediaUrl as string | null) ?? null,
       mediaKind: (m.mediaKind as WaMediaKind) ?? 'NONE',
     })),
+    complete: res.complete !== false || typeof res.nextCursor !== 'string' || res.nextCursor === '',
+    nextCursor:
+      res.complete === false && typeof res.nextCursor === 'string' && res.nextCursor !== ''
+        ? res.nextCursor
+        : null,
     error: null,
   };
 };
