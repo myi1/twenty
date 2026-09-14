@@ -99,6 +99,10 @@ export type AgentBlock = {
   openLeadsError?: string | null;
   /** the agent's resolved manager (picker auto-select); null = no manager */
   manager: { id: string; label: string } | null;
+  /** The route returned all details, or a safe partial shell after a refused read. */
+  agentDetailsAvailability: 'AVAILABLE' | 'DEGRADED';
+  /** Stable route code only; no provider or permission text is sent to the browser. */
+  agentDetailsError: 'AGENT_DETAILS_UNAVAILABLE' | null;
 };
 
 export type HubPayload = {

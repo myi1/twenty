@@ -118,6 +118,11 @@ export const AgentHome = ({
       <Text size="sm" c="dimmed">
         open leads across all pipelines
       </Text>
+      {agent.agentDetailsAvailability === 'DEGRADED' ? (
+        <Text role="status" aria-live="polite" size="sm" c="dimmed" mt="md">
+          Some 1:1 details are unavailable. Refresh the page to try again.
+        </Text>
+      ) : null}
       {/* null = the route could not count them. Say so: showing 0, or hiding the
           card, is how a refused count query stayed invisible (task 55). */}
       {agent.openLeads === null ? (
