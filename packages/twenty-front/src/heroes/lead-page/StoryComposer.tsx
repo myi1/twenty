@@ -24,6 +24,7 @@ import type { InboxMediaKind, InboxThreadPayload } from '@/propel/types/inbox';
 import { Btn } from '../_pulse/pulse';
 import { Pill } from './styles';
 import { addNote, errorText, sendFirstWhatsApp } from './leadApi';
+import { getWhatsAppReplyAvailability } from './replyAvailability';
 import type { LeadLoad } from './types';
 import type { LeadDrafts } from './leadDrafts';
 
@@ -89,6 +90,7 @@ export const StoryComposer = ({
 }) => {
   const { person, wa, viewer } = data;
   const blocked = person.optedOutWhatsApp || person.isLost;
+  const replyAvailability = getWhatsAppReplyAvailability(wa);
 
   // In-flight flags stay local — they describe a request this component made,
   // not anything the agent typed, and they are meaningless after a remount.
@@ -209,7 +211,18 @@ export const StoryComposer = ({
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <Pill>{`${wa.lineLabel} · ${wa.lineNumber}`}</Pill>
-          {thread ? (
+          {replyAvailability.kind === 'SYNC_PENDING' ? (
+            // Lead Page owns the current permission state. The Inbox thread can
+            // still be a reply-capable snapshot while its owner write catches up,
+            // so never leave that stale composer interactive during the hand-off.
+            <div
+              role="status"
+              aria-live="polite"
+              style={{ fontSize: 13, color: 'var(--p-ink-2)' }}
+            >
+              {replyAvailability.message}
+            </div>
+          ) : thread ? (
             thread.canReply ? (
               <InboxComposer
                 id={thread.id}

@@ -167,6 +167,12 @@ export type LeadLoad = {
     lineNumber: string;
     lastInboundAt: string | null;
     canReply: boolean;
+    // Additive ownership hand-off state. The front remains compatible with an
+    // older route until the app-side response has these fields everywhere.
+    ownershipSyncPending?: boolean;
+    // A short, human-facing progress hint. StoryComposer validates it before
+    // showing it; this must never be treated as a raw operational error.
+    replyHint?: string | null;
   };
   latestCall: {
     id: string;
