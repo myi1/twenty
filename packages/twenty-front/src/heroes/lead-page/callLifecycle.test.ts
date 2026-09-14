@@ -1,5 +1,5 @@
 // F4 regressions: what the page may claim about a call, and when it stops asking.
-import { describe, it } from 'node:test';
+import { describe, it } from '@jest/globals';
 import assert from 'node:assert/strict';
 
 import {
