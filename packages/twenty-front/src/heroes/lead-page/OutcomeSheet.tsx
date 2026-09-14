@@ -19,11 +19,13 @@
 //     second, so a route regression can never move a lost or already-won deal.
 //   - clientRequestId is generated once per OPEN of the sheet, not per save
 //     attempt, so a double tap on Save (or a retried request) is idempotent.
-//     A DUPLICATE_REQUEST response means the first save already worked, and is
-//     told to the agent as a (quiet) success, not swallowed in silence.
-//   - The response's `partial` array means the save partly succeeded; the
-//     agent is told which part did not land, in plain words, never the raw
-//     route field code.
+//     A DUPLICATE_REQUEST response from the legacy route means the first save
+//     already worked, and is told to the agent as a quiet success. A reused id
+//     with different details is REQUEST_ID_CONFLICT instead: it asks the agent
+//     to reopen and check before changing anything.
+//   - A PARTIAL response means some writes persisted but the outcome is not
+//     complete. It refreshes the lead and names what remains in plain words;
+//     it never triggers the suggested stage move.
 //   - No response-clock / SLA language anywhere. The founder removed the
 //     enforced deadline and automatic reassignment on purpose (see words.ts
 //     and LeadHeader.tsx). The hints below describe what happens next, never
@@ -34,7 +36,8 @@ import styled from '@emotion/styled';
 import { Drawer, Radio, SegmentedControl, Textarea } from '@mantine/core';
 import type { PropelHeroHost } from '@/propel/runtime/heroHost';
 import { Btn, FONT_UI, NOCTURNE_LIGHT_VARS, PulseScope } from '../_pulse/pulse';
-import { draftCallNote, errorText, moveStage, moveStageErrorText, saveOutcome } from './leadApi';
+import { draftCallNote, moveStage, moveStageErrorText, saveOutcome } from './leadApi';
+import { outcomeSaveFeedback } from './outcomeSaveFeedback';
 import { OUTCOME_WORDS, customTimeInZone, dueWords, minutesWords, relativeWords, stageWords, zoneFor, zoneWords } from './words';
 import type { LeadDeal, LeadLoad, SaveOutcomeInput } from './types';
 
@@ -61,18 +64,6 @@ const WHEN_OPTIONS: Array<{ label: string; value: When }> = [
 // nonsense. See the header comment: the route is the primary guard, this is
 // the second.
 const TERMINAL_OUTCOMES = new Set<Outcome>(['NOT_INTERESTED', 'WRONG_NUMBER', 'CONVERTED']);
-
-// Plain words for each partial-failure code the route can return, never the raw
-// code itself. A code the route adds later without a matching update here still
-// falls back to a true, if generic, sentence rather than leaking a fresh code.
-const PARTIAL_WORDS: Record<string, string> = {
-  note: 'the note was not saved',
-  followUp: 'the follow-up was not created',
-  outcome: 'the call outcome was not recorded',
-  lastTouch: 'the last-touch time was not updated',
-};
-const partialWords = (codes: string[]): string =>
-  codes.map((c) => PARTIAL_WORDS[c] ?? 'something else was not saved').join(', ');
 
 // Mantine's Drawer defaults to withinPortal, mounting its content straight into
 // document.body, outside LeadNocturne's `--p-*` token declarations (pulse.tsx).
@@ -246,36 +237,38 @@ export const OutcomeSheet = ({
         line,
         clientRequestId,
       });
-      if (r && r.ok === false && r.error === 'DUPLICATE_REQUEST') {
-        // The first attempt already went through: this is a success the agent
-        // was previously told nothing about, not a failure.
-        saved = true;
-        host.notify(errorText(r), 'success');
-      } else if (!r || r.ok === false) {
-        host.notify(errorText(r), 'warning');
-      } else {
-        saved = true;
-        const partial = r.partial ?? [];
-        if (partial.length) host.notify(`Saved, except: ${partialWords(partial)}.`, 'warning');
-        else host.notify('Saved.', 'success');
+      const feedback = outcomeSaveFeedback(r);
+      saved = feedback.saved;
+      host.notify(feedback.text, feedback.tone);
 
-        if (r.suggestedStage && selectedDeal && !TERMINAL_OUTCOMES.has(outcome)) {
-          const mv = await moveStage(host, selectedDeal.deskLane, selectedDeal.id, r.suggestedStage);
-          // Any non-success (a gate refusal, one with neither, or no response at
-          // all) always tells the agent something true, and a gate refusal names
-          // its own reason (gate.label) and remedy (gate.fix) instead of the raw
-          // GATE_BLOCKED code. This is the flagship path: an off-plan opportunity
-          // enters NEW with an auto-created stage task, so the very next call
-          // (NEW -> CONTACTED) is gated on it, and this refusal fires on it
-          // routinely, not as an edge case.
-          // 'info', deliberately milder than FactsRail.tsx's 'warning' for this
-          // same text: there, the agent pressed a stage button and the thing
-          // they asked for did not happen; here, everything they asked for DID
-          // save and only the automatic follow-on move was refused, so this is
-          // news, not a failed action.
-          if (mv?.ok) host.notify(`Moved to ${stageWords(r.suggestedStage)}.`, 'info');
-          else host.notify(moveStageErrorText(mv), 'info');
-        }
+      if (
+        feedback.canMoveSuggestedStage &&
+        r?.ok &&
+        r.suggestedStage &&
+        selectedDeal &&
+        !TERMINAL_OUTCOMES.has(outcome)
+      ) {
+        const mv = await moveStage(
+          host,
+          selectedDeal.deskLane,
+          selectedDeal.id,
+          r.suggestedStage,
+        );
+        // Any non-success (a gate refusal, one with neither, or no response at
+        // all) always tells the agent something true, and a gate refusal names
+        // its own reason (gate.label) and remedy (gate.fix) instead of the raw
+        // GATE_BLOCKED code. This is the flagship path: an off-plan opportunity
+        // enters NEW with an auto-created stage task, so the very next call
+        // (NEW -> CONTACTED) is gated on it, and this refusal fires on it
+        // routinely, not as an edge case.
+        // 'info', deliberately milder than FactsRail.tsx's 'warning' for this
+        // same text: there, the agent pressed a stage button and the thing
+        // they asked for did not happen; here, everything they asked for DID
+        // save and only the automatic follow-on move was refused, so this is
+        // news, not a failed action.
+        if (mv?.ok)
+          host.notify(`Moved to ${stageWords(r.suggestedStage)}.`, 'info');
+        else host.notify(moveStageErrorText(mv), 'info');
       }
     } catch {
       // Any unexpected input (a malformed custom time, say) must never strand the

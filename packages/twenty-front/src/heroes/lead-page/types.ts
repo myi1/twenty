@@ -88,7 +88,7 @@ export type LeadTimelineEvent = {
 // lead that probably was. Never merge the two codes back together.
 export type LeadErr = {
   ok: false;
-  error: 'NOT_FOUND' | 'NOT_VISIBLE' | 'FORBIDDEN' | 'NOT_AUTHENTICATED' | 'INVALID_INPUT' | 'UPSTREAM_FAILED' | 'DUPLICATE_REQUEST';
+  error: 'NOT_FOUND' | 'NOT_VISIBLE' | 'FORBIDDEN' | 'NOT_AUTHENTICATED' | 'INVALID_INPUT' | 'UPSTREAM_FAILED' | 'DUPLICATE_REQUEST' | 'REQUEST_ID_CONFLICT';
 };
 
 // The nine "SLA breach — lead not answered in time. Chase / reassign." rows and the
@@ -202,5 +202,23 @@ export type SaveOutcomeResult = {
   callTaskId: string | null;
   // The route only ever SUGGESTS a stage; it never writes one itself.
   suggestedStage: string | null;
+  // COMPLETED means every requested write landed. PARTIAL means at least one
+  // write landed and `partial` names what remains. FAILED means none landed.
+  // This is deliberately separate from transport success: a PARTIAL response
+  // is `ok: false` so a caller cannot turn it into a completion claim.
+  state: 'COMPLETED' | 'PARTIAL' | 'FAILED';
   partial: string[];
 };
+
+// saveOutcome has a stricter response contract than the generic route helpers.
+// A partial result carries durable ids but is still `ok: false`: it must be
+// surfaced as saved-and-pending, never silently treated as a completed save.
+export type SaveOutcomeResponse =
+  | (SaveOutcomeResult & { ok: true; state: 'COMPLETED'; replayed?: boolean })
+  | (SaveOutcomeResult & {
+      ok: false;
+      state: 'PARTIAL' | 'FAILED';
+      replayed?: boolean;
+    })
+  | LeadErr
+  | null;

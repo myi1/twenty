@@ -7,7 +7,7 @@
 // It never throws: every caller here handles the `null` case itself.
 
 import { type PropelHeroHost } from '@/propel/runtime/heroHost';
-import type { LeadErr, LeadLoad, SaveOutcomeInput, SaveOutcomeResult } from './types';
+import type { LeadErr, LeadLoad, SaveOutcomeInput, SaveOutcomeResponse } from './types';
 
 const ROUTE = '/lead-page';
 export type R<T> = (T & { ok: true }) | LeadErr | null;
@@ -15,7 +15,7 @@ export type R<T> = (T & { ok: true }) | LeadErr | null;
 export const loadLead = (host: PropelHeroHost, personId: string, timelineCursor?: string | null) =>
   host.callPropelRoute<R<LeadLoad>>(ROUTE, { action: 'load', personId, ...(timelineCursor ? { timelineCursor } : {}) });
 export const saveOutcome = (host: PropelHeroHost, input: SaveOutcomeInput) =>
-  host.callPropelRoute<R<SaveOutcomeResult>>(ROUTE, { action: 'saveOutcome', ...input });
+  host.callPropelRoute<SaveOutcomeResponse>(ROUTE, { action: 'saveOutcome', ...input });
 export const setDealField = (host: PropelHeroHost, dealId: string, lane: string, field: string, value: unknown) =>
   host.callPropelRoute<R<{}>>(ROUTE, { action: 'setDealField', dealId, lane, field, value });
 export const setLeadPick = (host: PropelHeroHost, personId: string, field: 'purpose' | 'buyingTimeline' | 'moneyComfort', value: string | null) =>
@@ -182,5 +182,6 @@ export const errorText = (r: LeadErr | null | { ok: false; error?: string }): st
   // list of leads that ARE theirs, and a manager is who can reassign one.
   if (code === 'NOT_VISIBLE') return 'This lead is no longer there, or it is not assigned to you. Go back to My Desk, or ask a manager.';
   if (code === 'DUPLICATE_REQUEST') return 'Already saved.';
+  if (code === 'REQUEST_ID_CONFLICT') return 'This request was already used for different details. Reopen this lead and check it before changing anything else.';
   return 'That did not save. Try again.';
 };
