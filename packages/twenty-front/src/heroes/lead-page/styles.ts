@@ -84,14 +84,49 @@ export const LeadNocturne = styled(PulseNocturne)<{ $phone: boolean }>`
 // in a harness of the live DOM chain at 375x812: last content ends at y=651,
 // the bar starts at y=679. So it stays 96 — a smaller number would be the one
 // that needed arguing for.
-export const Columns = styled.div<{ $phone: boolean }>`
+// RAIL WIDTH (2026-09-19). It was a hard `320px` at every desktop width — 22% of a
+// 1440 laptop, 12% of a 27" monitor, and the story column absorbed the rest. A form
+// does not get more readable as the screen grows, but it should stop being a ribbon:
+// `clamp` gives it a floor it can never drop below, a share of the viewport in the
+// middle, and a ceiling past which extra width would only lengthen the line measure.
+//
+// WIDE (>=1600px) widens the ceiling and Rail goes two-up inside it (see Rail), which
+// is what actually uses a large monitor: the SAME form at half the scroll length.
+// Splitting the story into a second column was considered and rejected — the story is
+// one chronological narrative and fragmenting it by source would cost more than the
+// space it won.
+//
+// COLLAPSED is a 56px icon strip: an agent who is only talking gives the conversation
+// the whole window and expands again in one click. The choice is remembered per agent.
+export const RAIL_COLLAPSED_PX = 56;
+
+export const Columns = styled.div<{ $phone: boolean; $railCollapsed?: boolean }>`
   display: grid;
   gap: 20px;
   padding: 0 24px 24px;
-  grid-template-columns: ${(p) => (p.$phone ? '1fr' : '320px minmax(0, 1fr)')};
+  grid-template-columns: ${(p) =>
+    p.$phone
+      ? '1fr'
+      : p.$railCollapsed
+        ? `${RAIL_COLLAPSED_PX}px minmax(0, 1fr)`
+        : 'clamp(280px, 24vw, 420px) minmax(0, 1fr)'};
+
+  ${(p) =>
+    p.$phone || p.$railCollapsed
+      ? ''
+      : `
+    @media (min-width: 1600px) {
+      grid-template-columns: clamp(360px, 26vw, 560px) minmax(0, 1fr);
+    }
+  `}
   ${(p) =>
     p.$phone
-      ? 'padding: 0 12px 96px;'
+      ? // Clearance for the two fixed things below the story: PhoneBar (68px) and the
+        // qualification sheet resting at its peek height (52px), plus 16px so the last
+        // message is not flush against the handle. 68 + 52 + 16 = 136. It was 96 when
+        // the bar was the only fixed element; leaving it there would put the last
+        // message permanently under the sheet handle.
+        'padding: 0 12px 136px;'
       : `
     flex: 1;
     min-height: 0;
@@ -126,7 +161,54 @@ export const Rail = styled.aside<{ $phone: boolean }>`
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
+
+    /* A large monitor should shorten the form, not stretch it. Two-up only once
+       there is room for two readable columns; align-content: start so a short
+       group does not stretch to match a tall neighbour. */
+    @media (min-width: 1600px) {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-content: start;
+      column-gap: 18px;
+    }
   `}
+`;
+
+// The collapse control. Lives in the rail's own header row so it is where the thing
+// it collapses is, and keeps a full 44px touch target even though the glyph is small.
+export const RailToggle = styled.button`
+  appearance: none;
+  border: 1px solid var(--p-line);
+  background: var(--p-surface);
+  color: var(--p-ink-2);
+  border-radius: 8px;
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+
+  &:hover {
+    background: var(--p-surface-2);
+    color: var(--p-ink);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--p-accent);
+    outline-offset: 2px;
+  }
+`;
+
+// When collapsed the rail is a strip: the toggle, and nothing else competing for it.
+export const RailStrip = styled.aside`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding-top: 2px;
+  min-width: 0;
 `;
 
 export const Group = styled.section`
@@ -181,22 +263,12 @@ export const Pill = styled.span<{ $tone?: 'neutral' | 'good' | 'warn' | 'bad' | 
             : 'var(--p-ink)'};
 `;
 
-export const PhoneTabs = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  margin: 0 12px 12px;
-  border-bottom: 1px solid var(--p-line);
-`;
+// RETIRED 2026-09-19: PhoneTabs / PhoneTab.
+// Facts and Story were mutually exclusive tabs, so an agent filling the qualification
+// form could not see the message they were answering. The form is a drag-up sheet over
+// the conversation now (Sheet, below) and the tabs have no caller. Deleted rather than
+// left dangling: an unused export is an invitation to bring the split back.
 
-export const PhoneTab = styled.button<{ $active: boolean }>`
-  min-height: 44px;
-  border: 0;
-  background: transparent;
-  font: 600 14px ${FONT_UI};
-  color: ${(p) => (p.$active ? 'var(--p-ink)' : 'var(--p-ink-2)')};
-  box-shadow: ${(p) => (p.$active ? 'inset 0 -2px 0 var(--p-accent)' : 'none')};
-  cursor: pointer;
-`;
 
 // The three actions, pinned. `position: fixed` and not `sticky`: fixed keeps the
 // bar in place on a lead SHORT enough not to scroll, where a sticky last child
@@ -350,4 +422,111 @@ export const Skeleton = styled.div`
       opacity: 0.5;
     }
   }
+`;
+
+// ── Phone: the qualification sheet ───────────────────────────────────────────
+//
+// It used to be a TAB. Facts and Story were mutually exclusive, so an agent filling
+// the form could not read what the client had just said — they flipped back, read,
+// flipped forward, and typed from memory. A sheet fixes exactly that: the
+// conversation stays on screen and the form is dragged up over it as far as the
+// agent wants.
+//
+// Three heights, not two: PEEK is a handle only (the conversation is the page),
+// HALF leaves the last few messages visible while typing — the position this whole
+// change exists for — and FULL is for working through the form in one pass. The
+// chosen height is REMEMBERED per agent, so an agent who always works at HALF finds
+// it at HALF, and one who rarely opens it is never given a form they did not ask for.
+export const SHEET_PEEK_PX = 52;
+
+export const SheetScrim = styled.div<{ $open: boolean }>`
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  opacity: ${(p) => (p.$open ? 1 : 0)};
+  pointer-events: ${(p) => (p.$open ? 'auto' : 'none')};
+  transition: opacity 200ms ease;
+  z-index: 18;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+`;
+
+// `$bottom` is the PhoneBar's height: the sheet stops above it so Call / WhatsApp /
+// Log outcome are reachable at every height — the actions must never be the thing
+// the form covers.
+export const Sheet = styled.section<{ $height: number; $bottom: number; $dragging: boolean }>`
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: ${(p) => p.$bottom}px;
+  height: ${(p) => p.$height}px;
+  display: flex;
+  flex-direction: column;
+  background: var(--p-surface);
+  border-top: 1px solid var(--p-line);
+  border-radius: 14px 14px 0 0;
+  box-shadow: var(--p-shadow-pop);
+  z-index: 19;
+  /* No transition while the finger is down, or the sheet lags behind it. */
+  transition: ${(p) => (p.$dragging ? 'none' : 'height 220ms cubic-bezier(0.2, 0, 0, 1)')};
+  will-change: height;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+`;
+
+// The grab area. 44px tall in its own right — the visible grip is 4px, but a 4px
+// touch target is not a touch target.
+export const SheetHandle = styled.button`
+  appearance: none;
+  border: 0;
+  background: transparent;
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px 2px;
+  cursor: grab;
+  touch-action: none;
+  color: var(--p-ink-2);
+  font: inherit;
+
+  &:active {
+    cursor: grabbing;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--p-accent);
+    outline-offset: -2px;
+  }
+
+  &::before {
+    content: '';
+    width: 36px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--p-line-strong, var(--p-line));
+  }
+`;
+
+export const SheetLabel = styled.span`
+  font-size: 12px;
+  letter-spacing: 0.02em;
+`;
+
+export const SheetBody = styled.div`
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* The sheet is a scroller inside a scrolling page: containment here is what stops
+     a flick at the end of the form from scrolling the conversation behind it. */
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 12px 16px;
 `;

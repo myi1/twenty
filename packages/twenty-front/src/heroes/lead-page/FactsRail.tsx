@@ -14,7 +14,7 @@ import { Checkbox, Collapse, NumberInput, Popover, SegmentedControl, Select, Tex
 import styled from '@emotion/styled';
 import type { PropelHeroHost } from '@/propel/runtime/heroHost';
 import { Btn, NOCTURNE_LIGHT_VARS, PulseScope } from '../_pulse/pulse';
-import { Group, GroupTitle, Pill, Rail, Row } from './styles';
+import { Group, GroupTitle, Pill, Rail, RailToggle, Row } from './styles';
 import {
   completeTask,
   createDeal,
@@ -588,6 +588,7 @@ export const FactsRail = ({
   onActiveDealChange,
   onChanged,
   phone,
+  onCollapse,
 }: {
   host: PropelHeroHost;
   data: LeadLoad;
@@ -601,11 +602,14 @@ export const FactsRail = ({
   activeDealId: string | null;
   onActiveDealChange: (dealId: string) => void;
   onChanged: () => void;
-  // Layout only. On desktop the rail is its own scroller; on phone it is one
-  // tab of a page that scrolls as a whole, so it must not scroll internally.
-  // Comes from index.tsx's usePhoneLayout — the page's single breakpoint —
-  // rather than a second media query of the rail's own.
+  // Layout only. On desktop the rail is its own scroller; on phone it now lives in
+  // the qualification SHEET (index.tsx), which owns the scrolling, so it must not
+  // scroll internally. Comes from index.tsx's usePhoneLayout — the page's single
+  // breakpoint — rather than a second media query of the rail's own.
   phone: boolean;
+  // Desktop only: collapse the rail to its icon strip. Absent on phone, where the
+  // sheet's own handle is the equivalent control.
+  onCollapse?: () => void;
 }) => {
   const { person } = data;
   const [creatingDeal, setCreatingDeal] = useState(false);
@@ -677,7 +681,20 @@ export const FactsRail = ({
   return (
     <Rail $phone={phone}>
       <Group>
-        <GroupTitle>THE DEAL</GroupTitle>
+        <GroupTitle
+          style={
+            onCollapse
+              ? { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }
+              : undefined
+          }
+        >
+          THE DEAL
+          {onCollapse && (
+            <RailToggle type="button" aria-label="Hide the qualification panel" aria-expanded onClick={onCollapse}>
+              ‹
+            </RailToggle>
+          )}
+        </GroupTitle>
         {data.deals.length === 0 ? (
           <>
             <MutedNote>Start one when you know what they want.</MutedNote>

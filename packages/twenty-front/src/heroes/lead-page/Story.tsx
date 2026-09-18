@@ -73,6 +73,53 @@ const humaniseCallTitle = (title: string): string => {
   return `${base} — ${spaced.charAt(0).toUpperCase()}${spaced.slice(1)}`;
 };
 
+// Some task titles carry a MACHINE KEY as their prefix — `LEAD-POOL-UNASSIGNED::<personId> — …`,
+// `ACTIVE-LEAD-CAP::<agentId> — …`. The key is not decoration: lead-pool-desk-alert.ts finds
+// its own open task by `title.startsWith(prefix)` / `ilike`, so it IS the idempotency latch and
+// cannot be moved out of the title without breaking every task already in flight.
+//
+// It can, however, stop being shown. An agent opening a lead was reading
+// "LEAD-POOL-UNASSIGNED::ad4306a9-3aeb-4712-9f17-c44577c36fa8 — Pool lead 'Kinza Lead' …" —
+// seen on production, twice in a row. Same principle as humaniseCallTitle above: a code this
+// page does not own must not be put in front of a person.
+//
+// Deliberately narrow. It strips ONLY a leading SCREAMING-KEBAB key, `::`, a token with no
+// spaces, and the module's own ` — ` separator. A human title containing a double colon keeps
+// it, and a key with nothing after the separator falls back to the original rather than
+// rendering an empty row.
+const MACHINE_KEY_RE = /^[A-Z][A-Z0-9-]{2,}::\S+\s—\s(?=\S)/;
+
+export const stripMachineKey = (title: string): string => {
+  const cleaned = title.replace(MACHINE_KEY_RE, '');
+  return cleaned.trim() ? cleaned : title;
+};
+
+/**
+ * Collapse an event repeated verbatim within the same minute.
+ *
+ * The desk-alert latch writes one task per lead, but the timeline can still surface the same
+ * line twice — the task itself and the link that attaches it to this person arrive as separate
+ * events at the same second. An agent then reads the identical sentence twice and reasonably
+ * wonders whether it happened twice. Seen on production, on a real lead.
+ *
+ * Keyed on (displayed title, minute), NOT on the raw title or the id: two DIFFERENT machine
+ * keys that render to the same sentence are the same sentence to a reader, and two genuine
+ * repeats minutes apart are genuinely two things and both stay.
+ */
+export const dedupeEvents = <T extends { title: string; occurredAt: string }>(events: readonly T[]): T[] => {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const e of events) {
+    const at = Date.parse(e.occurredAt);
+    const minute = Number.isFinite(at) ? Math.floor(at / 60_000) : e.occurredAt;
+    const key = `${minute}|${stripMachineKey(e.title)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(e);
+  }
+  return out;
+};
+
 type StoryItem =
   | { at: number; kind: 'event'; e: LeadTimelineEvent }
   | { at: number; kind: 'burst'; id: string; msgs: InboxMessageRow[] };
@@ -327,7 +374,7 @@ export const Story = ({
   }
   if (cur.length) bursts.push({ at: cur[0].sentAtMs, kind: 'burst', id: cur[0].id, msgs: cur });
   const items: StoryItem[] = [
-    ...events.map((e) => ({ at: Date.parse(e.occurredAt), kind: 'event' as const, e })),
+    ...dedupeEvents(events).map((e) => ({ at: Date.parse(e.occurredAt), kind: 'event' as const, e })),
     ...bursts,
   ].sort((a, b) => a.at - b.at);
   const latestBurstId = bursts.length ? bursts[bursts.length - 1].id : null;
@@ -405,7 +452,7 @@ export const Story = ({
             <span>{hhmm(Date.parse(e.occurredAt))}</span>
             <span>
               {e.by ? <b>{e.by}: </b> : null}
-              {e.title}
+              {stripMachineKey(e.title)}
             </span>
           </QuietRow>,
         );

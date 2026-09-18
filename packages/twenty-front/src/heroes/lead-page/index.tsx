@@ -21,7 +21,23 @@ import { Story } from './Story';
 import { OutcomeSheet } from './OutcomeSheet';
 import { usePhoneLayout } from './usePhoneLayout';
 import { useHostBottomInset } from './useHostBottomInset';
-import { Columns, LeadNocturne, PhoneBar, PhoneTab, PhoneTabs, Skeleton } from './styles';
+import {
+  Columns,
+  LeadNocturne,
+  PhoneBar,
+  RailStrip,
+  RailToggle,
+  Sheet,
+  SheetBody,
+  SheetHandle,
+  SheetLabel,
+  SheetScrim,
+  SHEET_PEEK_PX,
+  Skeleton,
+} from './styles';
+import { useSheetHeight } from './useSheetHeight';
+import { useRailCollapsed } from './useRailCollapsed';
+import { useViewportHeight } from './useViewportHeight';
 import {
   clearAllDrafts,
   draftKey,
@@ -123,7 +139,11 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
   const [data, setData] = useState<LeadLoad | null>(null);
   const [error, setError] = useState<LoadFailure | null>(null);
   const [sheet, setSheet] = useState<{ open: boolean; callSeconds: number | null }>({ open: false, callSeconds: null });
-  const [tab, setTab] = useState<'facts' | 'story'>('story');
+  // The phone Facts/Story TABS are retired: the form is a sheet over the conversation
+  // now, so an agent can read what was said while filling it in. `setTab('story')`
+  // callers below become no-ops against the sheet, which is already showing the story.
+  const [railCollapsed, setRailCollapsed] = useRailCollapsed();
+  const viewportH = useViewportHeight();
   const [storyReload, setStoryReload] = useState(0);
   const phone = usePhoneLayout();
   // The hero's own frame, and how far its bottom edge sits above the viewport's.
@@ -132,6 +152,14 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
   // See useHostBottomInset.ts.
   const frameRef = useRef<HTMLDivElement>(null);
   const hostBottomInset = useHostBottomInset(frameRef, phone);
+  // PhoneBar's own height: 10px padding + a 48px minimum button + 10px (styles.ts).
+  // The qualification sheet stops above it so the actions are never what gets covered.
+  const PHONE_BAR_PX = 68;
+  const qualify = useSheetHeight(
+    Math.max(0, viewportH - PHONE_BAR_PX - hostBottomInset),
+    SHEET_PEEK_PX,
+  );
+
   // The call is STATE, not a ref. It used to be
   //   const callStartedAt = useRef<number | null>(null)
   // with `setData((d) => (d ? { ...d } : d))` next to it to nudge the poll effect
@@ -355,7 +383,10 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
   // container into view is unconditional, so a blocked lead still sees the
   // explanation of why they can't be messaged, rather than a dead tap.
   const focusComposer = () => {
-    setTab('story');
+    // The Facts/Story tab switch this used to do is gone: the story IS the phone page
+    // now. Collapsing the qualification sheet is the equivalent move — it is the only
+    // thing that can be covering the composer.
+    if (phone) qualify.setStop('peek');
     window.setTimeout(() => {
       const container = document.getElementById('lead-page-composer');
       container?.scrollIntoView({ block: 'nearest' });
@@ -437,20 +468,79 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
                     )}
                   </div>
                 )}
-                {phone && (
-                  <PhoneTabs role="tablist">
-                    <PhoneTab role="tab" $active={tab === 'facts'} onClick={() => setTab('facts')}>Facts</PhoneTab>
-                    <PhoneTab role="tab" $active={tab === 'story'} onClick={() => setTab('story')}>Story</PhoneTab>
-                  </PhoneTabs>
-                )}
-                <Columns $phone={phone}>
-                  {(!phone || tab === 'facts') && (
-                    <FactsRail host={host} data={data} activeDealId={activeDealId} onActiveDealChange={setActiveDealId} onChanged={reload} phone={phone} />
-                  )}
-                  {(!phone || tab === 'story') && (
-                    <Story host={host} data={data} reloadToken={storyReload} drafts={drafts} onDraftsChange={onDraftsChange} onChanged={reload} phone={phone} />
-                  )}
+                <Columns $phone={phone} $railCollapsed={railCollapsed}>
+                  {!phone &&
+                    (railCollapsed ? (
+                      <RailStrip>
+                        <RailToggle
+                          type="button"
+                          aria-label="Show the qualification panel"
+                          aria-expanded={false}
+                          onClick={() => setRailCollapsed(false)}
+                        >
+                          ›
+                        </RailToggle>
+                      </RailStrip>
+                    ) : (
+                      <FactsRail
+                        host={host}
+                        data={data}
+                        activeDealId={activeDealId}
+                        onActiveDealChange={setActiveDealId}
+                        onChanged={reload}
+                        phone={phone}
+                        onCollapse={() => setRailCollapsed(true)}
+                      />
+                    ))}
+                  <Story host={host} data={data} reloadToken={storyReload} drafts={drafts} onDraftsChange={onDraftsChange} onChanged={reload} phone={phone} />
                 </Columns>
+                {phone && (
+                  <>
+                    <SheetScrim
+                      $open={qualify.stop === 'full'}
+                      onClick={() => qualify.setStop('peek')}
+                      aria-hidden="true"
+                    />
+                    <Sheet
+                      $height={qualify.height}
+                      $bottom={PHONE_BAR_PX + hostBottomInset}
+                      $dragging={qualify.dragging}
+                      aria-label="Qualification"
+                    >
+                      <SheetHandle
+                        type="button"
+                        aria-expanded={qualify.stop !== 'peek'}
+                        aria-label={
+                          qualify.stop === 'peek'
+                            ? 'Open the qualification form'
+                            : qualify.stop === 'half'
+                              ? 'Expand the qualification form'
+                              : 'Close the qualification form'
+                        }
+                        onPointerDown={qualify.onPointerDown}
+                        onPointerMove={qualify.onPointerMove}
+                        onPointerUp={qualify.onPointerUp}
+                        onPointerCancel={qualify.onPointerUp}
+                      >
+                        <SheetLabel>
+                          {qualify.stop === 'peek' ? 'Qualify' : qualify.stop === 'half' ? 'Qualify — drag for more' : 'Qualify'}
+                        </SheetLabel>
+                      </SheetHandle>
+                      {qualify.stop !== 'peek' && (
+                        <SheetBody>
+                          <FactsRail
+                            host={host}
+                            data={data}
+                            activeDealId={activeDealId}
+                            onActiveDealChange={setActiveDealId}
+                            onChanged={reload}
+                            phone={phone}
+                          />
+                        </SheetBody>
+                      )}
+                    </Sheet>
+                  </>
+                )}
                 {phone && (
                   <PhoneBar $inset={hostBottomInset}>
                     <Btn
