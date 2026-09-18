@@ -315,10 +315,13 @@ export const PhoneBar = styled.div<{ $inset: number }>`
   display: grid;
   grid-template-columns: 1fr 1fr 1.4fr;
   gap: 8px;
-  padding: 10px ${DOCK_GUTTER_PX}px
+  /* Landscape adds a side notch and a home indicator the bar must sit clear of; the
+     right inset rides on top of the dock gutter rather than replacing it, because in
+     landscape BOTH the dock and the notch are over there. */
+  padding: 10px calc(${DOCK_GUTTER_PX}px + env(safe-area-inset-right))
     ${(p) =>
       `calc(10px + max(0px, env(safe-area-inset-bottom) - ${p.$inset}px))`}
-    12px;
+    calc(12px + env(safe-area-inset-left));
   background: var(--p-surface);
   box-shadow: var(--p-shadow-pop);
   z-index: 20;

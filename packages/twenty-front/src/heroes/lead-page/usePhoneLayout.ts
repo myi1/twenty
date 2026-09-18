@@ -15,7 +15,25 @@ import { useEffect, useState } from 'react';
 
 import { MOBILE_VIEWPORT } from 'twenty-ui/theme-constants';
 
-const phoneQuery = `(max-width: ${MOBILE_VIEWPORT}px)`;
+// A phone held LANDSCAPE is 812x375: wide enough to clear the width breakpoint, and
+// nowhere near tall enough for the two-column desktop frame it was therefore given.
+// Each column got ~300px of height, the rail and the story both became postage stamps,
+// and the agent scrolled two boxes inside a window with no room in it.
+//
+// So the decision is no longer about width alone. It is about whether there is ROOM
+// FOR TWO COLUMNS — which needs width AND height — and the phone layout (one scroll,
+// conversation first, actions pinned, form on a sheet) is simply the better answer in
+// a short window whatever the device is. A browser window dragged short on a laptop
+// gets it too, and should: the same constraint produces the same right answer.
+//
+// 500px splits the cases cleanly. Landscape phones land at 375-430px tall; an iPad in
+// landscape is 768-834 and a laptop far more, so neither is caught by it.
+export const SHORT_VIEWPORT = 500;
+
+export const phoneLayoutQuery = (): string =>
+  `(max-width: ${MOBILE_VIEWPORT}px), (max-height: ${SHORT_VIEWPORT}px)`;
+
+const phoneQuery = phoneLayoutQuery();
 
 const phoneMatches = (): boolean =>
   typeof window !== 'undefined' &&
