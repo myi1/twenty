@@ -195,10 +195,25 @@ export type InboxMediaKind =
   | 'DOCUMENT'
   | 'STICKER';
 
+/** Delivery state the channel reports for an OUTBOUND message. null on inbound rows,
+ * and on anything the channel does not report — the bubble then says nothing rather
+ * than implying a delivery nobody confirmed. */
+export type InboxDeliveryStatus =
+  | 'QUEUED'
+  | 'SENT'
+  | 'DELIVERED'
+  | 'READ'
+  | 'FAILED'
+  | null;
+
 export interface InboxMessageRow {
   id: string;
   direction: 'INBOUND' | 'OUTBOUND';
   body: string;
+  /** 2026-09-18: a reply accepted by Meta but never delivered rendered exactly like a
+   * delivered one, so an agent could be certain they had answered a lead they never
+   * reached. */
+  deliveryStatus?: InboxDeliveryStatus;
   authorName: string;
   whenLabel: string;
   sentAtMs: number;

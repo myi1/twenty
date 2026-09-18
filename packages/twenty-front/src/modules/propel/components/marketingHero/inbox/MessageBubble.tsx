@@ -1,6 +1,7 @@
 import { Box, Group, Text } from '@mantine/core';
 import { IconAlertTriangle, IconClock } from 'twenty-ui/display';
 import { type InboxMessageRow } from '@/propel/types/inbox';
+import { messageDeliveryWords } from '@/propel/lib/messageDeliveryWords';
 import { hasRenderableMedia, showSaveAffordance } from '@/propel/lib/inboxThread';
 import {
   MediaBlock,
@@ -37,6 +38,7 @@ export const MessageBubble = ({
   const out = m.direction === 'OUTBOUND';
   const showMedia = hasRenderableMedia(m);
   const isPending = Boolean(m.pending) && !m.failed;
+  const delivery = messageDeliveryWords(m.deliveryStatus);
   const canSave = isSocial && showSaveAffordance(m);
   const showSaved =
     isSocial && m.direction === 'INBOUND' && m.mediaPersisted && showMedia;
@@ -97,9 +99,22 @@ export const MessageBubble = ({
             <IconClock size={11} style={{ flex: 'none' }} /> Sending…
           </Text>
         ) : (
-          <Text size="xs" c="dimmed">
-            {`${m.authorName ? `${m.authorName} · ` : ''}${m.whenLabel}`}
-          </Text>
+          <>
+            <Text size="xs" c="dimmed">
+              {`${m.authorName ? `${m.authorName} · ` : ''}${m.whenLabel}`}
+            </Text>
+            {m.direction === 'OUTBOUND' && delivery !== null ? (
+              <Text
+                size="xs"
+                c={delivery.tone === 'bad' ? 'red' : delivery.tone === 'wait' ? 'orange' : 'dimmed'}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+              >
+                {delivery.tone === 'bad' ? <IconAlertTriangle size={11} style={{ flex: 'none' }} /> : null}
+                {delivery.tone === 'wait' ? <IconClock size={11} style={{ flex: 'none' }} /> : null}
+                {`· ${delivery.text}`}
+              </Text>
+            ) : null}
+          </>
         )}
       </Group>
     </Box>

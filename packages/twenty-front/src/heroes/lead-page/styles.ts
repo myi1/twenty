@@ -217,6 +217,22 @@ export const PhoneTab = styled.button<{ $active: boolean }>`
 // indicator. Keeping the full value would pad ~34px of dead space onto a bar
 // that is nowhere near the indicator; dropping it outright would un-clear the
 // bar in the case where $inset really is 0. max(0px, …) is both at once.
+// The floating call / WhatsApp / note launchers (modules/dialer-dock, whatsapp-dock)
+// are `position: fixed` overlays parked against the RIGHT edge, and they sit ON TOP of
+// this bar: on a phone the call launcher landed squarely over "Log outcome" — the one
+// button that actually clears the agent's call task, and the one the assignment WhatsApp
+// tells them to press. Reported from a handset 2026-09-18.
+//
+// The gutter is reserved HERE rather than moving the dock for two reasons. The dock is
+// user-draggable with a position persisted per browser, so there is no fixed geometry to
+// design against — only the corner it rests in by default. And the dock lives in
+// modules/**, which is core front: changing it costs a full engine image build, while
+// this hero rebuilds on its own. A reserved gutter costs an agent nothing if they later
+// drag the dock elsewhere; a covered primary action costs them the task.
+//
+// 68px = the 44px launcher + its 12px edge margin + 12px of daylight.
+const DOCK_GUTTER_PX = 68;
+
 export const PhoneBar = styled.div<{ $inset: number }>`
   position: fixed;
   left: 0;
@@ -225,9 +241,10 @@ export const PhoneBar = styled.div<{ $inset: number }>`
   display: grid;
   grid-template-columns: 1fr 1fr 1.4fr;
   gap: 8px;
-  padding: 10px 12px
+  padding: 10px ${DOCK_GUTTER_PX}px
     ${(p) =>
-      `calc(10px + max(0px, env(safe-area-inset-bottom) - ${p.$inset}px))`};
+      `calc(10px + max(0px, env(safe-area-inset-bottom) - ${p.$inset}px))`}
+    12px;
   background: var(--p-surface);
   box-shadow: var(--p-shadow-pop);
   z-index: 20;
