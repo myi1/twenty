@@ -517,6 +517,7 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
                               ? 'Expand the qualification form'
                               : 'Close the qualification form'
                         }
+                        onClick={qualify.onClick}
                         onPointerDown={qualify.onPointerDown}
                         onPointerMove={qualify.onPointerMove}
                         onPointerUp={qualify.onPointerUp}

@@ -87,6 +87,7 @@ export const useSheetHeight = (available: number, peek: number) => {
   const [dragHeight, setDragHeight] = useState<number | null>(null);
   const dragging = dragHeight !== null;
   const start = useRef<{ y: number; height: number } | null>(null);
+  const draggedRef = useRef(false);
 
   const setStop = useCallback((next: SheetStop) => {
     commitFocusedField();
@@ -101,9 +102,17 @@ export const useSheetHeight = (available: number, peek: number) => {
 
   // Pointer events rather than touch events: one code path covers finger, pen and a
   // mouse dragging the handle on a narrow desktop window.
+  //
+  // The TAP is handled by onClick, NOT by a no-movement pointerup. That is not a
+  // stylistic choice: a keyboard user pressing Enter or Space on the handle fires
+  // `click` and no pointer events at all, so a pointerup-based tap would have made
+  // the sheet mouse-only — the gesture would have been the single way to open it,
+  // which is the thing a handle like this most often gets wrong. `draggedRef` is what
+  // stops a real drag from also counting as a click on release.
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       start.current = { y: e.clientY, height: stopHeight(stop, available, peek) };
+      draggedRef.current = false;
       (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     },
     [stop, available, peek],
@@ -115,24 +124,29 @@ export const useSheetHeight = (available: number, peek: number) => {
       if (!from) return;
       const delta = from.y - e.clientY;
       // A 6px threshold so a tap is never read as a one-pixel drag.
-      if (dragHeight === null && Math.abs(delta) < 6) return;
+      if (!draggedRef.current && Math.abs(delta) < 6) return;
+      draggedRef.current = true;
       const raw = from.height + delta;
       setDragHeight(Math.max(peek, Math.min(raw, stopHeight('full', available, peek))));
     },
-    [dragHeight, available, peek],
+    [available, peek],
   );
 
   const onPointerUp = useCallback(() => {
-    const from = start.current;
     start.current = null;
-    if (dragHeight === null) {
-      // No drag happened — treat it as a tap and advance a stop.
-      if (from) setStop(nextStop(stop));
-      return;
-    }
+    if (dragHeight === null) return; // a tap: onClick owns it
     setStop(nearestStop(dragHeight, available, peek));
     setDragHeight(null);
-  }, [dragHeight, stop, available, peek, setStop]);
+  }, [dragHeight, available, peek, setStop]);
+
+  const onClick = useCallback(() => {
+    // Swallow the click the browser fires at the end of a drag.
+    if (draggedRef.current) {
+      draggedRef.current = false;
+      return;
+    }
+    setStop(nextStop(stop));
+  }, [stop, setStop]);
 
   // A viewport change (rotation, keyboard opening) must not leave a stale pixel height.
   useEffect(() => {
@@ -140,5 +154,5 @@ export const useSheetHeight = (available: number, peek: number) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [available]);
 
-  return { stop, setStop, height, dragging, onPointerDown, onPointerMove, onPointerUp };
+  return { stop, setStop, height, dragging, onPointerDown, onPointerMove, onPointerUp, onClick };
 };
