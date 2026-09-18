@@ -11,6 +11,7 @@ import {
   type CommandReceiptEntity,
   type ExecuteCommandInput,
 } from 'src/engine/core-modules/propel-command/command-receipt.entity';
+import { DurableEffectService } from 'src/engine/core-modules/propel-command/durable-effect.service';
 import { PropelCommandController } from 'src/engine/core-modules/propel-command/propel-command.controller';
 import { StageStepService } from 'src/engine/core-modules/propel-command/stage-step.service';
 import { type WorkspaceEntity } from 'src/engine/core-modules/workspace/workspace.entity';
@@ -187,6 +188,7 @@ describe('PropelCommandController authorization', () => {
       controllers: [PropelCommandController],
       providers: [
         { provide: AtomicCommandService, useValue: { execute } },
+        { provide: DurableEffectService, useValue: { execute: jest.fn() } },
         {
           provide: RoleService,
           useValue: { getRoleById: jest.fn(async () => role) },

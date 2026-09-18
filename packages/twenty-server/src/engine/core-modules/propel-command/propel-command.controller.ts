@@ -20,6 +20,8 @@ import {
   CommandKind,
   type ExecuteCommandInput,
 } from 'src/engine/core-modules/propel-command/command-receipt.entity';
+import { DurableEffectService } from 'src/engine/core-modules/propel-command/durable-effect.service';
+import { type EffectReceipt } from 'src/engine/core-modules/propel-command/effect-receipt.entity';
 import { type WorkspaceEntity } from 'src/engine/core-modules/workspace/workspace.entity';
 import { AuthUserWorkspaceId } from 'src/engine/decorators/auth/auth-user-workspace-id.decorator';
 import { AuthWorkspace } from 'src/engine/decorators/auth/auth-workspace.decorator';
@@ -50,7 +52,7 @@ export class ExecuteCommandDto implements ExecuteCommandInput {
 // Engine entry point for a Propel command. The guards authenticate (and the
 // JwtAuthGuard rejects anonymous callers) but they do NOT authorise: the role
 // check below is explicit and fail-closed.
-@Controller('propel-command')
+@Controller()
 @UseGuards(JwtAuthGuard, WorkspaceAuthGuard, NoPermissionGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
 export class PropelCommandController {
@@ -58,26 +60,51 @@ export class PropelCommandController {
 
   constructor(
     private readonly atomicCommandService: AtomicCommandService,
+    private readonly durableEffectService: DurableEffectService,
     private readonly roleService: RoleService,
     private readonly userRoleService: UserRoleService,
   ) {}
 
-  @Post()
+  @Post('propel-command')
   @HttpCode(HttpStatus.OK)
   async execute(
     @Body() command: ExecuteCommandDto,
     @AuthWorkspace() workspace: WorkspaceEntity,
     @AuthUserWorkspaceId() userWorkspaceId: string,
   ): Promise<CommandReceipt> {
-    const tier = await this.resolveCallerTier(workspace.id, userWorkspaceId);
+    await this.authorizeManager(workspace.id, userWorkspaceId);
+
+    return this.atomicCommandService.execute(command);
+  }
+
+  // Versioned, durable entry point. The step is claimed, executed, then
+  // recorded; repeating the same commandId resumes a claimed-but-unfinished
+  // step instead of applying its effect a second time.
+  @Post('propel/v1/commands')
+  @HttpCode(HttpStatus.OK)
+  async executeDurable(
+    @Body() command: ExecuteCommandDto,
+    @AuthWorkspace() workspace: WorkspaceEntity,
+    @AuthUserWorkspaceId() userWorkspaceId: string,
+  ): Promise<EffectReceipt> {
+    await this.authorizeManager(workspace.id, userWorkspaceId);
+
+    return this.durableEffectService.execute(command);
+  }
+
+  // The guards only authenticate: they do not decide whether the caller may run
+  // a command. The role check is explicit and fail-closed.
+  private async authorizeManager(
+    workspaceId: string,
+    userWorkspaceId: string,
+  ): Promise<void> {
+    const tier = await this.resolveCallerTier(workspaceId, userWorkspaceId);
 
     if (tier !== 'MANAGER') {
       throw new ForbiddenException(
         'Only a Propel manager may execute a command.',
       );
     }
-
-    return this.atomicCommandService.execute(command);
   }
 
   // Mirrors PropelTierService's fail-closed resolution so this endpoint accepts
