@@ -175,5 +175,8 @@ import { GenericRlsGroupByPreQueryHook } from 'src/modules/propel-rls/generic-rl
     GenericRlsFindOnePreQueryHook,
     GenericRlsGroupByPreQueryHook,
   ],
+  // Exported so the Propel command engine authorises through the SAME tier
+  // resolution the RLS layer uses, instead of hand-mirroring it.
+  exports: [PropelTierService],
 })
 export class PropelRlsModule {}

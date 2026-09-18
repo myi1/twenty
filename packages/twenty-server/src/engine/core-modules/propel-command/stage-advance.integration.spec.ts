@@ -10,7 +10,10 @@ import {
 } from 'src/engine/core-modules/propel-command/command-receipt.entity';
 import { StageStepService } from 'src/engine/core-modules/propel-command/stage-step.service';
 
+const WORKSPACE_ID = 'workspace-1';
+
 const buildStageCommand = (commandId: string): ExecuteCommandInput => ({
+  workspaceId: WORKSPACE_ID,
   commandId,
   kind: CommandKind.STAGE_ADVANCE,
   payload: { recordId: 'record-1', fromStage: 'QUALIFIED', toStage: 'PROPOSAL' },
@@ -21,6 +24,7 @@ const buildStoredReceipt = (
 ): CommandReceiptEntity =>
   ({
     id: 'receipt-id',
+    workspaceId: WORKSPACE_ID,
     commandId: 'command-1',
     kind: CommandKind.STAGE_ADVANCE,
     status: CommandStatus.APPLIED,
@@ -88,7 +92,7 @@ describe('StageStepService', () => {
 describe('AtomicCommandService stage advance', () => {
   let events: string[];
   let storedReceipt: CommandReceiptEntity | null;
-  let receiptRepository: { update: jest.Mock };
+  let receiptRepository: { update: jest.Mock; findOne: jest.Mock };
   let stageStepService: { execute: jest.Mock };
   let service: AtomicCommandService;
 
@@ -131,8 +135,22 @@ describe('AtomicCommandService stage advance', () => {
     };
 
     receiptRepository = {
-      update: jest.fn(async () => {
-        events.push('acknowledge');
+      update: jest.fn(
+        async (
+          _where: { workspaceId: string; commandId: string },
+          patch: { acknowledgedAt: Date },
+        ) => {
+          events.push('acknowledge');
+
+          if (storedReceipt) {
+            storedReceipt = { ...storedReceipt, ...patch };
+          }
+        },
+      ),
+      findOne: jest.fn(async () => {
+        events.push('read-persisted-receipt');
+
+        return storedReceipt;
       }),
     };
 
@@ -162,6 +180,7 @@ describe('AtomicCommandService stage advance', () => {
       'write-receipt',
       'commit',
       'acknowledge',
+      'read-persisted-receipt',
     ]);
     // Fails if the acknowledgement is written before the receipt commits.
     expect(events.indexOf('write-receipt')).toBeLessThan(

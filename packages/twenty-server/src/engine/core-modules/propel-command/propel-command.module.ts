@@ -8,14 +8,14 @@ import { DurableEffectService } from 'src/engine/core-modules/propel-command/dur
 import { EffectReceiptEntity } from 'src/engine/core-modules/propel-command/effect-receipt.entity';
 import { PropelCommandController } from 'src/engine/core-modules/propel-command/propel-command.controller';
 import { StageStepService } from 'src/engine/core-modules/propel-command/stage-step.service';
-import { RoleModule } from 'src/engine/metadata-modules/role/role.module';
-import { UserRoleModule } from 'src/engine/metadata-modules/user-role/user-role.module';
+import { PropelRlsModule } from 'src/modules/propel-rls/propel-rls.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([CommandReceiptEntity, EffectReceiptEntity]),
-    RoleModule,
-    UserRoleModule,
+    // The command endpoints authorise through PropelTierService, the same tier
+    // resolution the RLS layer uses.
+    PropelRlsModule,
   ],
   controllers: [PropelCommandController],
   providers: [

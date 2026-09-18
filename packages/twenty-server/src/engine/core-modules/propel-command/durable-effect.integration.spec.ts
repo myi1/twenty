@@ -19,11 +19,15 @@ import { NoPermissionGuard } from 'src/engine/guards/no-permission.guard';
 import { WorkspaceAuthGuard } from 'src/engine/guards/workspace-auth.guard';
 import { RoleService } from 'src/engine/metadata-modules/role/role.service';
 import { UserRoleService } from 'src/engine/metadata-modules/user-role/user-role.service';
+import { PropelTierService } from 'src/modules/propel-rls/propel-tier.service';
 
 const MANAGER_ROLE_UID = '20000000-0000-4000-8000-000000000001';
 const AGENT_ROLE_UID = '20000000-0000-4000-8000-000000000002';
 
+const WORKSPACE_ID = 'workspace-1';
+
 const buildCommand = (commandId: string) => ({
+  workspaceId: WORKSPACE_ID,
   commandId,
   kind: CommandKind.ASSIGNMENT,
   payload: { recordId: 'record-1', assigneeWorkspaceMemberId: 'member-2' },
@@ -256,6 +260,7 @@ describe('PropelCommandController durable endpoint authorization', () => {
       providers: [
         { provide: AtomicCommandService, useValue: { execute: jest.fn() } },
         { provide: DurableEffectService, useValue: { execute: executeDurable } },
+        PropelTierService,
         {
           provide: RoleService,
           useValue: { getRoleById: jest.fn(async () => role) },

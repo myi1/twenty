@@ -65,9 +65,24 @@ export class PropelTierService {
       return 'AGENT';
     }
 
-    try {
-      const workspaceId = authContext.workspace.id;
+    return this.resolveTierForUser({
+      workspaceId: authContext.workspace.id,
+      userWorkspaceId: authContext.userWorkspaceId,
+    });
+  }
 
+  // The same resolution for callers that hold a workspaceId + userWorkspaceId but
+  // no full auth context (the Propel command endpoints). Sharing this path is
+  // what keeps the fail-closed rules from drifting between the RLS layer and the
+  // command engine. ALWAYS returns a concrete tier; never throws.
+  async resolveTierForUser({
+    workspaceId,
+    userWorkspaceId,
+  }: {
+    workspaceId: string;
+    userWorkspaceId: string;
+  }): Promise<PropelTier> {
+    try {
       // Resolve the role from the workspace metadata CACHE (keyed by an explicit
       // workspaceId), NOT from getWorkspaceContext()'s ORM AsyncLocalStorage. The
       // RLS read-path pre-query hooks run OUTSIDE an established workspace ORM
@@ -78,7 +93,7 @@ export class PropelTierService {
       // throws when the userWorkspace has no role assigned → caught below → AGENT.
       const roleId = await this.userRoleService.getRoleIdForUserWorkspace({
         workspaceId,
-        userWorkspaceId: authContext.userWorkspaceId,
+        userWorkspaceId,
       });
 
       const role = await this.roleService.getRoleById(roleId, workspaceId);

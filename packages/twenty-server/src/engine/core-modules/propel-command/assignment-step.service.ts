@@ -7,6 +7,7 @@ import { type QueryRunner } from 'typeorm';
 import { CommandKind } from 'src/engine/core-modules/propel-command/command-receipt.entity';
 
 export interface AssignmentStepInput {
+  workspaceId: string;
   commandId: string;
   kind: CommandKind;
   payload: Record<string, unknown>;
@@ -49,8 +50,14 @@ export class AssignmentStepService {
     const assignmentId = randomUUID();
 
     await queryRunner.query(
-      `INSERT INTO "core"."command_assignment" ("id", "commandId", "recordId", "assigneeWorkspaceMemberId") VALUES ($1, $2, $3, $4)`,
-      [assignmentId, command.commandId, recordId, assigneeWorkspaceMemberId],
+      `INSERT INTO "core"."command_assignment" ("id", "workspaceId", "commandId", "recordId", "assigneeWorkspaceMemberId") VALUES ($1, $2, $3, $4, $5)`,
+      [
+        assignmentId,
+        command.workspaceId,
+        command.commandId,
+        recordId,
+        assigneeWorkspaceMemberId,
+      ],
     );
 
     return { assignmentId, recordId, assigneeWorkspaceMemberId };

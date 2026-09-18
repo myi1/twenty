@@ -4,7 +4,6 @@ import {
   ForbiddenException,
   HttpCode,
   HttpStatus,
-  Logger,
   Post,
   UseGuards,
   UsePipes,
@@ -12,13 +11,11 @@ import {
 } from '@nestjs/common';
 
 import { IsEnum, IsNotEmpty, IsObject, IsString } from 'class-validator';
-import { isDefined } from 'twenty-shared/utils';
 
 import { AtomicCommandService } from 'src/engine/core-modules/propel-command/atomic-command.service';
 import {
   type CommandReceipt,
   CommandKind,
-  type ExecuteCommandInput,
 } from 'src/engine/core-modules/propel-command/command-receipt.entity';
 import { DurableEffectService } from 'src/engine/core-modules/propel-command/durable-effect.service';
 import { type EffectReceipt } from 'src/engine/core-modules/propel-command/effect-receipt.entity';
@@ -28,16 +25,11 @@ import { AuthWorkspace } from 'src/engine/decorators/auth/auth-workspace.decorat
 import { JwtAuthGuard } from 'src/engine/guards/jwt-auth.guard';
 import { NoPermissionGuard } from 'src/engine/guards/no-permission.guard';
 import { WorkspaceAuthGuard } from 'src/engine/guards/workspace-auth.guard';
-import { RoleService } from 'src/engine/metadata-modules/role/role.service';
-import { UserRoleService } from 'src/engine/metadata-modules/user-role/user-role.service';
-import { STANDARD_ROLE } from 'src/engine/workspace-manager/twenty-standard-application/constants/standard-role.constant';
-import {
-  PROPEL_ROLE_LABEL_TIER_MAP,
-  PROPEL_ROLE_UID_TIER_MAP,
-  type PropelTier,
-} from 'src/modules/propel-rls/propel-tier.service';
+import { PropelTierService } from 'src/modules/propel-rls/propel-tier.service';
 
-export class ExecuteCommandDto implements ExecuteCommandInput {
+// The request body never carries a workspaceId: the workspace comes from the
+// authenticated context, so a caller cannot address another workspace's receipt.
+export class ExecuteCommandDto {
   @IsString()
   @IsNotEmpty()
   commandId: string;
@@ -56,13 +48,10 @@ export class ExecuteCommandDto implements ExecuteCommandInput {
 @UseGuards(JwtAuthGuard, WorkspaceAuthGuard, NoPermissionGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }))
 export class PropelCommandController {
-  private readonly logger = new Logger(PropelCommandController.name);
-
   constructor(
     private readonly atomicCommandService: AtomicCommandService,
     private readonly durableEffectService: DurableEffectService,
-    private readonly roleService: RoleService,
-    private readonly userRoleService: UserRoleService,
+    private readonly propelTierService: PropelTierService,
   ) {}
 
   @Post('propel-command')
@@ -74,7 +63,10 @@ export class PropelCommandController {
   ): Promise<CommandReceipt> {
     await this.authorizeManager(workspace.id, userWorkspaceId);
 
-    return this.atomicCommandService.execute(command);
+    return this.atomicCommandService.execute({
+      ...command,
+      workspaceId: workspace.id,
+    });
   }
 
   // Versioned, durable entry point. The step is claimed, executed, then
@@ -89,65 +81,28 @@ export class PropelCommandController {
   ): Promise<EffectReceipt> {
     await this.authorizeManager(workspace.id, userWorkspaceId);
 
-    return this.durableEffectService.execute(command);
+    return this.durableEffectService.execute({
+      ...command,
+      workspaceId: workspace.id,
+    });
   }
 
   // The guards only authenticate: they do not decide whether the caller may run
-  // a command. The role check is explicit and fail-closed.
+  // a command. The tier comes from the shared PropelTierService — the same
+  // fail-closed resolution the RLS layer uses — so the two can never drift.
   private async authorizeManager(
     workspaceId: string,
     userWorkspaceId: string,
   ): Promise<void> {
-    const tier = await this.resolveCallerTier(workspaceId, userWorkspaceId);
+    const tier = await this.propelTierService.resolveTierForUser({
+      workspaceId,
+      userWorkspaceId,
+    });
 
     if (tier !== 'MANAGER') {
       throw new ForbiddenException(
         'Only a Propel manager may execute a command.',
       );
-    }
-  }
-
-  // Mirrors PropelTierService's fail-closed resolution so this endpoint accepts
-  // the same callers the RLS layer treats as MANAGER (Admin / Propel Manager)
-  // and denies everyone else — including any lookup error.
-  private async resolveCallerTier(
-    workspaceId: string,
-    userWorkspaceId: string,
-  ): Promise<PropelTier> {
-    try {
-      const roleId = await this.userRoleService.getRoleIdForUserWorkspace({
-        workspaceId,
-        userWorkspaceId,
-      });
-      const role = await this.roleService.getRoleById(roleId, workspaceId);
-
-      if (!isDefined(role)) {
-        return 'AGENT';
-      }
-
-      if (
-        role.universalIdentifier === STANDARD_ROLE.admin.universalIdentifier
-      ) {
-        return 'MANAGER';
-      }
-
-      const uidTier = isDefined(role.universalIdentifier)
-        ? PROPEL_ROLE_UID_TIER_MAP[role.universalIdentifier]
-        : undefined;
-
-      if (isDefined(uidTier)) {
-        return uidTier;
-      }
-
-      return PROPEL_ROLE_LABEL_TIER_MAP[role.label] ?? 'AGENT';
-    } catch (error) {
-      this.logger.warn(
-        `Propel command tier resolution failed; denying. ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-
-      return 'AGENT';
     }
   }
 }
