@@ -7,8 +7,11 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
+import { type StageTransition } from 'src/engine/core-modules/propel-command/propel-stage';
+
 export enum CommandKind {
   ASSIGNMENT = 'ASSIGNMENT',
+  STAGE_ADVANCE = 'STAGE_ADVANCE',
 }
 
 export enum CommandStatus {
@@ -27,6 +30,9 @@ export interface CommandReceipt {
   kind: CommandKind;
   status: CommandStatus;
   result: Record<string, unknown>;
+  // Present only for a STAGE_ADVANCE command: the exact typed transition the
+  // receipt committed. Null for every other kind.
+  stageTransition: StageTransition | null;
   acknowledgedAt: string | null;
   createdAt: string;
 }
@@ -51,6 +57,9 @@ export class CommandReceiptEntity {
 
   @Column({ type: 'jsonb', nullable: true })
   result: unknown;
+
+  @Column({ type: 'jsonb', nullable: true })
+  stageTransition: unknown;
 
   @Column({ type: 'timestamptz', nullable: true })
   acknowledgedAt: Date | null;

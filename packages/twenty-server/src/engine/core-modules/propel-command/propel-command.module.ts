@@ -5,6 +5,7 @@ import { AssignmentStepService } from 'src/engine/core-modules/propel-command/as
 import { AtomicCommandService } from 'src/engine/core-modules/propel-command/atomic-command.service';
 import { CommandReceiptEntity } from 'src/engine/core-modules/propel-command/command-receipt.entity';
 import { PropelCommandController } from 'src/engine/core-modules/propel-command/propel-command.controller';
+import { StageStepService } from 'src/engine/core-modules/propel-command/stage-step.service';
 import { RoleModule } from 'src/engine/metadata-modules/role/role.module';
 import { UserRoleModule } from 'src/engine/metadata-modules/user-role/user-role.module';
 
@@ -15,7 +16,7 @@ import { UserRoleModule } from 'src/engine/metadata-modules/user-role/user-role.
     UserRoleModule,
   ],
   controllers: [PropelCommandController],
-  providers: [AtomicCommandService, AssignmentStepService],
+  providers: [AtomicCommandService, AssignmentStepService, StageStepService],
   exports: [AtomicCommandService],
 })
 export class PropelCommandModule {}

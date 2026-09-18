@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
 import { isDefined } from 'twenty-shared/utils';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, Repository, type QueryRunner } from 'typeorm';
 
 import { AssignmentStepService } from 'src/engine/core-modules/propel-command/assignment-step.service';
 import {
@@ -10,7 +10,13 @@ import {
   type CommandReceipt,
   CommandStatus,
   type ExecuteCommandInput,
+  CommandKind,
 } from 'src/engine/core-modules/propel-command/command-receipt.entity';
+import {
+  isPropelStage,
+  type StageTransition,
+} from 'src/engine/core-modules/propel-command/propel-stage';
+import { StageStepService } from 'src/engine/core-modules/propel-command/stage-step.service';
 
 const toCommandReceipt = (
   entity: CommandReceiptEntity,
@@ -21,11 +27,50 @@ const toCommandReceipt = (
   result: isDefined(entity.result)
     ? (entity.result as Record<string, unknown>)
     : {},
+  stageTransition: toStoredStageTransition(entity.stageTransition),
   acknowledgedAt: isDefined(entity.acknowledgedAt)
     ? new Date(entity.acknowledgedAt).toISOString()
     : null,
   createdAt: new Date(entity.createdAt).toISOString(),
 });
+
+const toStoredStageTransition = (value: unknown): StageTransition | null => {
+  if (!isDefined(value) || typeof value !== 'object') {
+    return null;
+  }
+
+  const { from, to } = value as Record<string, unknown>;
+
+  if (!isPropelStage(from) || !isPropelStage(to)) {
+    return null;
+  }
+
+  return { from, to };
+};
+
+// The step's result is untrusted `Record<string, unknown>`, so the transition is
+// re-validated here against the typed stage set before it is written to the
+// receipt. A step that returned garbage would fail the transaction rather than
+// record a malformed transition.
+const toStageTransition = (
+  kind: CommandKind,
+  result: Record<string, unknown>,
+): StageTransition | null => {
+  if (kind !== CommandKind.STAGE_ADVANCE) {
+    return null;
+  }
+
+  const transition = toStoredStageTransition({
+    from: result.fromStage,
+    to: result.toStage,
+  });
+
+  if (!isDefined(transition)) {
+    throw new Error('Stage advance command produced an invalid transition');
+  }
+
+  return transition;
+};
 
 interface CommandOutcome {
   replayed: boolean;
@@ -48,6 +93,7 @@ export class AtomicCommandService {
     private readonly commandReceiptRepository: Repository<CommandReceiptEntity>,
     private readonly dataSource: DataSource,
     private readonly assignmentStepService: AssignmentStepService,
+    private readonly stageStepService: StageStepService,
   ) {}
 
   async execute(command: ExecuteCommandInput): Promise<CommandReceipt> {
@@ -74,11 +120,8 @@ export class AtomicCommandService {
           return { replayed: true, receipt: toCommandReceipt(existing) };
         }
 
-        const result = await this.assignmentStepService.execute({
-          command,
-          queryRunner,
-        });
-
+        const result = await this.runStep(command, queryRunner);
+        const stageTransition = toStageTransition(command.kind, result);
         const createdAt = new Date();
 
         await queryRunner.manager.insert(CommandReceiptEntity, {
@@ -86,6 +129,9 @@ export class AtomicCommandService {
           kind: command.kind,
           status: CommandStatus.APPLIED,
           result,
+          // `undefined` lets TypeORM omit the column and leave it NULL, which is
+          // what a non-stage command needs.
+          stageTransition: stageTransition ?? undefined,
           acknowledgedAt: null,
         });
 
@@ -96,6 +142,7 @@ export class AtomicCommandService {
             kind: command.kind,
             status: CommandStatus.APPLIED,
             result,
+            stageTransition,
             acknowledgedAt: null,
             createdAt: createdAt.toISOString(),
           },
@@ -111,5 +158,22 @@ export class AtomicCommandService {
     }
 
     return outcome.receipt;
+  }
+
+  // One step service per command kind. Both are handed the transaction's own
+  // queryRunner so their write is part of the same commit as the receipt.
+  private async runStep(
+    command: ExecuteCommandInput,
+    queryRunner: QueryRunner,
+  ): Promise<Record<string, unknown>> {
+    if (command.kind === CommandKind.ASSIGNMENT) {
+      return this.assignmentStepService.execute({ command, queryRunner });
+    }
+
+    if (command.kind === CommandKind.STAGE_ADVANCE) {
+      return this.stageStepService.execute({ command, queryRunner });
+    }
+
+    throw new Error(`Unsupported command kind: ${command.kind}`);
   }
 }

@@ -12,6 +12,7 @@ import {
   type ExecuteCommandInput,
 } from 'src/engine/core-modules/propel-command/command-receipt.entity';
 import { PropelCommandController } from 'src/engine/core-modules/propel-command/propel-command.controller';
+import { StageStepService } from 'src/engine/core-modules/propel-command/stage-step.service';
 import { type WorkspaceEntity } from 'src/engine/core-modules/workspace/workspace.entity';
 import { JwtAuthGuard } from 'src/engine/guards/jwt-auth.guard';
 import { NoPermissionGuard } from 'src/engine/guards/no-permission.guard';
@@ -102,10 +103,18 @@ describe('AtomicCommandService', () => {
       ),
     };
 
+    const realStageStepService = new StageStepService();
+    const stageStepService = {
+      execute: jest.fn((input: Parameters<StageStepService['execute']>[0]) =>
+        realStageStepService.execute(input),
+      ),
+    };
+
     service = new AtomicCommandService(
       receiptRepository as unknown as Repository<CommandReceiptEntity>,
       dataSource as unknown as DataSource,
       assignmentStepService as unknown as AssignmentStepService,
+      stageStepService as unknown as StageStepService,
     );
   });
 
@@ -150,6 +159,7 @@ describe('AtomicCommandService', () => {
       kind: CommandKind.ASSIGNMENT,
       status: CommandStatus.APPLIED,
       result: { assignmentId: 'assignment-1' },
+      stageTransition: null,
       acknowledgedAt: null,
       createdAt: '2026-01-01T00:00:00.000Z',
     });
