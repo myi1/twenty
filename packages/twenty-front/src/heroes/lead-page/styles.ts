@@ -230,7 +230,9 @@ export const PhoneTab = styled.button<{ $active: boolean }>`
 // this hero rebuilds on its own. A reserved gutter costs an agent nothing if they later
 // drag the dock elsewhere; a covered primary action costs them the task.
 //
-// 68px = the 44px launcher + its 12px edge margin + 12px of daylight.
+// 68px, measured against the dock rather than guessed: DialerDock's
+// DEFAULT_DOCK_POSITION is { right: 14, bottom: 72 } and its launcher is 44px wide, so
+// the dock owns the last 58px of the row at rest. 68 clears it with 10px of daylight.
 const DOCK_GUTTER_PX = 68;
 
 export const PhoneBar = styled.div<{ $inset: number }>`
