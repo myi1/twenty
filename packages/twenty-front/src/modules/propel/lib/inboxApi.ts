@@ -65,11 +65,16 @@ export const sendInboxReply = (args: {
   // #83 — send the re-engagement TEMPLATE on an OFFICIAL thread past its 24h window
   // (the route reads templateName instead of the free-form body).
   templateName?: string;
+  // The agent chose to answer an OFFICIAL (campaign-line) thread from the everyday
+  // number instead, because the campaign line's WhatsApp account is restricted and
+  // its replies may never arrive. Absent = reply on the thread's own line, as always.
+  viaLine?: 'EVERYDAY';
 }): Promise<ReplySendEnvelope | null> =>
   callPropelRoute<ReplySendEnvelope>('/marketing/inbox-reply', {
     id: args.id,
     channel: args.channel,
     body: args.body,
+    ...(args.viaLine ? { viaLine: args.viaLine } : {}),
     ...(args.templateName ? { templateName: args.templateName } : {}),
     ...(args.media
       ? {

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActionIcon,
   Box,
@@ -7,6 +7,7 @@ import {
   Group,
   Image,
   Progress,
+  SegmentedControl,
   Select,
   Stack,
   Text,
@@ -16,6 +17,7 @@ import {
   IconAlertTriangle,
   IconClock,
   IconFile,
+  IconInfoCircle,
   IconPaperclip,
   IconSend,
   IconSparkles,
@@ -118,6 +120,13 @@ export const InboxComposer = ({
   // template card (no dead-end typing). `activeTemplate` is the picker choice, defaulting
   // to the suggested re-engagement template.
   const isOfficial = lineType === 'OFFICIAL';
+  // Which number this reply leaves on. Only ever offered on an OFFICIAL thread, and it
+  // starts on the line the customer actually wrote to — answering someone from a number
+  // they do not recognise is a real cost, so it stays a deliberate choice rather than a
+  // default. It resets per thread: a decision made for one conversation is not evidence
+  // about the next one.
+  const [viaEveryday, setViaEveryday] = useState(false);
+  useEffect(() => setViaEveryday(false), [id]);
   const windowClosed = isOfficial && sessionWindowOpen === false;
   const [pickedName, setPickedName] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -236,6 +245,7 @@ export const InboxComposer = ({
       channel,
       body: t,
       media: stagedMedia,
+      ...(viaEveryday ? { viaLine: 'EVERYDAY' as const } : {}),
     }).catch(() => null);
     setSending(false);
 
@@ -503,6 +513,48 @@ export const InboxComposer = ({
       }}
     >
       <Stack gap={9}>
+        {/* WHICH NUMBER THIS LEAVES ON (2026-09-19).
+            The campaign line's WhatsApp Business account is restricted: Meta accepts the
+            reply and it may never arrive, which the agent cannot see and the customer
+            experiences as silence. So on an OFFICIAL thread the agent can answer from the
+            everyday number instead. It is NOT automatic and NOT the default — a reply from
+            an unrecognised number has its own cost, and only the person reading the
+            conversation can weigh the two. */}
+        {isOfficial ? (
+          <Group gap={6} wrap="nowrap" align="center">
+            <Text size="xs" c="dimmed" style={{ flex: 'none' }}>
+              Send from
+            </Text>
+            <SegmentedControl
+              size="xs"
+              value={viaEveryday ? 'everyday' : 'campaign'}
+              onChange={(v) => setViaEveryday(v === 'everyday')}
+              data={[
+                { value: 'campaign', label: 'Campaign +971 50 210 4130' },
+                { value: 'everyday', label: 'Everyday +971 56 460 5612' },
+              ]}
+              aria-label="Which number this reply is sent from"
+            />
+          </Group>
+        ) : null}
+        {isOfficial && !viaEveryday ? (
+          <Group gap={6} wrap="nowrap" align="flex-start">
+            <IconAlertTriangle size={12} color="var(--mantine-color-orange-6)" style={{ flex: 'none', marginTop: 2 }} />
+            <Text size="xs" c="orange.6">
+              This line is restricted — WhatsApp may accept your reply and never deliver it. Switch to the everyday
+              number, or call them.
+            </Text>
+          </Group>
+        ) : null}
+        {isOfficial && viaEveryday ? (
+          <Group gap={6} wrap="nowrap" align="flex-start">
+            <IconInfoCircle size={12} color="var(--mantine-color-blue-5)" style={{ flex: 'none', marginTop: 2 }} />
+            <Text size="xs" c="blue.5">
+              They messaged the campaign number, so this will reach them from a number they don’t recognise. It lands in
+              the everyday thread.
+            </Text>
+          </Group>
+        ) : null}
         {/* #83 — OFFICIAL line + open window: a small countdown so the agent knows the
             free-reply clock is ticking before it closes. */}
         {isOfficial && !windowClosed && sessionWindowEndsAtMs ? (
