@@ -9,9 +9,11 @@ import { EffectReceiptEntity } from 'src/engine/core-modules/propel-command/effe
 import { PropelCommandController } from 'src/engine/core-modules/propel-command/propel-command.controller';
 import { StageStepService } from 'src/engine/core-modules/propel-command/stage-step.service';
 import { PropelRlsModule } from 'src/modules/propel-rls/propel-rls.module';
+import { TokenModule } from 'src/engine/core-modules/auth/token/token.module';
 
 @Module({
   imports: [
+    TokenModule,
     TypeOrmModule.forFeature([CommandReceiptEntity, EffectReceiptEntity]),
     // The command endpoints authorise through PropelTierService, the same tier
     // resolution the RLS layer uses.
