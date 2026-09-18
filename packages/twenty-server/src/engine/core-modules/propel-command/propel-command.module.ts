@@ -10,9 +10,11 @@ import { PropelCommandController } from 'src/engine/core-modules/propel-command/
 import { StageStepService } from 'src/engine/core-modules/propel-command/stage-step.service';
 import { PropelRlsModule } from 'src/modules/propel-rls/propel-rls.module';
 import { TokenModule } from 'src/engine/core-modules/auth/token/token.module';
+import { WorkspaceCacheStorageModule } from 'src/engine/workspace-cache-storage/workspace-cache-storage.module';
 
 @Module({
   imports: [
+    WorkspaceCacheStorageModule,
     TokenModule,
     TypeOrmModule.forFeature([CommandReceiptEntity, EffectReceiptEntity]),
     // The command endpoints authorise through PropelTierService, the same tier
