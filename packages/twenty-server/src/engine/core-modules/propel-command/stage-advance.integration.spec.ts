@@ -51,6 +51,7 @@ describe('StageStepService', () => {
     await expect(
       service.execute({
         command: {
+          workspaceId: WORKSPACE_ID,
           commandId: 'command-invalid',
           kind: CommandKind.STAGE_ADVANCE,
           payload: { recordId: 'record-1', fromStage: 'QUALIFIED', toStage: 'ARCHIVED' },
@@ -79,13 +80,37 @@ describe('StageStepService', () => {
       toStage: 'PROPOSAL',
     });
     expect(query).toHaveBeenCalledTimes(1);
+    // The workspaceId is the second bound parameter: without it, rows sharing a
+    // commandId across workspaces would be indistinguishable.
     expect(query.mock.calls[0][1]).toEqual([
       expect.any(String),
+      WORKSPACE_ID,
       'command-step',
       'record-1',
       'QUALIFIED',
       'PROPOSAL',
     ]);
+  });
+
+  it('scopes the stage advance row to the calling workspace', async () => {
+    const query = jest.fn(
+      async (_sql: string, _params?: unknown[]) => undefined,
+    );
+    const service = new StageStepService();
+
+    await service.execute({
+      command: { ...buildStageCommand('shared-command'), workspaceId: 'workspace-1' },
+      queryRunner: { query } as unknown as QueryRunner,
+    });
+    await service.execute({
+      command: { ...buildStageCommand('shared-command'), workspaceId: 'workspace-2' },
+      queryRunner: { query } as unknown as QueryRunner,
+    });
+
+    // The same commandId in a second workspace must write its own row, not be
+    // conflated with the first workspace's.
+    expect(query.mock.calls[0][1]?.[1]).toBe('workspace-1');
+    expect(query.mock.calls[1][1]?.[1]).toBe('workspace-2');
   });
 });
 

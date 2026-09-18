@@ -26,8 +26,8 @@ const AGENT_ROLE_UID = '20000000-0000-4000-8000-000000000002';
 
 const WORKSPACE_ID = 'workspace-1';
 
-const buildCommand = (commandId: string) => ({
-  workspaceId: WORKSPACE_ID,
+const buildCommand = (commandId: string, workspaceId = WORKSPACE_ID) => ({
+  workspaceId,
   commandId,
   kind: CommandKind.ASSIGNMENT,
   payload: { recordId: 'record-1', assigneeWorkspaceMemberId: 'member-2' },
@@ -35,8 +35,20 @@ const buildCommand = (commandId: string) => ({
 
 type StoredRow = Record<string, unknown>;
 
+// The durable store keys rows by (workspaceId, commandId). A lookup that omits
+// workspaceId falls back to the bare commandId, which is exactly how the
+// unscoped code would behave: this is what makes a cross-workspace replay
+// observable in the double.
+const rowKey = (workspaceId: string | undefined, commandId: string) =>
+  workspaceId === undefined ? commandId : `${workspaceId}::${commandId}`;
+
+const readWhere = (options: {
+  where: { workspaceId?: string; commandId: string };
+}) => rowKey(options.where.workspaceId, options.where.commandId);
+
 const buildStoredReceipt = (data: Record<string, unknown>): StoredRow => ({
   id: 'effect-receipt-id',
+  workspaceId: data.workspaceId,
   commandId: data.commandId,
   kind: data.kind,
   status: data.status,
@@ -79,18 +91,21 @@ describe('DurableEffectService', () => {
             findOne: jest.fn(
               async (
                 _entity: unknown,
-                options: { where: { commandId: string } },
+                options: { where: { workspaceId?: string; commandId: string } },
               ) => {
                 events.push('read-effect-receipt');
 
-                return receiptStaging.get(options.where.commandId) ?? null;
+                return receiptStaging.get(readWhere(options)) ?? null;
               },
             ),
             insert: jest.fn(
               async (_entity: unknown, data: Record<string, unknown>) => {
                 events.push('write-claim');
                 receiptStaging.set(
-                  data.commandId as string,
+                  rowKey(
+                    data.workspaceId as string | undefined,
+                    data.commandId as string,
+                  ),
                   buildStoredReceipt(data),
                 );
               },
@@ -98,7 +113,7 @@ describe('DurableEffectService', () => {
             update: jest.fn(
               async (
                 _entity: unknown,
-                where: { commandId: string },
+                where: { workspaceId?: string; commandId: string },
                 patch: Record<string, unknown>,
               ) => {
                 if (failNextRecordUpdate) {
@@ -108,9 +123,12 @@ describe('DurableEffectService', () => {
                 }
 
                 events.push('write-record');
-                const current = receiptStaging.get(where.commandId);
+                const key = readWhere({ where });
 
-                receiptStaging.set(where.commandId, { ...current, ...patch });
+                receiptStaging.set(key, {
+                  ...receiptStaging.get(key),
+                  ...patch,
+                });
               },
             ),
           };
@@ -197,9 +215,9 @@ describe('DurableEffectService', () => {
     ).rejects.toThrow('process killed between claim and record');
 
     // The claim survives the crash; the effect does not.
-    expect(committedReceipts.get('command-kill')?.status).toBe(
-      EffectStatus.CLAIMED,
-    );
+    expect(
+      committedReceipts.get(rowKey(WORKSPACE_ID, 'command-kill'))?.status,
+    ).toBe(EffectStatus.CLAIMED);
     expect(committedEffects.size).toBe(0);
     expect(effectReceiptRepository.update).not.toHaveBeenCalled();
 
@@ -207,9 +225,9 @@ describe('DurableEffectService', () => {
 
     expect(resumed.status).toBe(EffectStatus.APPLIED);
     expect(resumed.appliedAt).not.toBeNull();
-    expect(committedReceipts.get('command-kill')?.status).toBe(
-      EffectStatus.APPLIED,
-    );
+    expect(
+      committedReceipts.get(rowKey(WORKSPACE_ID, 'command-kill'))?.status,
+    ).toBe(EffectStatus.APPLIED);
     expect(committedEffects.size).toBe(1);
 
     const replayed = await service.execute(buildCommand('command-kill'));
@@ -222,8 +240,9 @@ describe('DurableEffectService', () => {
 
   it('never executes the effect again for an already-applied receipt', async () => {
     committedReceipts.set(
-      'command-done',
+      rowKey(WORKSPACE_ID, 'command-done'),
       buildStoredReceipt({
+        workspaceId: WORKSPACE_ID,
         commandId: 'command-done',
         kind: CommandKind.ASSIGNMENT,
         status: EffectStatus.APPLIED,
@@ -237,6 +256,50 @@ describe('DurableEffectService', () => {
     expect(receipt.result).toEqual({ assignmentId: 'assignment-1' });
     expect(effectExecutions).toBe(0);
     expect(assignmentStepService.execute).not.toHaveBeenCalled();
+  });
+
+  it('scopes the durable claim to the calling workspace so a shared commandId never replays across workspaces', async () => {
+    const first = await service.execute(
+      buildCommand('shared-command', 'workspace-1'),
+    );
+    const second = await service.execute(
+      buildCommand('shared-command', 'workspace-2'),
+    );
+
+    // Both workspaces claim and apply their own effect; neither is handed the
+    // other's receipt and neither command permanently no-ops.
+    expect(assignmentStepService.execute).toHaveBeenCalledTimes(2);
+    expect(effectExecutions).toBe(2);
+    expect(first.status).toBe(EffectStatus.APPLIED);
+    expect(second.status).toBe(EffectStatus.APPLIED);
+    // A cross-workspace false ACK would leak workspace-1's assignmentId here.
+    expect(second.result).not.toEqual(first.result);
+    expect(
+      committedReceipts.get(rowKey('workspace-1', 'shared-command')),
+    ).toBeDefined();
+    expect(
+      committedReceipts.get(rowKey('workspace-2', 'shared-command')),
+    ).toBeDefined();
+  });
+
+  it('rejects resuming a claim under a different command kind', async () => {
+    committedReceipts.set(
+      rowKey(WORKSPACE_ID, 'command-kind'),
+      buildStoredReceipt({
+        workspaceId: WORKSPACE_ID,
+        commandId: 'command-kind',
+        kind: CommandKind.STAGE_ADVANCE,
+        status: EffectStatus.CLAIMED,
+      }),
+    );
+
+    // The claim was recorded as a STAGE_ADVANCE; resuming it as an ASSIGNMENT
+    // must not apply the new effect under the old claim.
+    await expect(
+      service.execute(buildCommand('command-kind')),
+    ).rejects.toThrow('recorded as STAGE_ADVANCE but resumed as ASSIGNMENT');
+
+    expect(effectExecutions).toBe(0);
   });
 });
 

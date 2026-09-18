@@ -41,6 +41,20 @@ const isUniqueViolation = (error: unknown): boolean => {
   );
 };
 
+// A stored claim is only resumable by the same kind of command. Without this,
+// a CLAIMED ASSIGNMENT id resumed as a STAGE_ADVANCE would run the stage step
+// and record it under the old claim, applying an effect the claim never covered.
+const assertSameKind = (
+  claimed: EffectReceiptEntity,
+  command: ExecuteCommandInput,
+): void => {
+  if (claimed.kind !== command.kind) {
+    throw new Error(
+      `Durable claim for command ${command.commandId} was recorded as ${claimed.kind} but resumed as ${command.kind}`,
+    );
+  }
+};
+
 // Exactly-once execution built on a durable claim:
 //   1. CLAIM — one transaction inserts the effect_receipt row as CLAIMED. A
 //      replayed APPLIED row short-circuits here and no step ever runs.
@@ -49,8 +63,8 @@ const isUniqueViolation = (error: unknown): boolean => {
 //      record therefore commit or roll back together.
 //
 // A process killed between 1 and 2 leaves a committed CLAIMED row and no effect:
-// resuming by commandId re-runs 2. A process killed inside 2 rolls the effect
-// back with the record, so the effect is never applied twice.
+// resuming by (workspaceId, commandId) re-runs 2. A process killed inside 2
+// rolls the effect back with the record, so the effect is never applied twice.
 @Injectable()
 export class DurableEffectService {
   constructor(
@@ -72,8 +86,10 @@ export class DurableEffectService {
   }
 
   // Commits the claim on its own so it survives a crash in the step below. The
-  // unique index on commandId makes the insert the arbiter between two racing
-  // callers: the loser re-reads the winner's row instead of failing.
+  // composite unique index on (workspaceId, commandId) makes the insert the
+  // arbiter between two racing callers: the loser re-reads the winner's row
+  // instead of failing. Every lookup is scoped by the command's workspace, so
+  // one workspace's commandId never reads, resumes or dedupes another's row.
   private async claim(command: ExecuteCommandInput): Promise<EffectReceipt> {
     try {
       return await this.dataSource.transaction<EffectReceipt>(
@@ -88,16 +104,24 @@ export class DurableEffectService {
 
           const existing = await queryRunner.manager.findOne(
             EffectReceiptEntity,
-            { where: { commandId: command.commandId } },
+            {
+              where: {
+                workspaceId: command.workspaceId,
+                commandId: command.commandId,
+              },
+            },
           );
 
           if (isDefined(existing)) {
+            assertSameKind(existing, command);
+
             return toEffectReceipt(existing);
           }
 
           const claimedAt = new Date();
 
           await queryRunner.manager.insert(EffectReceiptEntity, {
+            workspaceId: command.workspaceId,
             commandId: command.commandId,
             kind: command.kind,
             status: EffectStatus.CLAIMED,
@@ -125,10 +149,15 @@ export class DurableEffectService {
       }
 
       const existing = await this.effectReceiptRepository.findOne({
-        where: { commandId: command.commandId },
+        where: {
+          workspaceId: command.workspaceId,
+          commandId: command.commandId,
+        },
       });
 
       if (isDefined(existing)) {
+        assertSameKind(existing, command);
+
         return toEffectReceipt(existing);
       }
 
@@ -152,7 +181,10 @@ export class DurableEffectService {
         // Lock the claim for the duration of the effect. A second resume of the
         // same commandId blocks here, then sees APPLIED and skips the step.
         const claimed = await queryRunner.manager.findOne(EffectReceiptEntity, {
-          where: { commandId: command.commandId },
+          where: {
+            workspaceId: command.workspaceId,
+            commandId: command.commandId,
+          },
           lock: { mode: 'pessimistic_write' },
         });
 
@@ -161,6 +193,8 @@ export class DurableEffectService {
             `No durable claim for command ${command.commandId}; claim before applying`,
           );
         }
+
+        assertSameKind(claimed, command);
 
         if (claimed.status === EffectStatus.APPLIED) {
           return toEffectReceipt(claimed);
@@ -175,7 +209,10 @@ export class DurableEffectService {
         // back effect.
         await queryRunner.manager.update(
           EffectReceiptEntity,
-          { commandId: command.commandId },
+          {
+            workspaceId: command.workspaceId,
+            commandId: command.commandId,
+          },
           { status: EffectStatus.APPLIED, result, appliedAt },
         );
 

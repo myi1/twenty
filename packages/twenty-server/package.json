@@ -12,6 +12,7 @@
     "database:init:prod": "node dist/database/scripts/setup-db.js && yarn database:migrate:prod --force --include-slow",
     "database:migrate:prod": "node dist/command/command run-instance-commands",
     "clickhouse:migrate:prod": "node dist/database/clickHouse/migrations/run-migrations.js",
+    "provenance:generate": "node scripts/generate-build-provenance.mjs",
     "typeorm": "../../node_modules/typeorm/.bin/typeorm"
   },
   "dependencies": {

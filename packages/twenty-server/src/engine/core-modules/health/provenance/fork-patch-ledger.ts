@@ -40,5 +40,25 @@ export const FORK_PATCH_LEDGER: ForkPatchLedger = {
       upstreamRef: 'twenty@0.2.1',
       files: ['src/engine/core-modules/propel-command/**'],
     },
+    {
+      id: 'propel-command-build-provenance',
+      title: 'Expose engine build provenance on the health endpoint',
+      forkCommit: 'b7a3ed0847',
+      upstreamRef: 'twenty@0.2.1',
+      files: [
+        'src/engine/core-modules/health/**',
+        'scripts/generate-build-provenance.mjs',
+      ],
+    },
+    {
+      id: 'propel-command-workspace-scoping',
+      title: 'Scope command receipts to the calling workspace',
+      forkCommit: '8aa38d06b3',
+      upstreamRef: 'twenty@0.2.1',
+      files: [
+        'src/engine/core-modules/propel-command/**',
+        'src/database/typeorm/core/migrations/common/17763*.ts',
+      ],
+    },
   ],
 };

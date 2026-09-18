@@ -11,6 +11,7 @@ import {
 } from 'src/engine/core-modules/propel-command/propel-stage';
 
 export interface StageStepInput {
+  workspaceId: string;
   commandId: string;
   kind: CommandKind;
   payload: Record<string, unknown>;
@@ -66,8 +67,15 @@ export class StageStepService {
     const stageAdvanceId = randomUUID();
 
     await queryRunner.query(
-      `INSERT INTO "core"."command_stage_advance" ("id", "commandId", "recordId", "fromStage", "toStage") VALUES ($1, $2, $3, $4, $5)`,
-      [stageAdvanceId, command.commandId, recordId, fromStage, toStage],
+      `INSERT INTO "core"."command_stage_advance" ("id", "workspaceId", "commandId", "recordId", "fromStage", "toStage") VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        stageAdvanceId,
+        command.workspaceId,
+        command.commandId,
+        recordId,
+        fromStage,
+        toStage,
+      ],
     );
 
     return { stageAdvanceId, recordId, fromStage, toStage };
