@@ -23,6 +23,7 @@ import { Pill } from './styles';
 import { errorText, markLost, markWon, movePipeline, setName } from './leadApi';
 import { dueWords, relativeWords, rotationWords, stageWords, timeThere, zoneWords } from './words';
 import type { LeadDeal, LeadLoad } from './types';
+import { stripMachineKey } from './machineKey';
 
 // The five lane keys createDeal / movePipeline speak, with the plain-language
 // labels used everywhere else on this page (FactsRail's "start a deal" buttons
@@ -485,7 +486,9 @@ export const LeadHeader = ({
   // ── next / last touch ────────────────────────────────────────────────────
   const soonest = data.openTasks[0];
   const nextDue = soonest ? dueWords(soonest.dueAt) : null;
-  const nextLineText = soonest ? `Next: ${soonest.title} · ${nextDue!.text}` : 'Next: nothing planned';
+  // The next action is a TASK title, and the desk-alerter's tasks carry their
+  // idempotency key in it — seen on production as the whole of this line.
+  const nextLineText = soonest ? `Next: ${stripMachineKey(soonest.title)} · ${nextDue!.text}` : 'Next: nothing planned';
   // Never render lastTouch.by: it is a workspace member ID, not a name.
   const lastTouchRel = relativeWords(person.lastTouch.at);
 

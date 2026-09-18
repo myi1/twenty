@@ -1,4 +1,5 @@
-import { dedupeEvents, stripMachineKey } from '../Story';
+import { dedupeEvents } from '../Story';
+import { stripMachineKey } from '../machineKey';
 
 describe('stripMachineKey', () => {
   it('hides the idempotency key an agent was reading on production', () => {
