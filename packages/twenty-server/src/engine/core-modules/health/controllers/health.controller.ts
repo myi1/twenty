@@ -1,6 +1,7 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import { HealthCheck, HealthCheckService } from '@nestjs/terminus';
 
+import { BUILD_PROVENANCE } from 'src/engine/core-modules/health/provenance/build-provenance.generated';
 import { NoPermissionGuard } from 'src/engine/guards/no-permission.guard';
 import { PublicEndpointGuard } from 'src/engine/guards/public-endpoint.guard';
 
@@ -13,5 +14,11 @@ export class HealthController {
   @HealthCheck()
   check() {
     return this.health.check([]);
+  }
+
+  @Get('provenance')
+  @UseGuards(PublicEndpointGuard, NoPermissionGuard)
+  provenance() {
+    return BUILD_PROVENANCE;
   }
 }
