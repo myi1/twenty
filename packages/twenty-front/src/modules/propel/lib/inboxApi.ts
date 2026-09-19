@@ -85,6 +85,28 @@ export const sendInboxReply = (args: {
       : {}),
   });
 
+export type ReactEnvelope = { ok: true; messageId: string | null; emoji: string; removed: boolean };
+
+/**
+ * React to a thread message, or take the reaction back with an empty emoji.
+ *
+ * Separate from sendInboxReply on purpose: reacting is NOT replying. The route does not
+ * emit the "responded" event, so a reaction cannot stop a lead's SLA clock or mark them
+ * as answered — tapping 👍 on someone's message is not an answer to it.
+ */
+export const reactToInboxMessage = (args: {
+  conversationId: string;
+  /** The WhatsApp id of the message being reacted to (not of the reaction). */
+  providerMessageId: string;
+  /** A single emoji, or '' to remove. Flags count as one — see emoji-reaction.ts. */
+  emoji: string;
+}): Promise<ReactEnvelope | null> =>
+  callPropelRoute<ReactEnvelope>('/marketing/inbox-react', {
+    conversationId: args.conversationId,
+    providerMessageId: args.providerMessageId,
+    emoji: args.emoji,
+  });
+
 export const fetchInboxAi = (args: {
   mode: 'suggest' | 'improve' | 'insights';
   conversationId: string;

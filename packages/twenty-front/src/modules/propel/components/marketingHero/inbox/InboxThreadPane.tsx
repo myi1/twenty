@@ -37,6 +37,7 @@ import {
 } from '@/propel/lib/inboxThreadPagination';
 import {
   fetchInboxThread,
+  reactToInboxMessage,
   saveInboxMedia,
   setInboxStatus,
 } from '@/propel/lib/inboxApi';
@@ -102,6 +103,9 @@ export const InboxThreadPane = ({
   const notify = usePropelToast();
 
   const [thread, setThread] = useState<InboxThreadPayload | null>(null);
+  // The message whose reaction is in flight, so only THAT bubble goes quiet rather
+  // than the whole thread.
+  const [reactingId, setReactingId] = useState<string | null>(null);
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading');
   const [localReload, setLocalReload] = useState(0);
   const [pending, setPending] = useState<PendingMessage[]>([]);
@@ -218,6 +222,25 @@ export const InboxThreadPane = ({
         });
     },
     [id, channel, replaceOlderPage],
+  );
+
+  // React to a message, or take our reaction back with an empty emoji.
+  //
+  // Optimism is deliberately NOT used here. A reaction is one glyph: if it briefly does
+  // not appear, nobody is misled, whereas showing one that never reached WhatsApp tells
+  // an agent something untrue — and unlike a message there is no delivery receipt to
+  // correct it afterwards. So we ask the server, then re-read its answer.
+  const handleReact = useCallback(
+    (providerMessageId: string, emoji: string) => {
+      if (reactingId) return;
+      setReactingId(providerMessageId);
+      void reactToInboxMessage({ conversationId: id, providerMessageId, emoji })
+        .then((res) => {
+          if (res?.ok) loadThread('refresh');
+        })
+        .finally(() => setReactingId(null));
+    },
+    [id, reactingId, loadThread],
   );
 
   const loadOlderMessages = useCallback(() => {
@@ -670,6 +693,8 @@ export const InboxThreadPane = ({
                   saveBusy={savingId === m.id}
                   saveError={saveErrors[m.id] ?? null}
                   onSaveMedia={handleSaveMedia}
+                  onReact={channel === 'WHATSAPP' ? handleReact : undefined}
+                  reactBusy={reactingId !== null && reactingId === m.providerMessageId}
                 />
               ))
             )}

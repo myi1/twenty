@@ -8,6 +8,7 @@ import {
   SaveMediaBar,
   SavedMediaBadge,
 } from '@/propel/components/marketingHero/inbox/InboxBits';
+import { ReactionBar } from '@/propel/components/marketingHero/inbox/ReactionBar';
 
 // A rendered row is either a server message or an optimistic temp. `pending` marks
 // an in-flight ("Sending…") bubble; `failed` marks a hard failure ("Not sent").
@@ -27,6 +28,8 @@ export const MessageBubble = ({
   saveBusy,
   saveError,
   onSaveMedia,
+  onReact,
+  reactBusy,
 }: {
   m: PendingRow;
   nowMs: number;
@@ -34,6 +37,10 @@ export const MessageBubble = ({
   saveBusy: boolean;
   saveError: string | null;
   onSaveMedia: (messageId: string) => void;
+  // Absent on a surface that cannot react (FB/IG, or a read-only thread): the bar then
+  // still SHOWS reactions that arrived, it just does not offer to add one.
+  onReact?: (providerMessageId: string, emoji: string) => void;
+  reactBusy?: boolean;
 }) => {
   const out = m.direction === 'OUTBOUND';
   const showMedia = hasRenderableMedia(m);
@@ -89,6 +96,17 @@ export const MessageBubble = ({
           <span style={{ opacity: 0.6 }}>(no text)</span>
         )}
       </Box>
+      <ReactionBar
+        reactions={m.reactions ?? []}
+        // A row still in flight has no WhatsApp id yet, so there is nothing to react
+        // TO — offering it would fail at the far end for a reason no agent could guess.
+        canReact={Boolean(onReact) && !isPending && !m.failed && Boolean(m.providerMessageId)}
+        busy={Boolean(reactBusy)}
+        onReact={(emoji) => {
+          if (m.providerMessageId) onReact?.(m.providerMessageId, emoji);
+        }}
+        align={out ? 'flex-end' : 'flex-start'}
+      />
       <Group gap={4} mt={3} px={4} wrap="nowrap">
         {m.failed ? (
           <Text size="xs" c="red" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>

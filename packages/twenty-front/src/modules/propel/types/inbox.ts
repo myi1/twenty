@@ -229,6 +229,22 @@ export interface InboxMessageRow {
   // persisted (true) with a null expiry — the save/expiry UI is FB/IG only.
   mediaPersisted: boolean;
   mediaExpiresAtMs: number | null;
+  // Emoji reactions on THIS message, already grouped by the route: one entry per
+  // emoji, with how many people used it and whether one of them was us. A reaction is
+  // an annotation on a message, never a message of its own — it is why a lead tapping
+  // 👍 no longer arrives as an empty bubble.
+  reactions?: InboxReactionChip[];
+  // WhatsApp's own id for the message. A reaction targets THIS, not our row id, so
+  // without it the UI can display reactions but cannot add one. WhatsApp-only.
+  providerMessageId?: string | null;
+}
+
+/** One emoji and how many people used it, as the thread draws it. */
+export interface InboxReactionChip {
+  emoji: string;
+  count: number;
+  /** True when one of those was us — drives the "already reacted" state. */
+  mine: boolean;
 }
 
 // At-a-glance contact card for the context rail. Every field beyond id/name is

@@ -18,7 +18,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { IconChevronDown } from 'twenty-ui/display';
 import type { PropelHeroHost } from '@/propel/runtime/heroHost';
-import { fetchInboxThread } from '@/propel/lib/inboxApi';
+import { fetchInboxThread, reactToInboxMessage } from '@/propel/lib/inboxApi';
 import { reconcilePending, type PendingMessage } from '@/propel/lib/inboxThread';
 import {
   applyOlderThreadPage,
@@ -159,6 +159,25 @@ export const Story = ({
   // Server row ids already matched to a pending temp, so the same real message
   // can never reconcile a second temp. Mirrors InboxThreadPane's claimedRowIdsRef.
   const claimedRowIdsRef = useRef<Set<string>>(new Set());
+  // Which message's reaction is in flight — only that bubble goes quiet.
+  const [reactingId, setReactingId] = useState<string | null>(null);
+  // React, or take it back with an empty emoji. Deliberately not optimistic: a reaction
+  // that never reached WhatsApp would tell the agent something untrue, and unlike a
+  // message there is no delivery receipt to correct it later. onChanged() re-reads the
+  // thread, so what renders is what the server actually holds.
+  const handleReact = useCallback(
+    (providerMessageId: string, emoji: string) => {
+      if (!conversationId || reactingId) return;
+      setReactingId(providerMessageId);
+      void reactToInboxMessage({ conversationId, providerMessageId, emoji })
+        .then((res) => {
+          if (res?.ok) onChanged();
+        })
+        .finally(() => setReactingId(null));
+    },
+    [conversationId, reactingId, onChanged],
+  );
+
   const activeConversationKeyRef = useRef(conversationId ?? '');
   activeConversationKeyRef.current = conversationId ?? '';
   const loadedConversationKeyRef = useRef('');
@@ -473,6 +492,8 @@ export const Story = ({
                 saveBusy={false}
                 saveError={null}
                 onSaveMedia={() => {}}
+                onReact={handleReact}
+                reactBusy={reactingId !== null && reactingId === m.providerMessageId}
               />
             ))}
           </div>
