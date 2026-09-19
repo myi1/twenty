@@ -13,8 +13,23 @@ import { type InboxDeliveryStatus } from '@/propel/types/inbox';
 // worse than no tick, because it manufactures the same false confidence the bug did.
 export type DeliveryTone = 'ok' | 'wait' | 'bad';
 
+// The words behind each failure code. Owned in the CRM app
+// (src/shared/wa-failure-reason.ts); kept here because a hero bundle cannot import from
+// it. An UNRECOGNISED code deliberately renders as plain "Not delivered": a raw provider
+// string in front of an agent is noise dressed as information.
+const FAILURE_WORDS: Record<string, string> = {
+  NOT_ON_WHATSAPP: 'this number has no WhatsApp — call them instead',
+  LINE_DISCONNECTED: 'our WhatsApp line was disconnected — not their end',
+  MEDIA_REJECTED: 'WhatsApp refused the attachment',
+  REFUSED: 'WhatsApp refused this message',
+};
+
 export const messageDeliveryWords = (
   status: InboxDeliveryStatus | undefined,
+  // WHY it failed, when the channel told us. "Not delivered" alone is a dead end: the
+  // two causes behind it call for opposite actions — phone them, or try again — and
+  // until 2026-09-19 an agent could not tell which they were looking at.
+  failureReason?: string | null,
 ): { text: string; tone: DeliveryTone } | null => {
   switch (status) {
     case 'READ':
@@ -25,8 +40,10 @@ export const messageDeliveryWords = (
       return { text: 'Sent, not delivered yet', tone: 'wait' };
     case 'QUEUED':
       return { text: 'Waiting to send', tone: 'wait' };
-    case 'FAILED':
-      return { text: 'Not delivered', tone: 'bad' };
+    case 'FAILED': {
+      const why = failureReason ? FAILURE_WORDS[failureReason] : undefined;
+      return { text: why ? `Not delivered — ${why}` : 'Not delivered', tone: 'bad' };
+    }
     default:
       return null;
   }

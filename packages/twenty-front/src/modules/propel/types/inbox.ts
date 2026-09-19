@@ -237,6 +237,10 @@ export interface InboxMessageRow {
   // WhatsApp's own id for the message. A reaction targets THIS, not our row id, so
   // without it the UI can display reactions but cannot add one. WhatsApp-only.
   providerMessageId?: string | null;
+  /** WHY a FAILED message failed, as a code the UI turns into a sentence
+   *  (NOT_ON_WHATSAPP, LINE_DISCONNECTED, MEDIA_REJECTED, REFUSED). Null on anything
+   *  that did not fail. An unknown code renders as the plain "Not delivered". */
+  failureReason?: string | null;
 }
 
 /** One emoji and how many people used it, as the thread draws it. */

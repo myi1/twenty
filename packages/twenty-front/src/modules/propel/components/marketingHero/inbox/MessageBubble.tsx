@@ -45,7 +45,7 @@ export const MessageBubble = ({
   const out = m.direction === 'OUTBOUND';
   const showMedia = hasRenderableMedia(m);
   const isPending = Boolean(m.pending) && !m.failed;
-  const delivery = messageDeliveryWords(m.deliveryStatus);
+  const delivery = messageDeliveryWords(m.deliveryStatus, m.failureReason);
   const canSave = isSocial && showSaveAffordance(m);
   const showSaved =
     isSocial && m.direction === 'INBOUND' && m.mediaPersisted && showMedia;
