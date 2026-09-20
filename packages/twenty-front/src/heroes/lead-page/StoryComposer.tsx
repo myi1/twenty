@@ -90,6 +90,9 @@ export const StoryComposer = ({
 }) => {
   const { person, wa, viewer } = data;
   const blocked = person.optedOutWhatsApp || person.isLost;
+  // Not blocked — a message to a number with no WhatsApp fails silently rather than
+  // harming anyone, and the agent may still want to try. But they should know first.
+  const noWhatsApp = person.whatsappUnreachable === true;
   const replyAvailability = getWhatsAppReplyAvailability(wa);
 
   // In-flight flags stay local — they describe a request this component made,
@@ -211,6 +214,18 @@ export const StoryComposer = ({
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <Pill>{`${wa.lineLabel} · ${wa.lineNumber}`}</Pill>
+          {/* A warning, NOT a block. WhatsApp told us this number has no account, so a
+              message will not arrive — but sending one harms nobody, and the agent may
+              still want to try before calling. Telling them first is the whole point:
+              without it, the only clue is a silence that looks like being ignored. */}
+          {noWhatsApp && (
+            <div
+              role="status"
+              style={{ fontSize: 13, color: 'var(--p-bad)' }}
+            >
+              This number has no WhatsApp account — a message will not arrive. Call instead.
+            </div>
+          )}
           {replyAvailability.kind === 'SYNC_PENDING' ? (
             // Lead Page owns the current permission state. The Inbox thread can
             // still be a reply-capable snapshot while its owner write catches up,

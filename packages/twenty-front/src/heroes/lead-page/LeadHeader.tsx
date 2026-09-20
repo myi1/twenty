@@ -539,6 +539,9 @@ export const LeadHeader = ({
             <Pill $tone="neutral">{data.wa.lineLabel}</Pill>
             {sourceChip && <Pill $tone="neutral">{sourceChip}</Pill>}
             <Pill $tone={replyTone}>{replyText}</Pill>
+            {/* Only when WhatsApp actually said so. An agent reading this stops trying
+                WhatsApp, so an unchecked or failed lookup must never render it. */}
+            {person.whatsappUnreachable && <Pill $tone="bad">No WhatsApp — call only</Pill>}
           </PillsRow>
 
           <MetaLine>

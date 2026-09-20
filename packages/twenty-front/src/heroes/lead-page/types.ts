@@ -150,6 +150,11 @@ export type LeadLoad = {
     formAnswers: Array<{ label: string; value: string }>;
     lastTouch: { at: string | null; by: string | null; summary: string | null };
     optedOutWhatsApp: boolean;
+    /** WhatsApp told us this number has no account. A FACT about the number, not a
+     *  policy about the lead — kept apart from optedOutWhatsApp so the page can say
+     *  "call only" without implying consent was withdrawn. False when unchecked or
+     *  when the lookup could not answer: unknown is never rendered as a no. */
+    whatsappUnreachable?: boolean;
   };
   deals: LeadDeal[];
   selectedDealId: string | null;
