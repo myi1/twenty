@@ -21,6 +21,7 @@ import type { InboxAgentOption } from '@/propel/types/inbox';
 import { Btn, FONT_DISPLAY, FONT_MONO, NOCTURNE_LIGHT_VARS, PulseScope } from '../_pulse/pulse';
 import { Pill } from './styles';
 import { errorText, markLost, markWon, movePipeline, setName } from './leadApi';
+import { closeReasonsFor } from './closeReasons';
 import { dueWords, relativeWords, rotationWords, stageWords, timeThere, zoneWords } from './words';
 import type { LeadDeal, LeadLoad } from './types';
 import { stripMachineKey } from './machineKey';
@@ -231,6 +232,48 @@ const ModalFieldStack = styled.div`
   gap: 12px;
 `;
 
+const ReasonLabel = styled.div`
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 2px;
+`;
+
+const ReasonHint = styled.div`
+  font-size: 12px;
+  color: var(--p-ink-2);
+  margin-bottom: 8px;
+`;
+
+// One column on a phone, two where there is room. Never a dropdown: see the comment
+// at the call site.
+const ReasonGrid = styled.div`
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  @media (min-width: 560px) {
+    grid-template-columns: 1fr 1fr;
+  }
+`;
+
+const ReasonBtn = styled.button<{ $on: boolean }>`
+  /* 44px is the smallest target a thumb hits reliably; these are tapped one-handed. */
+  min-height: 44px;
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.3;
+  cursor: pointer;
+  border-radius: 8px;
+  border: 1px solid ${(p) => (p.$on ? 'var(--p-bad)' : 'var(--p-line, rgba(128,128,128,.35))')};
+  background: ${(p) => (p.$on ? 'color-mix(in srgb, var(--p-bad) 16%, transparent)' : 'transparent')};
+  color: inherit;
+  font-weight: ${(p) => (p.$on ? 600 : 400)};
+  &:focus-visible {
+    outline: 2px solid var(--p-bad);
+    outline-offset: 1px;
+  }
+`;
+
 const ModalActions = styled.div`
   display: flex;
   justify-content: flex-end;
@@ -409,10 +452,12 @@ export const LeadHeader = ({
   const [lostNote, setLostNote] = useState('');
   const [lostBusy, setLostBusy] = useState(false);
 
-  // The options come from the SELECTED DEAL, because they are that lane's own
-  // vocabulary. With no deal open there is no lane, so there is no list to show and
-  // the reason picker is not offered — the free-text line still closes the contact.
-  const laneReasons = selectedDeal?.lostReasons ?? [];
+  // With a deal open, the reasons are that lane's own vocabulary. WITHOUT one they
+  // describe the person instead — and that is the case that matters, because a junk
+  // lead never gets a deal. Until 2026-09-20 this fell back to an empty list, so the
+  // picker vanished for exactly the leads most worth classifying and every close of a
+  // wrong number recorded nothing Meta could learn from.
+  const laneReasons = closeReasonsFor(selectedDeal, data.personLostReasons);
 
   const confirmLost = async () => {
     if (laneReasons.length > 0 && !lostReason) return;
@@ -666,18 +711,29 @@ export const LeadHeader = ({
         <PulsePortalScope>
           <ModalFieldStack>
             {laneReasons.length > 0 && (
-              <Select
-                label="Why?"
-                description="This fills the reason on the deal — one save, nothing left blank."
-                placeholder="Pick a reason"
-                // The lane's own values, served by the route. `value` is the stored
-                // SELECT code and `label` is what the agent reads; sending the label
-                // is what the old hardcoded list did, and nothing could store it.
-                data={laneReasons.map((r) => ({ value: r.value, label: r.label }))}
-                value={lostReason}
-                onChange={setLostReason}
-                comboboxProps={{ zIndex: 5000 }}
-              />
+              <div>
+                <ReasonLabel id="close-reason-label">Why?</ReasonLabel>
+                <ReasonHint>Pick one — this is what tells Meta whether to keep buying leads like this.</ReasonHint>
+                {/* Buttons, not a dropdown. Agents close leads on a phone between
+                    viewings, and a native select opens a picker on top of this modal;
+                    one tap on a target big enough to hit beats two on one that is not.
+                    `value` is the stored SELECT code — sending the LABEL is what an
+                    older hardcoded list did, and nothing could store it. */}
+                <ReasonGrid role="radiogroup" aria-labelledby="close-reason-label">
+                  {laneReasons.map((r) => (
+                    <ReasonBtn
+                      key={r.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={lostReason === r.value}
+                      $on={lostReason === r.value}
+                      onClick={() => setLostReason(lostReason === r.value ? null : r.value)}
+                    >
+                      {r.label}
+                    </ReasonBtn>
+                  ))}
+                </ReasonGrid>
+              </div>
             )}
             <TextInput
               label="Anything to add?"

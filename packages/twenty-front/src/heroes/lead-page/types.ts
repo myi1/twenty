@@ -45,6 +45,7 @@ export type LeadDeal = {
   // is why every closed opportunity on prod carries a NULL reason: the labels it
   // offered ("Budget", "Wrong number") were not values any lane could store.
   lostReasons?: { value: string; label: string }[];
+
   wonStage?: string;
   isWon?: boolean;
 };
@@ -193,6 +194,10 @@ export type LeadLoad = {
   // every lead carries is just the noise this change removed one layer up.
   rotation: LeadRotation | null;
   replySignal: { repliedAt: string | null; minutes: number | null };
+  /** Reasons that describe the PERSON, offered when no deal is open to supply a lane
+   *  vocabulary — which is the usual case for a lead worth closing as junk. */
+  personLostReasons?: { value: string; label: string }[];
+
   viewer: { workspaceMemberId: string; role: 'ADMIN' | 'MANAGER' | 'AGENT' };
 };
 
