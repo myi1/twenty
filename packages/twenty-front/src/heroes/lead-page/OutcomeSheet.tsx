@@ -401,7 +401,28 @@ export const OutcomeSheet = ({
             placeholder="What did they say, in their own words"
           />
 
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: 10, justifyContent: phone ? 'space-between' : 'flex-end', alignItems: 'center' }}>
+            {/* On a phone this is the ONLY route to closing a lead: the header's action
+                row — Call, WhatsApp, Log outcome, More — is hidden below the phone
+                breakpoint, and More is what holds "Close this lead". The phone bar has
+                no room for a fourth control: it reserves 68px for the floating dialer,
+                and a fourth button measured 58px past that edge, landing underneath it.
+                This sheet is already the mobile home of "what happened with this lead",
+                so the terminal version of that belongs here too.
+                Close this sheet first — the dialog is a Modal and would otherwise stack
+                on top of an open Drawer. */}
+            {phone && (
+              <Btn
+                variant="ghost"
+                onClick={() => {
+                  onClose();
+                  setTimeout(() => document.getElementById('lead-page-close')?.click(), 0);
+                }}
+                style={{ minHeight: 44, color: 'var(--p-bad)' }}
+              >
+                Close this lead
+              </Btn>
+            )}
             <Btn variant="ghost" onClick={onClose} style={{ minHeight: 44 }}>
               Not now
             </Btn>

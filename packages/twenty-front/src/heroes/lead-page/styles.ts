@@ -313,9 +313,7 @@ export const PhoneBar = styled.div<{ $inset: number }>`
   right: 0;
   bottom: ${(p) => p.$inset}px;
   display: grid;
-  /* Call · WhatsApp · Log outcome · Close. The fourth column is narrower than the
-     rest: its label is one short word, and Log outcome must not lose room for it. */
-  grid-template-columns: 1fr 1fr 1.4fr 0.85fr;
+  grid-template-columns: 1fr 1fr 1.4fr;
   gap: 8px;
   /* Landscape adds a side notch and a home indicator the bar must sit clear of; the
      right inset rides on top of the dock gutter rather than replacing it, because in
@@ -330,6 +328,12 @@ export const PhoneBar = styled.div<{ $inset: number }>`
 
   & > button {
     min-height: 48px;
+    /* A button's intrinsic width is its content, and an fr track cannot shrink below
+       that — so adding a control made the row 353px wide inside a 295px box and pushed
+       the last one to x=365, under the DialerDock launcher that DOCK_GUTTER_PX exists
+       to keep clear. Measured on a 375px viewport, 2026-09-20. This makes the tracks
+       actually govern. */
+    min-width: 0;
   }
 `;
 

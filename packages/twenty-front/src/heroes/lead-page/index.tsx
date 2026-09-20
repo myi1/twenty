@@ -564,17 +564,6 @@ const LeadPageHero = ({ host }: { host: PropelHeroHost }) => {
                     </Btn>
                     <Btn variant="secondary" onClick={focusComposer}>WhatsApp</Btn>
                     <Btn variant="primary" onClick={openSheet}>Log outcome</Btn>
-                    {/* Closing a lead was desktop-only until 2026-09-20 — the header's
-                        action row, which holds More, is hidden on a phone. Agents work
-                        from phones between viewings, so the one action that records
-                        WHY a lead died was the one they could not reach. */}
-                    <Btn
-                      variant="secondary"
-                      aria-label="Close this lead"
-                      onClick={() => document.getElementById('lead-page-close')?.click()}
-                    >
-                      Close
-                    </Btn>
                   </PhoneBar>
                 )}
                 <OutcomeSheet
