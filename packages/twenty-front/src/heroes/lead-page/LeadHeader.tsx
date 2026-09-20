@@ -633,15 +633,30 @@ export const LeadHeader = ({
       </TopRow>
 
       {phone && (
-        <Btn
-          id="lead-page-call"
-          variant="secondary"
-          disabled={!person.phoneE164}
-          onClick={handleCall}
-          style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
-        >
-          Call
-        </Btn>
+        <>
+          <Btn
+            id="lead-page-call"
+            variant="secondary"
+            disabled={!person.phoneE164}
+            onClick={handleCall}
+            style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
+          >
+            Call
+          </Btn>
+          {/* The close dialog is this component's, but on a phone the whole desktop
+              action row — More included — is hidden, so until 2026-09-20 an agent on a
+              phone could not close a lead at all. The phone bar lives in index.tsx and
+              reaches this the same way it reaches Call: a hidden proxy, rather than
+              lifting the dialog's state out of the component that owns it. */}
+          <Btn
+            id="lead-page-close"
+            variant="ghost"
+            onClick={() => setLostOpen(true)}
+            style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
+          >
+            Close this lead
+          </Btn>
+        </>
       )}
 
       {person.isLost && <Banner $tone="bad">Lost / do not contact</Banner>}

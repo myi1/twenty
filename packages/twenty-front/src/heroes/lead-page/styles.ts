@@ -313,7 +313,9 @@ export const PhoneBar = styled.div<{ $inset: number }>`
   right: 0;
   bottom: ${(p) => p.$inset}px;
   display: grid;
-  grid-template-columns: 1fr 1fr 1.4fr;
+  /* Call · WhatsApp · Log outcome · Close. The fourth column is narrower than the
+     rest: its label is one short word, and Log outcome must not lose room for it. */
+  grid-template-columns: 1fr 1fr 1.4fr 0.85fr;
   gap: 8px;
   /* Landscape adds a side notch and a home indicator the bar must sit clear of; the
      right inset rides on top of the dock gutter rather than replacing it, because in
