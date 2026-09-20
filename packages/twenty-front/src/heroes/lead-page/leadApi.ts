@@ -8,6 +8,7 @@
 
 import { type PropelHeroHost } from '@/propel/runtime/heroHost';
 import type { LeadErr, LeadLoad, SaveOutcomeInput, SaveOutcomeResponse } from './types';
+import { sessionHasLapsed } from './sessionLapsed';
 
 const ROUTE = '/lead-page';
 export type R<T> = (T & { ok: true }) | LeadErr | null;
@@ -126,6 +127,9 @@ export const moveStageErrorText = (r: MoveStageResult | null): string => {
     const said = [asSentence(r.gate.label), asSentence(r.gate.fix)].filter(Boolean).join(' ');
     if (said) return said;
   }
+  // Same lapsed session, same page: without this the agent is told to sign in by
+  // one button and to try again by the next one, in the same dead minute.
+  if (!r && sessionHasLapsed()) return 'You need to sign in again.';
   return 'The stage did not move. Try again.';
 };
 export const createDeal = (host: PropelHeroHost, laneKey: 'offplan' | 'secondary' | 'sell' | 'rcbi' | 'institutional', contactId: string, name: string) =>
@@ -147,7 +151,16 @@ export const sendFirstWhatsApp = (host: PropelHeroHost, waPhoneNumber: string, p
 // Plain words for the toast; never the code.
 export const errorText = (r: LeadErr | null | { ok: false; error?: string }): string => {
   const code = r && 'error' in r ? r.error : null;
-  if (!r) return 'The CRM did not answer. Check your connection and try again.';
+  // `null` means the route answered nothing a caller could read — which covers a
+  // genuinely unreachable server AND a lapsed session, because the engine refuses
+  // an expired token with an opaque 500 above the handler (see sessionLapsed.ts).
+  // Asking the cookie separates them; when it cannot prove a lapse, the original
+  // sentence stands.
+  if (!r) {
+    return sessionHasLapsed()
+      ? 'You need to sign in again.'
+      : 'The CRM did not answer. Check your connection and try again.';
+  }
   // The login lapsed: the route could not identify the caller at all. This is the
   // commonest refusal on this route and it says nothing whatever about ownership,
   // so it must never reach FORBIDDEN's sentence below — until the route split the
